@@ -1,0 +1,86 @@
+from __future__ import annotations
+
+from collections.abc import Generator
+from pathlib import Path
+
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session, sessionmaker
+
+from testflying_api.app import create_app
+from testflying_api.config import Settings
+from testflying_api.database import create_engine_for_url, create_session_factory
+from testflying_api.schema import Base
+from testflying_api.storage import LocalArtifactStorage
+
+
+@pytest.fixture
+def session_factory() -> Generator[sessionmaker[Session]]:
+    engine = create_engine_for_url("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    factory = create_session_factory(engine)
+    try:
+        yield factory
+    finally:
+        Base.metadata.drop_all(engine)
+        engine.dispose()
+
+
+@pytest.fixture
+def db_session(session_factory: sessionmaker[Session]) -> Generator[Session]:
+    session = session_factory()
+    try:
+        yield session
+    finally:
+        session.close()
+
+
+@pytest.fixture
+def test_settings(tmp_path: Path) -> Settings:
+    return Settings(
+        database_url="sqlite:///:memory:",
+        public_base_url="https://dist.example.test",
+        storage_backend="local",
+        storage_root=tmp_path / "artifacts",
+        static_token="dev-token",
+        s3_endpoint_url=None,
+        s3_public_base_url=None,
+        s3_bucket="testflying",
+        s3_access_key_id=None,
+        s3_secret_access_key=None,
+        cors_allowed_origins=(
+            "http://localhost:8080",
+            "http://127.0.0.1:8080",
+        ),
+    )
+
+
+@pytest.fixture
+def app(
+    session_factory: sessionmaker[Session],
+    test_settings: Settings,
+) -> FastAPI:
+    storage = LocalArtifactStorage(
+        root=test_settings.storage_root,
+        public_base_url=test_settings.public_base_url,
+    )
+    return create_app(test_settings, session_factory=session_factory, artifact_storage=storage)
+
+
+@pytest.fixture
+def client(app: FastAPI) -> TestClient:
+    return TestClient(app)
+
+
+class FakeS3Client:
+    def __init__(self) -> None:
+        self.put_objects: list[dict[str, object]] = []
+
+    def put_object(self, **kwargs: object) -> None:
+        self.put_objects.append(kwargs)
+
+
+@pytest.fixture
+def fake_s3_client() -> FakeS3Client:
+    return FakeS3Client()

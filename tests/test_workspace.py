@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from testflying_api.main import app
+from testflying_api.app import create_app
 
 
-client = TestClient(app)
+client = TestClient(create_app())
 
 
 def test_health() -> None:

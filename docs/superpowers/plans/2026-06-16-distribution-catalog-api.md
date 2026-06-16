@@ -6,7 +6,7 @@
 
 **架构：**FastAPI 提供只读目录接口和包上传接口；SQLAlchemy 保存应用、构建、制品、设备、开发者账号和服务端通知等分发事实。移动端继续负责安装状态、暂停/下载中状态、排序、通知已读、筛选、tab、sheet、滚动位置等所有客户端状态。
 
-**技术栈：**Python 3.11、FastAPI、Pydantic v2、SQLAlchemy 2.x、Alembic、pytest、httpx、ruff；第一版文件存储使用本地目录，后续可替换成 S3 或 MinIO。
+**技术栈：**Python 3.11、FastAPI、Pydantic v2、SQLAlchemy 2.x、Alembic、pytest、httpx、ruff、Docker、Docker Compose；第一版文件存储使用本地目录，后续可替换成 S3 或 MinIO。
 
 ---
 
@@ -73,6 +73,98 @@
 - `tests/test_devices.py`：设备可见性测试。
 - `tests/test_notifications.py`：通知 feed 测试，明确不写已读状态。
 - `README.md`：本地启动、测试、客户端连接说明。
+- `Dockerfile`：第一版部署镜像。
+- `.dockerignore`：排除本地缓存、测试文件和数据目录。
+- `docker-compose.yml`：第一版单机部署入口，默认挂载 `./data`。
+
+## 阶段零：第一版 Docker 部署入口
+
+### 任务 0：Docker 和 Compose 支持
+
+**文件：**
+
+- 新建：`Dockerfile`
+- 新建：`.dockerignore`
+- 新建：`docker-compose.yml`
+- 修改：`README.md`
+
+- [ ] **步骤 1：创建 Dockerfile**
+
+要求：
+
+- 基于 `python:3.11-slim`。
+- 安装当前项目运行依赖。
+- 使用非 root 用户运行。
+- 暴露 `8000` 端口。
+- 默认启动命令为：
+
+```bash
+uvicorn testflying_api.main:app --host 0.0.0.0 --port 8000
+```
+
+- [ ] **步骤 2：创建 .dockerignore**
+
+必须排除：
+
+- `.git/`
+- `.venv/`
+- `.pytest_cache/`
+- `.ruff_cache/`
+- `__pycache__/`
+- `data/`
+- `tests/`
+- `docs/`
+
+- [ ] **步骤 3：创建 docker-compose.yml**
+
+第一版只需要一个 `api` 服务：
+
+- `build: .`
+- 端口映射 `8000:8000`
+- 挂载 `./data:/app/data`
+- 默认环境变量：
+  - `TESTFLYING_DATABASE_URL=sqlite:////app/data/testflying.db`
+  - `TESTFLYING_PUBLIC_BASE_URL=http://localhost:8000`
+  - `TESTFLYING_STORAGE_ROOT=/app/data/artifacts`
+  - `TESTFLYING_STATIC_TOKEN=dev-token`
+
+- [ ] **步骤 4：更新 README**
+
+README 必须把 Docker 部署放在本地开发前面：
+
+```bash
+docker compose up --build
+curl http://localhost:8000/health
+```
+
+同时补充无 Compose 插件时的直接 Docker 启动方式：
+
+```bash
+docker build -t testflying-api:latest .
+docker run -d --name testflying-api -p 8000:8000 -v "$(pwd)/data:/app/data" testflying-api:latest
+```
+
+本地开发继续保留最简单的 Python 虚拟环境路径。
+
+- [ ] **步骤 5：验证 Docker 构建和健康检查**
+
+运行：
+
+```bash
+docker compose build
+docker compose up -d
+curl http://localhost:8000/health
+docker compose down
+```
+
+预期：`curl` 返回 `{"status":"ok"}`。
+
+- [ ] **步骤 6：提交**
+
+```bash
+git add Dockerfile .dockerignore docker-compose.yml README.md
+git commit -m "feat: add Docker deployment"
+```
 
 ## 阶段一：项目基础
 
@@ -917,6 +1009,7 @@ git commit -m "docs: add client integration boundary"
 pytest
 ruff check src tests
 python3.11 -m compileall -q src tests
+docker compose build
 ```
 
 预期：
@@ -924,6 +1017,7 @@ python3.11 -m compileall -q src tests
 - 所有测试通过。
 - Ruff 没有问题。
 - `compileall` 退出码为 0。
+- Docker 镜像构建成功。
 
 推送：
 
@@ -933,12 +1027,13 @@ git push
 
 ## 推荐执行顺序
 
-1. 阶段一：项目基础。
-2. 阶段二：只保存分发事实的持久化模型。
-3. 阶段三：工作台目录接口。
-4. 阶段四：上传和制品分发。
-5. 阶段五：设备可见性和账号事实。
-6. 阶段六：无已读状态的通知 feed。
-7. 阶段七：文档和客户端契约清理。
+1. 阶段零：第一版 Docker 部署入口。
+2. 阶段一：项目基础。
+3. 阶段二：只保存分发事实的持久化模型。
+4. 阶段三：工作台目录接口。
+5. 阶段四：上传和制品分发。
+6. 阶段五：设备可见性和账号事实。
+7. 阶段六：无已读状态的通知 feed。
+8. 阶段七：文档和客户端契约清理。
 
 在阶段三通过前，不开始客户端远端集成；在只读目录稳定前，不开始上传能力。

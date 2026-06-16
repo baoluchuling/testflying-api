@@ -1,0 +1,13 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      TESTFLYING_DATABASE_URL: sqlite:////app/data/testflying.db
+      TESTFLYING_PUBLIC_BASE_URL: http://localhost:8000
+      TESTFLYING_STORAGE_ROOT: /app/data/artifacts
+      TESTFLYING_STATIC_TOKEN: dev-token
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

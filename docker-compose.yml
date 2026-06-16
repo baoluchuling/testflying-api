@@ -14,6 +14,7 @@ services:
       TESTFLYING_S3_ACCESS_KEY_ID: testflying
       TESTFLYING_S3_SECRET_ACCESS_KEY: testflying-secret
       TESTFLYING_STATIC_TOKEN: dev-token
+      TESTFLYING_CORS_ALLOWED_ORIGINS: http://localhost:8080,http://127.0.0.1:8080
     volumes:
       - ./data:/app/data
     depends_on:

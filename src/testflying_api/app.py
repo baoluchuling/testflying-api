@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -24,6 +25,19 @@ def create_app(
         description="Backend API for internal app distribution workspace data.",
     )
     app.state.settings = app_settings
+    if app_settings.cors_allowed_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=list(app_settings.cors_allowed_origins),
+            allow_methods=["GET", "POST", "OPTIONS"],
+            allow_headers=[
+                "Authorization",
+                "Content-Type",
+                "X-Device-ID",
+                "X-Client-Platform",
+                "Accept",
+            ],
+        )
     if session_factory is None:
         engine = create_engine_for_url(app_settings.database_url)
         Base.metadata.create_all(engine)

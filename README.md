@@ -65,6 +65,7 @@ password: testflying-secret
 - `TESTFLYING_S3_PUBLIC_BASE_URL`：默认 `http://localhost:9000/testflying`
 - `TESTFLYING_S3_BUCKET`：默认 `testflying`
 - `TESTFLYING_STATIC_TOKEN`：默认 `dev-token`
+- `TESTFLYING_CORS_ALLOWED_ORIGINS`：默认允许 `http://localhost:8080,http://127.0.0.1:8080`，用于 Flutter Web 本地联调。
 
 ## 轻量本地测试
 
@@ -85,6 +86,7 @@ docker run -d \
   -e TESTFLYING_PUBLIC_BASE_URL=http://localhost:8000 \
   -e TESTFLYING_STORAGE_ROOT=/app/data/artifacts \
   -e TESTFLYING_STATIC_TOKEN=dev-token \
+  -e TESTFLYING_CORS_ALLOWED_ORIGINS=http://localhost:8080,http://127.0.0.1:8080 \
   -v "$(pwd)/data:/app/data" \
   testflying-api:latest
 ```

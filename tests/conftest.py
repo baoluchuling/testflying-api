@@ -49,6 +49,10 @@ def test_settings(tmp_path: Path) -> Settings:
         s3_bucket="testflying",
         s3_access_key_id=None,
         s3_secret_access_key=None,
+        cors_allowed_origins=(
+            "http://localhost:8080",
+            "http://127.0.0.1:8080",
+        ),
     )
 
 

@@ -1,38 +1,38 @@
-# Distribution Catalog API Implementation Plan
+# 分发目录 API 实现计划
 
-> **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **给执行代理的要求：**执行本计划时必须使用 `superpowers:subagent-driven-development`（如果当前环境支持子代理）或 `superpowers:executing-plans`。所有任务都使用复选框语法跟踪。
 
-**Goal:** Build `testflying-api` as a stateless internal app distribution catalog API that serves package, device, account, notification, and download facts without storing client/user interaction state.
+**目标：**把 `testflying-api` 实现成一个无用户态的内部应用分发目录 API，只提供包、应用、构建、设备可见性、账号续费、通知和下载地址这些服务端事实。
 
-**Architecture:** FastAPI exposes read-only catalog endpoints and upload endpoints. SQLAlchemy stores distribution facts such as apps, builds, artifacts, devices, developer accounts, and service-generated notifications. The mobile client remains responsible for install state, paused/downloading UI, sort order, read/unread notification state, tabs, filters, and all other user-state overlays.
+**架构：**FastAPI 提供只读目录接口和包上传接口；SQLAlchemy 保存应用、构建、制品、设备、开发者账号和服务端通知等分发事实。移动端继续负责安装状态、暂停/下载中状态、排序、通知已读、筛选、tab、sheet、滚动位置等所有客户端状态。
 
-**Tech Stack:** Python 3.11, FastAPI, Pydantic v2, SQLAlchemy 2.x, Alembic, pytest, httpx, ruff, local filesystem storage for v1.
+**技术栈：**Python 3.11、FastAPI、Pydantic v2、SQLAlchemy 2.x、Alembic、pytest、httpx、ruff；第一版文件存储使用本地目录，后续可替换成 S3 或 MinIO。
 
 ---
 
-## Scope And Non-Goals
+## 范围和非目标
 
-The service is the source of truth for distribution facts only:
+服务端只作为“分发事实”的权威来源：
 
-- Apps and builds.
-- Build environment classification: `development` or `production`.
-- Build metadata: bundle id/package name, version, build number, platform, changelog, published time.
-- Artifact facts: IPA/APK object path, iOS manifest URL, Android download URL.
-- Developer account renewal facts.
-- Device registration and build visibility rules.
-- Service-generated notification feed items such as new build published and account renewal warning.
+- 应用和构建。
+- 构建环境分类：`development` 或 `production`。
+- 构建元数据：bundle id 或 package name、版本号、build number、平台、更新说明、发布时间。
+- 制品信息：IPA/APK 存储路径、iOS manifest 地址、Android 下载地址。
+- 开发者账号续费事实。
+- 设备登记事实和构建可见性规则。
+- 服务端产生的通知 feed，例如新包发布、账号即将到期。
 
-The service must not store user/client state:
+服务端不能保存用户态或客户端状态：
 
-- No install state.
-- No paused/downloading/installing state.
-- No download progress.
-- No per-user build sort order.
-- No notification read/unread state.
-- No current tab/filter/sheet/scroll state.
-- No device-local usage trace like "this device installed build X".
+- 不保存是否已安装。
+- 不保存安装中、暂停中、下载中。
+- 不保存下载进度。
+- 不保存用户自定义排序。
+- 不保存通知已读/未读。
+- 不保存当前 tab、筛选、sheet、滚动位置。
+- 不保存“某台设备装过某个包”这类本地使用痕迹。
 
-Deleted from the previous API contract:
+以下旧接口不实现：
 
 - `POST /v1/test-distribution/builds/{buildId}/install-tasks`
 - `PATCH /v1/test-distribution/install-tasks/{taskId}`
@@ -41,53 +41,54 @@ Deleted from the previous API contract:
 - `PATCH /v1/test-distribution/notifications/{notificationId}`
 - `POST /v1/test-distribution/notifications/mark-all-read`
 
-## File Structure
+## 文件结构
 
-Create or modify these files in `/Users/admin/ai_project/apps/testflying-api`:
+在 `/Users/admin/ai_project/apps/testflying-api` 中创建或修改这些文件：
 
-- `pyproject.toml`: add SQLAlchemy, Alembic, python-multipart, and testing dependencies.
-- `src/testflying_api/config.py`: settings object for database URL, public base URL, storage path, and token config.
-- `src/testflying_api/app.py`: FastAPI app factory.
-- `src/testflying_api/main.py`: import app from the factory.
-- `src/testflying_api/errors.py`: API error model and exception handlers.
-- `src/testflying_api/database.py`: SQLAlchemy engine, session factory, dependency.
-- `src/testflying_api/schema.py`: SQLAlchemy table models.
-- `src/testflying_api/domain.py`: domain dataclasses/enums independent of FastAPI.
-- `src/testflying_api/catalog_repository.py`: queries for apps, builds, devices, accounts, and notifications.
-- `src/testflying_api/catalog_service.py`: workspace composition and visibility decisions.
-- `src/testflying_api/storage.py`: local artifact storage and public URL generation.
-- `src/testflying_api/package_parser.py`: package metadata extraction for IPA and metadata-assisted APK uploads.
-- `src/testflying_api/manifest.py`: iOS `manifest.plist` generation.
-- `src/testflying_api/routes/health.py`: health route.
-- `src/testflying_api/routes/workspace.py`: workspace route.
-- `src/testflying_api/routes/uploads.py`: package upload route.
-- `src/testflying_api/routes/devices.py`: device read/registration routes.
-- `src/testflying_api/routes/accounts.py`: developer account routes.
-- `src/testflying_api/routes/notifications.py`: notification feed route.
-- `alembic.ini`: Alembic config.
-- `alembic/env.py`: migration environment.
-- `alembic/versions/*.py`: database migrations.
-- `tests/conftest.py`: test app and temporary database fixtures.
-- `tests/test_workspace.py`: workspace contract tests.
-- `tests/test_uploads.py`: upload and artifact URL tests.
-- `tests/test_devices.py`: visibility and current device tests.
-- `tests/test_notifications.py`: feed tests, explicitly no read/unread writes.
-- `README.md`: local run commands and client connection docs.
+- `pyproject.toml`：增加 SQLAlchemy、Alembic、python-multipart 和测试依赖。
+- `src/testflying_api/config.py`：配置对象，包含数据库地址、公开基础 URL、存储路径、静态 token。
+- `src/testflying_api/app.py`：FastAPI app factory。
+- `src/testflying_api/main.py`：从 app factory 导出 `app`。
+- `src/testflying_api/errors.py`：统一 API 错误模型和异常处理。
+- `src/testflying_api/database.py`：SQLAlchemy engine、session factory、依赖注入。
+- `src/testflying_api/schema.py`：SQLAlchemy 数据表模型。
+- `src/testflying_api/domain.py`：和 FastAPI 解耦的领域 dataclass / enum。
+- `src/testflying_api/catalog_repository.py`：查询应用、构建、设备、账号、通知。
+- `src/testflying_api/catalog_service.py`：组合 workspace，处理设备可见性。
+- `src/testflying_api/storage.py`：本地制品存储和公开 URL 生成。
+- `src/testflying_api/package_parser.py`：解析 IPA 包信息；Android 第一版使用上传时附带的 metadata。
+- `src/testflying_api/manifest.py`：生成 iOS `manifest.plist`。
+- `src/testflying_api/routes/health.py`：健康检查接口。
+- `src/testflying_api/routes/workspace.py`：workspace 聚合接口。
+- `src/testflying_api/routes/uploads.py`：包上传接口。
+- `src/testflying_api/routes/devices.py`：设备读取和登记链接接口。
+- `src/testflying_api/routes/accounts.py`：开发者账号接口。
+- `src/testflying_api/routes/notifications.py`：通知 feed 接口。
+- `alembic.ini`：Alembic 配置。
+- `alembic/env.py`：迁移环境。
+- `alembic/versions/*.py`：数据库迁移。
+- `tests/conftest.py`：测试 app 和临时数据库 fixture。
+- `tests/test_workspace.py`：workspace 契约测试。
+- `tests/test_uploads.py`：上传和制品 URL 测试。
+- `tests/test_devices.py`：设备可见性测试。
+- `tests/test_notifications.py`：通知 feed 测试，明确不写已读状态。
+- `README.md`：本地启动、测试、客户端连接说明。
 
-## Chunk 1: Project Foundation
+## 阶段一：项目基础
 
-### Task 1: Settings And App Factory
+### 任务 1：配置和应用工厂
 
-**Files:**
-- Create: `src/testflying_api/config.py`
-- Create: `src/testflying_api/app.py`
-- Modify: `src/testflying_api/main.py`
-- Modify: `tests/conftest.py`
-- Test: `tests/test_health.py`
+**文件：**
 
-- [ ] **Step 1: Write failing app factory test**
+- 新建：`src/testflying_api/config.py`
+- 新建：`src/testflying_api/app.py`
+- 修改：`src/testflying_api/main.py`
+- 新建：`src/testflying_api/routes/health.py`
+- 测试：`tests/test_health.py`
 
-Create `tests/test_health.py`:
+- [ ] **步骤 1：先写失败测试**
+
+创建 `tests/test_health.py`：
 
 ```python
 from fastapi.testclient import TestClient
@@ -104,63 +105,28 @@ def test_health_returns_ok() -> None:
     assert response.json() == {"status": "ok"}
 ```
 
-- [ ] **Step 2: Run test and verify failure**
+- [ ] **步骤 2：运行测试并确认失败**
 
-Run:
+运行：
 
 ```bash
 pytest tests/test_health.py -v
 ```
 
-Expected: FAIL because `testflying_api.app` does not exist.
+预期：失败，原因是 `testflying_api.app` 还不存在。
 
-- [ ] **Step 3: Add settings and app factory**
+- [ ] **步骤 3：实现配置和应用工厂**
 
-Implement:
+实现 `Settings.from_environment()`，读取：
 
-```python
-# src/testflying_api/config.py
-from __future__ import annotations
+- `TESTFLYING_DATABASE_URL`
+- `TESTFLYING_PUBLIC_BASE_URL`
+- `TESTFLYING_STORAGE_ROOT`
+- `TESTFLYING_STATIC_TOKEN`
 
-from dataclasses import dataclass
-from pathlib import Path
-import os
-
-
-@dataclass(frozen=True)
-class Settings:
-    database_url: str
-    public_base_url: str
-    storage_root: Path
-    static_token: str
-
-    @classmethod
-    def from_environment(cls) -> "Settings":
-        return cls(
-            database_url=os.getenv("TESTFLYING_DATABASE_URL", "sqlite:///./data/testflying.db"),
-            public_base_url=os.getenv("TESTFLYING_PUBLIC_BASE_URL", "http://localhost:8000"),
-            storage_root=Path(os.getenv("TESTFLYING_STORAGE_ROOT", "./data/artifacts")),
-            static_token=os.getenv("TESTFLYING_STATIC_TOKEN", "dev-token"),
-        )
-```
+实现 `create_app()`，注册 health route。`main.py` 只导出：
 
 ```python
-# src/testflying_api/app.py
-from __future__ import annotations
-
-from fastapi import FastAPI
-
-from testflying_api.routes import health
-
-
-def create_app() -> FastAPI:
-    app = FastAPI(title="testflying API", version="0.1.0")
-    app.include_router(health.router)
-    return app
-```
-
-```python
-# src/testflying_api/main.py
 from __future__ import annotations
 
 from testflying_api.app import create_app
@@ -168,45 +134,32 @@ from testflying_api.app import create_app
 app = create_app()
 ```
 
-```python
-# src/testflying_api/routes/health.py
-from __future__ import annotations
+- [ ] **步骤 4：运行测试并确认通过**
 
-from fastapi import APIRouter
-
-router = APIRouter()
-
-
-@router.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
-```
-
-- [ ] **Step 4: Run test and verify pass**
-
-Run:
+运行：
 
 ```bash
 pytest tests/test_health.py -v
 ```
 
-Expected: PASS.
+预期：通过。
 
-- [ ] **Step 5: Commit**
+- [ ] **步骤 5：提交**
 
 ```bash
 git add src/testflying_api/config.py src/testflying_api/app.py src/testflying_api/main.py src/testflying_api/routes/health.py tests/test_health.py
 git commit -m "feat: add API app foundation"
 ```
 
-### Task 2: Unified Error Shape
+### 任务 2：统一错误响应
 
-**Files:**
-- Create: `src/testflying_api/errors.py`
-- Modify: `src/testflying_api/app.py`
-- Test: `tests/test_errors.py`
+**文件：**
 
-- [ ] **Step 1: Write failing error response test**
+- 新建：`src/testflying_api/errors.py`
+- 修改：`src/testflying_api/app.py`
+- 测试：`tests/test_errors.py`
+
+- [ ] **步骤 1：先写失败测试**
 
 ```python
 from fastapi.testclient import TestClient
@@ -233,51 +186,65 @@ def test_api_errors_use_client_contract_shape() -> None:
     }
 ```
 
-- [ ] **Step 2: Run test and verify failure**
-
-Run:
+- [ ] **步骤 2：运行测试并确认失败**
 
 ```bash
 pytest tests/test_errors.py -v
 ```
 
-Expected: FAIL because `ApiError` is not implemented.
+预期：失败，原因是 `ApiError` 还没有实现。
 
-- [ ] **Step 3: Implement error handler**
+- [ ] **步骤 3：实现错误处理**
 
-`ApiError` should carry `code`, `message`, `status_code`, and `retryable`. Register a FastAPI exception handler in `create_app()`.
+`ApiError` 携带：
 
-- [ ] **Step 4: Run test and verify pass**
+- `code`
+- `message`
+- `status_code`
+- `retryable`
+
+在 `create_app()` 中注册异常处理器，响应形状和客户端契约一致：
+
+```json
+{
+  "code": "build_not_found",
+  "message": "构建不存在",
+  "retryable": false
+}
+```
+
+- [ ] **步骤 4：运行测试并确认通过**
 
 ```bash
 pytest tests/test_errors.py -v
 ```
 
-Expected: PASS.
+预期：通过。
 
-- [ ] **Step 5: Commit**
+- [ ] **步骤 5：提交**
 
 ```bash
 git add src/testflying_api/errors.py src/testflying_api/app.py tests/test_errors.py
 git commit -m "feat: add API error contract"
 ```
 
-## Chunk 2: Persistence For Distribution Facts
+## 阶段二：只保存分发事实的持久化模型
 
-### Task 3: Database And Schema
+### 任务 3：数据库和数据表
 
-**Files:**
-- Modify: `pyproject.toml`
-- Create: `src/testflying_api/database.py`
-- Create: `src/testflying_api/schema.py`
-- Create: `alembic.ini`
-- Create: `alembic/env.py`
-- Create: `alembic/versions/20260616_0001_initial_catalog.py`
-- Test: `tests/test_schema.py`
+**文件：**
 
-- [ ] **Step 1: Add dependencies**
+- 修改：`pyproject.toml`
+- 新建：`src/testflying_api/database.py`
+- 新建：`src/testflying_api/schema.py`
+- 新建：`alembic.ini`
+- 新建：`alembic/env.py`
+- 新建：`alembic/versions/20260616_0001_initial_catalog.py`
+- 测试：`tests/test_schema.py`
 
-Add:
+- [ ] **步骤 1：增加依赖**
+
+在 `pyproject.toml` 中增加：
 
 ```toml
 "sqlalchemy>=2.0,<3.0",
@@ -285,7 +252,7 @@ Add:
 "python-multipart>=0.0.20,<1.0",
 ```
 
-- [ ] **Step 2: Write schema test**
+- [ ] **步骤 2：先写数据表边界测试**
 
 ```python
 from sqlalchemy import inspect
@@ -314,52 +281,57 @@ def test_catalog_schema_contains_no_user_state_tables() -> None:
     assert "notification_reads" not in table_names
 ```
 
-- [ ] **Step 3: Run test and verify failure**
+- [ ] **步骤 3：运行测试并确认失败**
 
 ```bash
 pytest tests/test_schema.py -v
 ```
 
-Expected: FAIL because database/schema modules do not exist.
+预期：失败，原因是数据库模块和 schema 还不存在。
 
-- [ ] **Step 4: Implement schema**
+- [ ] **步骤 4：实现数据表**
 
-Create tables:
+需要的数据表：
 
-- `apps`: id, name, bundle_id, platform, icon_url, created_at, updated_at.
-- `builds`: id, app_id, version, build_number, environment, changelog, status, published_at, expires_at.
-- `artifacts`: id, build_id, file_name, file_size, sha256, storage_path, manifest_path, download_path.
-- `devices`: id, name, platform, status, registered_at.
-- `device_build_visibility`: device_id, build_id.
-- `developer_accounts`: id, name, team_id, expires_at, status.
-- `developer_account_apps`: developer_account_id, app_id.
-- `notifications`: id, type, title, message, related_app_id, related_build_id, created_at.
+- `apps`：应用事实。
+- `builds`：构建事实。
+- `artifacts`：IPA/APK 制品事实。
+- `devices`：设备登记事实。
+- `device_build_visibility`：设备和构建的可见性关系。
+- `developer_accounts`：开发者账号续费事实。
+- `developer_account_apps`：开发者账号和应用的关联。
+- `notifications`：服务端产生的通知 feed。
 
-Do not add user state tables.
+禁止新增这些表：
 
-- [ ] **Step 5: Run test and verify pass**
+- `install_tasks`
+- `sort_orders`
+- `notification_reads`
+
+- [ ] **步骤 5：运行测试并确认通过**
 
 ```bash
 pytest tests/test_schema.py -v
 ```
 
-Expected: PASS.
+预期：通过。
 
-- [ ] **Step 6: Commit**
+- [ ] **步骤 6：提交**
 
 ```bash
 git add pyproject.toml src/testflying_api/database.py src/testflying_api/schema.py alembic.ini alembic tests/test_schema.py
 git commit -m "feat: add catalog persistence schema"
 ```
 
-### Task 4: Seed Data Fixture
+### 任务 4：演示数据
 
-**Files:**
-- Create: `src/testflying_api/seed.py`
-- Modify: `tests/conftest.py`
-- Test: `tests/test_seed.py`
+**文件：**
 
-- [ ] **Step 1: Write failing seed test**
+- 新建：`src/testflying_api/seed.py`
+- 修改：`tests/conftest.py`
+- 测试：`tests/test_seed.py`
+
+- [ ] **步骤 1：先写失败测试**
 
 ```python
 from sqlalchemy.orm import Session
@@ -375,51 +347,52 @@ def test_seed_demo_catalog_creates_apps_and_builds(db_session: Session) -> None:
     assert db_session.query(Build).count() >= 1
 ```
 
-- [ ] **Step 2: Run test and verify failure**
+- [ ] **步骤 2：运行测试并确认失败**
 
 ```bash
 pytest tests/test_seed.py -v
 ```
 
-Expected: FAIL because seed helper is missing.
+预期：失败，原因是 seed helper 还不存在。
 
-- [ ] **Step 3: Implement seed helper**
+- [ ] **步骤 3：实现演示数据**
 
-Create deterministic demo data that maps to the current mobile UI examples:
+演示数据要和当前移动端 UI 接近：
 
 - `Aurora Mobile`
 - `Insight Desk`
 - `DataFlow`
-- development and production environments.
-- one iOS build with manifest URL.
-- one Android build with APK URL.
+- 开发环境和线上环境。
+- 至少一个 iOS build，包含 manifest URL。
+- 至少一个 Android build，包含 APK 下载 URL。
 
-- [ ] **Step 4: Run test and verify pass**
+- [ ] **步骤 4：运行测试并确认通过**
 
 ```bash
 pytest tests/test_seed.py -v
 ```
 
-Expected: PASS.
+预期：通过。
 
-- [ ] **Step 5: Commit**
+- [ ] **步骤 5：提交**
 
 ```bash
 git add src/testflying_api/seed.py tests/conftest.py tests/test_seed.py
 git commit -m "feat: add demo catalog seed data"
 ```
 
-## Chunk 3: Workspace Catalog API
+## 阶段三：工作台目录接口
 
-### Task 5: Catalog Repository And Workspace Service
+### 任务 5：目录仓储和工作台组合服务
 
-**Files:**
-- Create: `src/testflying_api/domain.py`
-- Create: `src/testflying_api/catalog_repository.py`
-- Create: `src/testflying_api/catalog_service.py`
-- Test: `tests/test_catalog_service.py`
+**文件：**
 
-- [ ] **Step 1: Write failing service test**
+- 新建：`src/testflying_api/domain.py`
+- 新建：`src/testflying_api/catalog_repository.py`
+- 新建：`src/testflying_api/catalog_service.py`
+- 测试：`tests/test_catalog_service.py`
+
+- [ ] **步骤 1：先写失败测试**
 
 ```python
 from sqlalchemy.orm import Session
@@ -442,72 +415,73 @@ def test_workspace_contains_distribution_facts_only(db_session: Session) -> None
     assert workspace.sort_order.build_ids == []
 ```
 
-- [ ] **Step 2: Run test and verify failure**
+- [ ] **步骤 2：运行测试并确认失败**
 
 ```bash
 pytest tests/test_catalog_service.py -v
 ```
 
-Expected: FAIL because repository/service do not exist.
+预期：失败，原因是仓储和服务还不存在。
 
-- [ ] **Step 3: Implement repository and service**
+- [ ] **步骤 3：实现仓储和服务**
 
-Rules:
+规则：
 
-- Return only builds visible to the current device/platform.
-- Return empty `installTasks`.
-- Return empty `sortOrder.buildIds`.
-- Return notifications without read/unread state.
-- Return developer accounts that are related to visible apps.
+- 只返回当前设备和平台可见的 build。
+- `installTasks` 永远返回空数组。
+- `sortOrder.buildIds` 永远返回空数组。
+- 通知不包含已读/未读状态。
+- 开发者账号只返回和可见应用相关的账号事实。
 
-- [ ] **Step 4: Run test and verify pass**
+- [ ] **步骤 4：运行测试并确认通过**
 
 ```bash
 pytest tests/test_catalog_service.py -v
 ```
 
-Expected: PASS.
+预期：通过。
 
-- [ ] **Step 5: Commit**
+- [ ] **步骤 5：提交**
 
 ```bash
 git add src/testflying_api/domain.py src/testflying_api/catalog_repository.py src/testflying_api/catalog_service.py tests/test_catalog_service.py
 git commit -m "feat: compose workspace catalog"
 ```
 
-### Task 6: Workspace Route Contract
+### 任务 6：工作台路由契约
 
-**Files:**
-- Create: `src/testflying_api/routes/workspace.py`
-- Modify: `src/testflying_api/app.py`
-- Test: `tests/test_workspace.py`
+**文件：**
 
-- [ ] **Step 1: Replace current minimal workspace test**
+- 新建：`src/testflying_api/routes/workspace.py`
+- 修改：`src/testflying_api/app.py`
+- 测试：`tests/test_workspace.py`
 
-Assert:
+- [ ] **步骤 1：改写 workspace 测试**
 
-- Response has `apps`, `builds`, `devices`, `developerAccounts`, `notifications`, `installTasks`, `sortOrder`, `profile`.
-- `installTasks` is always `[]`.
-- `sortOrder.buildIds` is always `[]`.
-- No response field exposes `isRead`, `readAt`, `installedAt`, `installState`, or `progress`.
+测试必须断言：
 
-- [ ] **Step 2: Run test and verify failure**
+- 响应包含 `apps`、`builds`、`devices`、`developerAccounts`、`notifications`、`installTasks`、`sortOrder`、`profile`。
+- `installTasks` 永远是 `[]`。
+- `sortOrder.buildIds` 永远是 `[]`。
+- 响应不能出现 `isRead`、`readAt`、`installedAt`、`installState`、`progress`。
+
+- [ ] **步骤 2：运行测试并确认失败**
 
 ```bash
 pytest tests/test_workspace.py -v
 ```
 
-Expected: FAIL until route is wired to catalog service.
+预期：失败，直到 route 接入 catalog service。
 
-- [ ] **Step 3: Implement route**
+- [ ] **步骤 3：实现路由**
 
-Route:
+接口：
 
 ```http
 GET /v1/test-distribution/workspace
 ```
 
-Headers:
+请求头：
 
 ```http
 Authorization: Bearer <token>
@@ -515,30 +489,31 @@ X-Device-ID: <device-id>
 X-Client-Platform: ios
 ```
 
-- [ ] **Step 4: Run test and verify pass**
+- [ ] **步骤 4：运行测试并确认通过**
 
 ```bash
 pytest tests/test_workspace.py -v
 ```
 
-Expected: PASS.
+预期：通过。
 
-- [ ] **Step 5: Commit**
+- [ ] **步骤 5：提交**
 
 ```bash
 git add src/testflying_api/routes/workspace.py src/testflying_api/app.py tests/test_workspace.py
 git commit -m "feat: expose workspace catalog route"
 ```
 
-## Chunk 4: Upload And Artifact Distribution
+## 阶段四：上传和制品分发
 
-### Task 7: Local Artifact Storage
+### 任务 7：本地制品存储
 
-**Files:**
-- Create: `src/testflying_api/storage.py`
-- Test: `tests/test_storage.py`
+**文件：**
 
-- [ ] **Step 1: Write failing storage test**
+- 新建：`src/testflying_api/storage.py`
+- 测试：`tests/test_storage.py`
+
+- [ ] **步骤 1：先写失败测试**
 
 ```python
 from testflying_api.storage import LocalArtifactStorage
@@ -553,189 +528,198 @@ def test_storage_writes_file_and_returns_public_url(tmp_path) -> None:
     assert saved.download_url == "https://dist.example.test/artifacts/build-1/app.ipa"
 ```
 
-- [ ] **Step 2: Run test and verify failure**
+- [ ] **步骤 2：运行测试并确认失败**
 
 ```bash
 pytest tests/test_storage.py -v
 ```
 
-Expected: FAIL because storage module does not exist.
+预期：失败，原因是 storage 模块还不存在。
 
-- [ ] **Step 3: Implement local storage**
+- [ ] **步骤 3：实现本地存储**
 
-Store files under:
+文件保存到：
 
 ```text
 data/artifacts/{build_id}/{file_name}
 ```
 
-Use this abstraction so S3/MinIO can replace local storage later.
+存储必须通过抽象封装，后续可以替换为 S3 或 MinIO。
 
-- [ ] **Step 4: Run test and verify pass**
+- [ ] **步骤 4：运行测试并确认通过**
 
 ```bash
 pytest tests/test_storage.py -v
 ```
 
-Expected: PASS.
+预期：通过。
 
-- [ ] **Step 5: Commit**
+- [ ] **步骤 5：提交**
 
 ```bash
 git add src/testflying_api/storage.py tests/test_storage.py
 git commit -m "feat: add local artifact storage"
 ```
 
-### Task 8: IPA Metadata And Manifest Generation
+### 任务 8：IPA 解析和安装清单生成
 
-**Files:**
-- Create: `src/testflying_api/package_parser.py`
-- Create: `src/testflying_api/manifest.py`
-- Test: `tests/test_package_parser.py`
-- Test: `tests/test_manifest.py`
+**文件：**
 
-- [ ] **Step 1: Write failing parser tests**
+- 新建：`src/testflying_api/package_parser.py`
+- 新建：`src/testflying_api/manifest.py`
+- 测试：`tests/test_package_parser.py`
+- 测试：`tests/test_manifest.py`
 
-For IPA:
+- [ ] **步骤 1：先写失败测试**
 
-- Build a small zip with `Payload/Test.app/Info.plist`.
-- Assert parser extracts bundle id, display name, version, build number.
+IPA 测试：
 
-For APK v1:
+- 构造一个包含 `Payload/Test.app/Info.plist` 的 zip。
+- 断言能解析 bundle id、应用名、版本号、build number。
 
-- Accept metadata fields from request instead of parsing binary APK.
-- Assert missing required APK metadata is rejected.
+APK 第一版测试：
 
-- [ ] **Step 2: Run tests and verify failure**
+- Android 暂时不解析二进制 APK。
+- 上传时必须传入 package name、app name、version、build number。
+- 缺少必填 metadata 时返回错误。
 
-```bash
-pytest tests/test_package_parser.py tests/test_manifest.py -v
-```
-
-Expected: FAIL because modules do not exist.
-
-- [ ] **Step 3: Implement parser and manifest builder**
-
-IPA parser:
-
-- Use `zipfile`.
-- Find `Payload/*.app/Info.plist`.
-- Parse with `plistlib`.
-
-Manifest builder:
-
-- Generate valid plist with `software-package`.
-- Use artifact public download URL.
-- Include bundle identifier, version, and title.
-
-- [ ] **Step 4: Run tests and verify pass**
+- [ ] **步骤 2：运行测试并确认失败**
 
 ```bash
 pytest tests/test_package_parser.py tests/test_manifest.py -v
 ```
 
-Expected: PASS.
+预期：失败，原因是模块还不存在。
 
-- [ ] **Step 5: Commit**
+- [ ] **步骤 3：实现解析和 manifest 生成**
+
+IPA 解析：
+
+- 使用 `zipfile`。
+- 找到 `Payload/*.app/Info.plist`。
+- 使用 `plistlib` 解析。
+
+安装清单生成：
+
+- 生成合法 plist。
+- 包含 `software-package`。
+- 使用制品公开下载 URL。
+- 包含 bundle identifier、version、title。
+
+- [ ] **步骤 4：运行测试并确认通过**
+
+```bash
+pytest tests/test_package_parser.py tests/test_manifest.py -v
+```
+
+预期：通过。
+
+- [ ] **步骤 5：提交**
 
 ```bash
 git add src/testflying_api/package_parser.py src/testflying_api/manifest.py tests/test_package_parser.py tests/test_manifest.py
 git commit -m "feat: parse packages and generate manifests"
 ```
 
-### Task 9: Upload Endpoint
+### 任务 9：上传接口
 
-**Files:**
-- Create: `src/testflying_api/routes/uploads.py`
-- Modify: `src/testflying_api/app.py`
-- Test: `tests/test_uploads.py`
+**文件：**
 
-- [ ] **Step 1: Write failing upload test**
+- 新建：`src/testflying_api/routes/uploads.py`
+- 修改：`src/testflying_api/app.py`
+- 测试：`tests/test_uploads.py`
 
-Test:
+- [ ] **步骤 1：先写失败测试**
 
-- Upload IPA with `environment=development` and changelog.
-- Response creates app and build.
-- Response includes iOS `itms-services://?...manifest.plist`.
-- Workspace after upload contains the new build.
+测试场景：
 
-- [ ] **Step 2: Run test and verify failure**
+- 上传 IPA，字段包含 `environment=development` 和更新说明。
+- 服务端创建 app 和 build。
+- 响应包含 iOS `itms-services://?...manifest.plist`。
+- 上传完成后 workspace 能看到新 build。
+- 不创建安装任务。
+- 不创建任何用户态安装记录。
+
+- [ ] **步骤 2：运行测试并确认失败**
 
 ```bash
 pytest tests/test_uploads.py -v
 ```
 
-Expected: FAIL because upload route does not exist.
+预期：失败，原因是上传路由还不存在。
 
-- [ ] **Step 3: Implement upload route**
+- [ ] **步骤 3：实现上传路由**
 
-Route:
+接口：
 
 ```http
 POST /v1/test-distribution/uploads
 ```
 
-Form fields:
+表单字段：
 
-- `file`: IPA/APK.
-- `platform`: `ios` or `android`.
-- `environment`: `development` or `production`.
-- `changelog`: optional.
-- APK-only metadata: `packageName`, `appName`, `version`, `buildNumber`.
+- `file`：IPA 或 APK。
+- `platform`：`ios` 或 `android`。
+- `environment`：`development` 或 `production`。
+- `changelog`：可选。
+- Android 专用 metadata：`packageName`、`appName`、`version`、`buildNumber`。
 
-Rules:
+规则：
 
-- Upsert app by bundle id/package name + platform.
-- Create build.
-- Store artifact.
-- Generate iOS manifest for IPA.
-- Generate `build` notification feed item.
-- Do not create install task.
-- Do not create user/device install state.
+- 根据 bundle id / package name + platform upsert app。
+- 创建 build。
+- 保存制品。
+- iOS 生成 manifest。
+- 生成 `build` 类型通知 feed。
+- 不创建 install task。
+- 不创建设备安装状态。
+- 不创建用户排序或通知已读状态。
 
-- [ ] **Step 4: Run test and verify pass**
+- [ ] **步骤 4：运行测试并确认通过**
 
 ```bash
 pytest tests/test_uploads.py -v
 ```
 
-Expected: PASS.
+预期：通过。
 
-- [ ] **Step 5: Commit**
+- [ ] **步骤 5：提交**
 
 ```bash
 git add src/testflying_api/routes/uploads.py src/testflying_api/app.py tests/test_uploads.py
 git commit -m "feat: add package upload endpoint"
 ```
 
-## Chunk 5: Device Visibility And Account Facts
+## 阶段五：设备可见性和账号事实
 
-### Task 10: Device Catalog And Visibility
+### 任务 10：设备目录和可见性
 
-**Files:**
-- Create: `src/testflying_api/routes/devices.py`
-- Modify: `src/testflying_api/app.py`
-- Test: `tests/test_devices.py`
+**文件：**
 
-- [ ] **Step 1: Write failing device tests**
+- 新建：`src/testflying_api/routes/devices.py`
+- 修改：`src/testflying_api/app.py`
+- 测试：`tests/test_devices.py`
 
-Assert:
+- [ ] **步骤 1：先写失败测试**
 
-- `GET /v1/test-distribution/devices/current` returns the device fact for `X-Device-ID`.
-- Unknown devices return `device_not_registered`.
-- Workspace excludes builds not visible to the device.
+断言：
 
-- [ ] **Step 2: Run tests and verify failure**
+- `GET /v1/test-distribution/devices/current` 根据 `X-Device-ID` 返回设备事实。
+- 未登记设备返回 `device_not_registered`。
+- workspace 排除当前设备不可见的 build。
+- 不记录“这个设备是否安装过某个 build”。
+
+- [ ] **步骤 2：运行测试并确认失败**
 
 ```bash
 pytest tests/test_devices.py -v
 ```
 
-Expected: FAIL until route and visibility logic exist.
+预期：失败，直到设备路由和可见性逻辑实现。
 
-- [ ] **Step 3: Implement device route**
+- [ ] **步骤 3：实现设备路由**
 
-Routes:
+接口：
 
 ```http
 GET /v1/test-distribution/devices/current
@@ -743,191 +727,191 @@ GET /v1/test-distribution/devices
 POST /v1/test-distribution/devices/registration-link
 ```
 
-`registration-link` creates a registration request/link, not an automatic approval.
+`registration-link` 只生成登记请求或登记链接，不自动审批设备。
 
-- [ ] **Step 4: Run tests and verify pass**
+- [ ] **步骤 4：运行测试并确认通过**
 
 ```bash
 pytest tests/test_devices.py -v
 ```
 
-Expected: PASS.
+预期：通过。
 
-- [ ] **Step 5: Commit**
+- [ ] **步骤 5：提交**
 
 ```bash
 git add src/testflying_api/routes/devices.py src/testflying_api/app.py tests/test_devices.py
 git commit -m "feat: add device visibility endpoints"
 ```
 
-### Task 11: Developer Account Facts
+### 任务 11：开发者账号事实
 
-**Files:**
-- Create: `src/testflying_api/routes/accounts.py`
-- Modify: `src/testflying_api/app.py`
-- Test: `tests/test_accounts.py`
+**文件：**
 
-- [ ] **Step 1: Write failing account tests**
+- 新建：`src/testflying_api/routes/accounts.py`
+- 修改：`src/testflying_api/app.py`
+- 测试：`tests/test_accounts.py`
 
-Assert:
+- [ ] **步骤 1：先写失败测试**
 
-- Accounts include `expiresAt`, `status`, and related app ids.
-- Workspace includes account renewal facts for visible apps.
-- No client dismissal or read state is stored.
+断言：
 
-- [ ] **Step 2: Run tests and verify failure**
+- 账号响应包含 `expiresAt`、`status` 和关联 app id。
+- workspace 包含当前可见应用相关的账号续费事实。
+- 不保存客户端关闭提醒、已读、已处理状态。
+
+- [ ] **步骤 2：运行测试并确认失败**
 
 ```bash
 pytest tests/test_accounts.py -v
 ```
 
-Expected: FAIL until account route exists.
+预期：失败，直到账号路由实现。
 
-- [ ] **Step 3: Implement account route**
+- [ ] **步骤 3：实现账号路由**
 
-Routes:
+接口：
 
 ```http
 GET /v1/test-distribution/developer-accounts
 GET /v1/test-distribution/developer-accounts/renewals
 ```
 
-- [ ] **Step 4: Run tests and verify pass**
+- [ ] **步骤 4：运行测试并确认通过**
 
 ```bash
 pytest tests/test_accounts.py -v
 ```
 
-Expected: PASS.
+预期：通过。
 
-- [ ] **Step 5: Commit**
+- [ ] **步骤 5：提交**
 
 ```bash
 git add src/testflying_api/routes/accounts.py src/testflying_api/app.py tests/test_accounts.py
 git commit -m "feat: add developer account renewal facts"
 ```
 
-## Chunk 6: Notification Feed Without Read State
+## 阶段六：无已读状态的通知流
 
-### Task 12: Notification Feed
+### 任务 12：通知流
 
-**Files:**
-- Create: `src/testflying_api/routes/notifications.py`
-- Modify: `src/testflying_api/app.py`
-- Test: `tests/test_notifications.py`
+**文件：**
 
-- [ ] **Step 1: Write failing notification tests**
+- 新建：`src/testflying_api/routes/notifications.py`
+- 修改：`src/testflying_api/app.py`
+- 测试：`tests/test_notifications.py`
 
-Assert:
+- [ ] **步骤 1：先写失败测试**
 
-- `GET /v1/test-distribution/notifications` returns build/account/device feed items.
-- Feed supports `type=build|account|device` filtering.
-- Response does not include `isRead` or `readAt`.
-- No mark-read endpoint exists.
+断言：
 
-- [ ] **Step 2: Run tests and verify failure**
+- `GET /v1/test-distribution/notifications` 返回 build/account/device 类型通知。
+- 支持 `type=build|account|device` 筛选。
+- 响应不包含 `isRead` 或 `readAt`。
+- 不存在 mark-read 接口。
+
+- [ ] **步骤 2：运行测试并确认失败**
 
 ```bash
 pytest tests/test_notifications.py -v
 ```
 
-Expected: FAIL until notification route exists.
+预期：失败，直到通知路由实现。
 
-- [ ] **Step 3: Implement notification route**
+- [ ] **步骤 3：实现通知路由**
 
-Route:
+接口：
 
 ```http
 GET /v1/test-distribution/notifications
 ```
 
-Do not implement read mutations.
+不要实现任何已读写入接口。
 
-- [ ] **Step 4: Run tests and verify pass**
+- [ ] **步骤 4：运行测试并确认通过**
 
 ```bash
 pytest tests/test_notifications.py -v
 ```
 
-Expected: PASS.
+预期：通过。
 
-- [ ] **Step 5: Commit**
+- [ ] **步骤 5：提交**
 
 ```bash
 git add src/testflying_api/routes/notifications.py src/testflying_api/app.py tests/test_notifications.py
 git commit -m "feat: add notification feed"
 ```
 
-## Chunk 7: Documentation And Client Contract Cleanup
+## 阶段七：文档和客户端契约清理
 
-### Task 13: Update API Documentation
+### 任务 13：更新服务端接口文档
 
-**Files:**
-- Modify: `README.md`
-- Create: `docs/api-contract.md`
-- Test: none
+**文件：**
 
-- [ ] **Step 1: Document server-owned facts**
+- 修改：`README.md`
+- 新建：`docs/api-contract.md`
 
-Document:
+- [ ] **步骤 1：写清服务端拥有的事实**
 
-- Workspace response shape.
-- Upload request.
-- Manifest generation.
-- Device visibility.
-- Developer account renewal facts.
-- Notification feed.
+文档必须覆盖：
 
-- [ ] **Step 2: Document client-owned state**
+- 工作台响应结构。
+- 上传请求。
+- 安装清单生成。
+- 设备可见性。
+- 开发者账号续费事实。
+- 通知 feed。
 
-Explicitly document that the server does not store:
+- [ ] **步骤 2：写清客户端拥有的状态**
 
-- Install status.
-- Download progress.
-- Pause/resume state.
-- User sort order.
-- Notification read state.
+明确说明服务端不保存：
 
-- [ ] **Step 3: Commit**
+- 安装状态。
+- 下载进度。
+- 暂停/继续状态。
+- 用户排序。
+- 通知已读。
+
+- [ ] **步骤 3：提交**
 
 ```bash
 git add README.md docs/api-contract.md
 git commit -m "docs: document stateless catalog contract"
 ```
 
-### Task 14: Client Integration Note
+### 任务 14：客户端集成说明
 
-**Files:**
-- Create: `docs/client-integration.md`
-- Test: none
+**文件：**
 
-- [ ] **Step 1: Write integration note**
+- 新建：`docs/client-integration.md`
 
-Document required client adjustment in the `testflying` repo:
+- [ ] **步骤 1：写客户端集成说明**
+
+说明远端客户端应该这样组合 UI 数据：
 
 ```text
-Remote service should fetch server catalog/workspace, then overlay local client state:
-
-server catalog
-+ local install status
-+ local paused/downloading progress
-+ local sort order
-+ local notification read state
+服务端 catalog/workspace
++ 客户端本地安装状态
++ 客户端本地暂停/下载进度
++ 客户端本地排序
++ 客户端本地通知已读
 = UI workspace
 ```
 
-Remote client should not call removed install-task, sort-order, or mark-read endpoints.
+远端客户端不能再调用已删除的 install-task、sort-order、mark-read 接口。
 
-- [ ] **Step 2: Commit**
+- [ ] **步骤 2：提交**
 
 ```bash
 git add docs/client-integration.md
 git commit -m "docs: add client integration boundary"
 ```
 
-## Final Verification
+## 最终验证
 
-Run:
+运行：
 
 ```bash
 pytest
@@ -935,28 +919,26 @@ ruff check src tests
 python3.11 -m compileall -q src tests
 ```
 
-Expected:
+预期：
 
-- All tests pass.
-- Ruff reports no issues.
-- Compileall exits 0.
+- 所有测试通过。
+- Ruff 没有问题。
+- `compileall` 退出码为 0。
 
-Then push:
+推送：
 
 ```bash
 git push
 ```
 
-## Execution Order
+## 推荐执行顺序
 
-Recommended order:
+1. 阶段一：项目基础。
+2. 阶段二：只保存分发事实的持久化模型。
+3. 阶段三：工作台目录接口。
+4. 阶段四：上传和制品分发。
+5. 阶段五：设备可见性和账号事实。
+6. 阶段六：无已读状态的通知 feed。
+7. 阶段七：文档和客户端契约清理。
 
-1. Chunk 1: Project foundation.
-2. Chunk 2: Persistence for distribution facts.
-3. Chunk 3: Workspace catalog API.
-4. Chunk 4: Upload and artifact distribution.
-5. Chunk 5: Device visibility and account facts.
-6. Chunk 6: Notification feed without read state.
-7. Chunk 7: Documentation and client contract cleanup.
-
-Do not start client integration until Chunk 3 passes. Do not start upload support until the read-only catalog is stable.
+在阶段三通过前，不开始客户端远端集成；在只读目录稳定前，不开始上传能力。

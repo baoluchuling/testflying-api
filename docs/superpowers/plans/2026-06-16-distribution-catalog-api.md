@@ -6,7 +6,7 @@
 
 **架构：**FastAPI 提供只读目录接口和包上传接口；SQLAlchemy 保存应用、构建、制品、设备、开发者账号和服务端通知等分发事实。移动端继续负责安装状态、暂停/下载中状态、排序、通知已读、筛选、tab、sheet、滚动位置等所有客户端状态。
 
-**技术栈：**Python 3.11、FastAPI、Pydantic v2、SQLAlchemy 2.x、Alembic、pytest、httpx、ruff、Docker、Docker Compose；第一版文件存储使用本地目录，后续可替换成 S3 或 MinIO。
+**技术栈：**Python 3.11、FastAPI、Pydantic v2、SQLAlchemy 2.x、Alembic、PostgreSQL、MinIO/S3、pytest、httpx、ruff、Docker、Docker Compose。第一版默认用 PostgreSQL 和 MinIO/S3；本地轻量测试可以兼容 SQLite 和本地 data 目录。
 
 ---
 
@@ -45,8 +45,8 @@
 
 在 `/Users/admin/ai_project/apps/testflying-api` 中创建或修改这些文件：
 
-- `pyproject.toml`：增加 SQLAlchemy、Alembic、python-multipart 和测试依赖。
-- `src/testflying_api/config.py`：配置对象，包含数据库地址、公开基础 URL、存储路径、静态 token。
+- `pyproject.toml`：增加 SQLAlchemy、Alembic、psycopg、boto3、python-multipart 和测试依赖。
+- `src/testflying_api/config.py`：配置对象，包含数据库地址、公开基础 URL、存储 backend、S3/MinIO 参数、本地存储路径、静态 token。
 - `src/testflying_api/app.py`：FastAPI app factory。
 - `src/testflying_api/main.py`：从 app factory 导出 `app`。
 - `src/testflying_api/errors.py`：统一 API 错误模型和异常处理。
@@ -55,7 +55,7 @@
 - `src/testflying_api/domain.py`：和 FastAPI 解耦的领域 dataclass / enum。
 - `src/testflying_api/catalog_repository.py`：查询应用、构建、设备、账号、通知。
 - `src/testflying_api/catalog_service.py`：组合 workspace，处理设备可见性。
-- `src/testflying_api/storage.py`：本地制品存储和公开 URL 生成。
+- `src/testflying_api/storage.py`：S3/MinIO 制品存储、本地兼容存储和公开 URL 生成。
 - `src/testflying_api/package_parser.py`：解析 IPA 包信息；Android 第一版使用上传时附带的 metadata。
 - `src/testflying_api/manifest.py`：生成 iOS `manifest.plist`。
 - `src/testflying_api/routes/health.py`：健康检查接口。
@@ -75,17 +75,19 @@
 - `README.md`：本地启动、测试、客户端连接说明。
 - `Dockerfile`：第一版部署镜像。
 - `.dockerignore`：排除本地缓存、测试文件和数据目录。
-- `docker-compose.yml`：第一版单机部署入口，默认挂载 `./data`。
+- `docker-compose.yml`：第一版全栈部署入口，默认启动 API、PostgreSQL、MinIO 和 bucket 初始化容器。
+- `docker-compose.local.yml`：本地轻量测试入口，使用 SQLite 和本地 `./data`。
 
-## 阶段零：第一版 Docker 部署入口
+## 阶段零：第一版 Docker 全栈部署入口
 
-### 任务 0：Docker 和 Compose 支持
+### 任务 0：Docker Compose 全栈支持
 
 **文件：**
 
 - 新建：`Dockerfile`
 - 新建：`.dockerignore`
 - 新建：`docker-compose.yml`
+- 新建：`docker-compose.local.yml`
 - 修改：`README.md`
 
 - [ ] **步骤 1：创建 Dockerfile**
@@ -115,20 +117,40 @@ uvicorn testflying_api.main:app --host 0.0.0.0 --port 8000
 - `tests/`
 - `docs/`
 
-- [ ] **步骤 3：创建 docker-compose.yml**
+- [ ] **步骤 3：创建默认 docker-compose.yml**
 
-第一版只需要一个 `api` 服务：
+第一版默认必须包含这些服务：
 
-- `build: .`
-- 端口映射 `8000:8000`
-- 挂载 `./data:/app/data`
-- 默认环境变量：
-  - `TESTFLYING_DATABASE_URL=sqlite:////app/data/testflying.db`
-  - `TESTFLYING_PUBLIC_BASE_URL=http://localhost:8000`
-  - `TESTFLYING_STORAGE_ROOT=/app/data/artifacts`
-  - `TESTFLYING_STATIC_TOKEN=dev-token`
+- `api`：FastAPI 服务，端口映射 `8000:8000`。
+- `postgres`：PostgreSQL 16，保存分发事实。
+- `minio`：S3 兼容对象存储，保存 IPA/APK 和 manifest。
+- `minio-init`：启动后创建 `testflying` bucket。
 
-- [ ] **步骤 4：更新 README**
+`api` 默认环境变量：
+
+- `TESTFLYING_DATABASE_URL=postgresql+psycopg://testflying:testflying@postgres:5432/testflying`
+- `TESTFLYING_PUBLIC_BASE_URL=http://localhost:8000`
+- `TESTFLYING_STORAGE_BACKEND=s3`
+- `TESTFLYING_S3_ENDPOINT_URL=http://minio:9000`
+- `TESTFLYING_S3_PUBLIC_BASE_URL=http://localhost:9000/testflying`
+- `TESTFLYING_S3_BUCKET=testflying`
+- `TESTFLYING_S3_ACCESS_KEY_ID=testflying`
+- `TESTFLYING_S3_SECRET_ACCESS_KEY=testflying-secret`
+- `TESTFLYING_STATIC_TOKEN=dev-token`
+
+PostgreSQL 和 MinIO 的默认账号密码只能用于开发和内网试部署，正式部署前必须改掉。
+
+- [ ] **步骤 4：创建本地轻量 docker-compose.local.yml**
+
+本地环境不完整时，允许使用 SQLite 和本地 data 目录：
+
+- 只启动 `api`。
+- `TESTFLYING_DATABASE_URL=sqlite:////app/data/testflying.db`
+- `TESTFLYING_STORAGE_BACKEND=local`
+- `TESTFLYING_STORAGE_ROOT=/app/data/artifacts`
+- 挂载 `./data:/app/data`。
+
+- [ ] **步骤 5：更新 README**
 
 README 必须把 Docker 部署放在本地开发前面：
 
@@ -137,7 +159,18 @@ docker compose up --build
 curl http://localhost:8000/health
 ```
 
-同时补充无 Compose 插件时的直接 Docker 启动方式：
+README 还必须写清：
+
+- 默认 Compose 是 API + PostgreSQL + MinIO。
+- MinIO 控制台地址是 `http://localhost:9001`。
+- 真实 iOS OTA 下载需要设备可访问的 HTTPS 公开地址。
+- 本地轻量测试可以运行：
+
+```bash
+docker compose -f docker-compose.local.yml up --build
+```
+
+同时补充无 Compose 插件时的直接 Docker 轻量启动方式：
 
 ```bash
 docker build -t testflying-api:latest .
@@ -146,7 +179,7 @@ docker run -d --name testflying-api -p 8000:8000 -v "$(pwd)/data:/app/data" test
 
 本地开发继续保留最简单的 Python 虚拟环境路径。
 
-- [ ] **步骤 5：验证 Docker 构建和健康检查**
+- [ ] **步骤 6：验证 Docker 构建和健康检查**
 
 运行：
 
@@ -159,11 +192,11 @@ docker compose down
 
 预期：`curl` 返回 `{"status":"ok"}`。
 
-- [ ] **步骤 6：提交**
+- [ ] **步骤 7：提交**
 
 ```bash
-git add Dockerfile .dockerignore docker-compose.yml README.md
-git commit -m "feat: add Docker deployment"
+git add Dockerfile .dockerignore docker-compose.yml docker-compose.local.yml README.md
+git commit -m "feat: add Docker full stack deployment"
 ```
 
 ## 阶段一：项目基础
@@ -341,6 +374,8 @@ git commit -m "feat: add API error contract"
 ```toml
 "sqlalchemy>=2.0,<3.0",
 "alembic>=1.14,<2.0",
+"psycopg[binary]>=3.2,<4.0",
+"boto3>=1.35,<2.0",
 "python-multipart>=0.0.20,<1.0",
 ```
 
@@ -598,7 +633,7 @@ git commit -m "feat: expose workspace catalog route"
 
 ## 阶段四：上传和制品分发
 
-### 任务 7：本地制品存储
+### 任务 7：S3/MinIO 和本地兼容制品存储
 
 **文件：**
 
@@ -620,6 +655,25 @@ def test_storage_writes_file_and_returns_public_url(tmp_path) -> None:
     assert saved.download_url == "https://dist.example.test/artifacts/build-1/app.ipa"
 ```
 
+再补一个 S3/MinIO 客户端构造测试，使用 fake client，不连接真实 MinIO：
+
+```python
+from testflying_api.storage import S3ArtifactStorage
+
+
+def test_s3_storage_uses_configured_bucket_and_public_base_url(fake_s3_client) -> None:
+    storage = S3ArtifactStorage(
+        client=fake_s3_client,
+        bucket="testflying",
+        public_base_url="https://objects.example.test/testflying",
+    )
+
+    saved = storage.save("build-1", "app.ipa", b"ipa-bytes")
+
+    assert saved.download_url == "https://objects.example.test/testflying/build-1/app.ipa"
+    assert fake_s3_client.put_objects[0]["Bucket"] == "testflying"
+```
+
 - [ ] **步骤 2：运行测试并确认失败**
 
 ```bash
@@ -628,7 +682,7 @@ pytest tests/test_storage.py -v
 
 预期：失败，原因是 storage 模块还不存在。
 
-- [ ] **步骤 3：实现本地存储**
+- [ ] **步骤 3：实现本地存储和 S3/MinIO 存储**
 
 文件保存到：
 
@@ -636,7 +690,9 @@ pytest tests/test_storage.py -v
 data/artifacts/{build_id}/{file_name}
 ```
 
-存储必须通过抽象封装，后续可以替换为 S3 或 MinIO。
+默认部署使用 `S3ArtifactStorage`，连接 MinIO/S3。轻量本地测试使用 `LocalArtifactStorage`。
+
+存储必须通过抽象封装，业务层只依赖统一的 artifact storage 接口，不直接知道具体存储后端。
 
 - [ ] **步骤 4：运行测试并确认通过**
 

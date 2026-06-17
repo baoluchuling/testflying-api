@@ -46,6 +46,18 @@ def test_admin_health_check_renders_inline_status(client: TestClient) -> None:
     assert "未检查" in response.text
 
 
+def test_admin_health_check_status_has_distinct_colors(client: TestClient) -> None:
+    response = client.get("/static/admin/admin.css")
+
+    assert response.status_code == 200
+    assert '.health-status[data-state="checking"]' in response.text
+    assert "border-color: #f59e0b" in response.text
+    assert '.health-status[data-state="ok"]' in response.text
+    assert "border-color: #22c55e" in response.text
+    assert '.health-status[data-state="error"]' in response.text
+    assert "border-color: #ef4444" in response.text
+
+
 def test_admin_resource_pages_render_seeded_catalog(
     client: TestClient,
     db_session: Session,
@@ -73,6 +85,8 @@ def test_admin_upload_page_uses_auto_metadata_and_progress(client: TestClient) -
     assert response.status_code == 200
     assert "包信息自动解析" in response.text
     assert "data-upload-progress" in response.text
+    assert "form.dataset.uploading === 'true'" in response.text
+    assert "submit.disabled = true" in response.text
     assert "name=\"appName\"" in response.text
     assert "name=\"packageName\"" not in response.text
     assert "name=\"buildNumber\"" not in response.text
@@ -98,7 +112,11 @@ def test_admin_upload_android_package_creates_build(client: TestClient) -> None:
 
     assert response.status_code == 200
     assert "上传成功" in response.text
+    assert "解析结果" in response.text
     assert "Auto Parsed" in response.text
+    assert "com.example.autoparse" in response.text
+    assert "4.5.6" in response.text
+    assert "321" in response.text
     assert "downloadUrl" in response.text
 
     builds_response = client.get("/admin/builds", headers=_admin_headers())

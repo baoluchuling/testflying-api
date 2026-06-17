@@ -35,8 +35,49 @@
 - `minio`：S3 兼容对象存储，保存 IPA/APK 和 iOS manifest。
 - `minio-init`：启动时自动创建 `testflying` bucket。
 
+运行镜像使用多阶段 Docker 构建：builder 阶段先生成 wheel 产物，runtime 阶段只安装 wheel，不以源码目录方式运行服务。中心后台镜像同时包含 `alembic/` 和 `alembic.ini`，可以直接在容器里执行数据库迁移。
+
+如果在服务器本机直接构建镜像：
+
 ```bash
-docker compose up --build
+git checkout main
+git pull --ff-only origin main
+docker compose build api connector
+docker compose up -d postgres minio minio-init
+docker compose run --rm api alembic upgrade head
+docker compose up -d api connector
+```
+
+后续只更新镜像且没有数据库变更时，可以省略 `alembic upgrade head`。如果不确定有没有迁移，保留这一步也可以，Alembic 会自动判断当前版本。
+
+## GitHub Actions 产物部署
+
+`.github/workflows/ci.yml` 会在 CI 里生成这些产物：
+
+- `testflying_server-*.whl`
+- `testflying_connector-*.whl`
+- `testflying-server-<commit>.tar.gz`
+- `testflying-connector-<commit>.tar.gz`
+
+如果不想在服务器上从源码构建，部署时可以下载 GitHub Actions 的 artifact，然后在服务器加载镜像：
+
+```bash
+gunzip -c testflying-server-<commit>.tar.gz | docker load
+gunzip -c testflying-connector-<commit>.tar.gz | docker load
+```
+
+镜像加载后，用加载出来的 tag 更新 Compose，或者重新打成本地固定 tag：
+
+```bash
+docker tag testflying-server:<commit> testflying-server:latest
+docker tag testflying-connector:<commit> testflying-connector:latest
+```
+
+随后执行迁移并启动：
+
+```bash
+docker compose run --rm api alembic upgrade head
+docker compose up -d api connector
 ```
 
 验证：
@@ -110,6 +151,10 @@ docker compose -f docker-compose.local.yml up --build
 
 ```bash
 docker build -t testflying-server:latest .
+docker run --rm \
+  -e TESTFLYING_DATABASE_URL=sqlite:////app/data/testflying.db \
+  -v "$(pwd)/data:/app/data" \
+  testflying-server:latest alembic upgrade head
 docker run -d \
   --name testflying-server \
   -p 8000:8000 \

@@ -1,5 +1,6 @@
 services:
   api:
+    image: ${TESTFLYING_SERVER_IMAGE:-testflying-server:local}
     build: .
     ports:
       - "8000:8000"
@@ -16,6 +17,7 @@ services:
     restart: unless-stopped
 
   connector:
+    image: ${TESTFLYING_CONNECTOR_IMAGE:-testflying-connector:local}
     build: ./connector
     ports:
       - "8100:8100"

@@ -18,6 +18,8 @@ uvicorn testflying_connector.main:app --reload --port 8100
 
 ## Docker
 
+connector 镜像同样使用多阶段构建：builder 阶段生成 wheel，runtime 阶段只安装 wheel 产物，不以源码目录方式运行。
+
 ```bash
 cd apps/testflying-server/connector
 docker build -t testflying-connector:local .

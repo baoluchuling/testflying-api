@@ -36,6 +36,16 @@ def test_admin_dashboard_renders_seeded_catalog(
     assert "Apple 开发者账号即将到期" in response.text
 
 
+def test_admin_health_check_renders_inline_status(client: TestClient) -> None:
+    response = client.get("/admin", headers=_admin_headers())
+
+    assert response.status_code == 200
+    assert "data-health-check" in response.text
+    assert "data-health-status" in response.text
+    assert "target=\"_blank\"" not in response.text
+    assert "未检查" in response.text
+
+
 def test_admin_resource_pages_render_seeded_catalog(
     client: TestClient,
     db_session: Session,

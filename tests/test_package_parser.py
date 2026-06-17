@@ -1,16 +1,13 @@
 from __future__ import annotations
 
-import plistlib
-from io import BytesIO
-from zipfile import ZipFile
-
 import pytest
 
 from testflying_api.package_parser import (
     PackageParseError,
-    android_metadata_from_upload,
+    parse_apk_metadata,
     parse_ipa_metadata,
 )
+from tests.fixtures import make_android_apk_bytes, make_ipa_bytes
 
 
 def test_parse_ipa_metadata() -> None:
@@ -25,38 +22,16 @@ def test_parse_ipa_metadata() -> None:
     assert metadata.platform == "ios"
 
 
-def test_android_metadata_requires_upload_fields() -> None:
-    with pytest.raises(PackageParseError):
-        android_metadata_from_upload(
-            package_name="com.example.android",
-            app_name=None,
-            version="1.0.0",
-            build_number="1",
-        )
+def test_parse_apk_metadata() -> None:
+    metadata = parse_apk_metadata(make_android_apk_bytes())
 
-
-def test_android_metadata_from_upload() -> None:
-    metadata = android_metadata_from_upload(
-        package_name="com.example.android",
-        app_name="Android App",
-        version="1.0.0",
-        build_number="1",
-    )
-
-    assert metadata.bundle_identifier == "com.example.android"
+    assert metadata.bundle_identifier == "com.example.autoparse"
+    assert metadata.app_name == "Auto Parsed"
+    assert metadata.version == "4.5.6"
+    assert metadata.build_number == "321"
     assert metadata.platform == "android"
 
 
-def make_ipa_bytes() -> bytes:
-    plist = plistlib.dumps(
-        {
-            "CFBundleIdentifier": "com.example.aurora",
-            "CFBundleDisplayName": "Aurora",
-            "CFBundleShortVersionString": "1.2.3",
-            "CFBundleVersion": "45",
-        }
-    )
-    buffer = BytesIO()
-    with ZipFile(buffer, "w") as archive:
-        archive.writestr("Payload/Aurora.app/Info.plist", plist)
-    return buffer.getvalue()
+def test_parse_apk_metadata_rejects_invalid_apk() -> None:
+    with pytest.raises(PackageParseError):
+        parse_apk_metadata(b"not-an-apk")

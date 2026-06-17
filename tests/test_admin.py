@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from testflying_api.seed import seed_demo_catalog
+from tests.fixtures import make_android_apk_bytes
 
 
 def _admin_headers(password: str = "dev-token") -> dict[str, str]:
@@ -56,6 +57,17 @@ def test_admin_resource_pages_render_seeded_catalog(
         assert expected_text in response.text
 
 
+def test_admin_upload_page_uses_auto_metadata_and_progress(client: TestClient) -> None:
+    response = client.get("/admin/uploads", headers=_admin_headers())
+
+    assert response.status_code == 200
+    assert "包信息自动解析" in response.text
+    assert "data-upload-progress" in response.text
+    assert "name=\"appName\"" in response.text
+    assert "name=\"packageName\"" not in response.text
+    assert "name=\"buildNumber\"" not in response.text
+
+
 def test_admin_upload_android_package_creates_build(client: TestClient) -> None:
     response = client.post(
         "/admin/uploads",
@@ -64,20 +76,22 @@ def test_admin_upload_android_package_creates_build(client: TestClient) -> None:
             "platform": "android",
             "environment": "development",
             "changelog": "后台上传冒烟测试",
-            "packageName": "com.example.admin",
-            "appName": "Admin Console",
-            "version": "1.2.3",
-            "buildNumber": "123",
         },
-        files={"file": ("admin.apk", b"apk-bytes", "application/vnd.android.package-archive")},
+        files={
+            "file": (
+                "admin.apk",
+                make_android_apk_bytes(),
+                "application/vnd.android.package-archive",
+            )
+        },
     )
 
     assert response.status_code == 200
     assert "上传成功" in response.text
-    assert "Admin Console" in response.text
+    assert "Auto Parsed" in response.text
     assert "downloadUrl" in response.text
 
     builds_response = client.get("/admin/builds", headers=_admin_headers())
     assert builds_response.status_code == 200
-    assert "Admin Console" in builds_response.text
-    assert "1.2.3" in builds_response.text
+    assert "Auto Parsed" in builds_response.text
+    assert "4.5.6" in builds_response.text

@@ -270,6 +270,47 @@ textarea {
   padding: 11px 18px;
 }
 
+.primary-button:disabled {
+  cursor: wait;
+  opacity: .72;
+}
+
+.upload-progress {
+  display: grid;
+  gap: 8px;
+  max-width: 560px;
+}
+
+.upload-progress-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.upload-progress-meta strong {
+  color: var(--text);
+}
+
+.upload-progress-track {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e7edf5;
+}
+
+.upload-progress-track span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--blue);
+  transition: width .18s ease;
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;

@@ -16,7 +16,7 @@ from testflying_api.models import UploadResponse
 from testflying_api.package_parser import (
     PackageMetadata,
     PackageParseError,
-    android_metadata_from_upload,
+    parse_apk_metadata,
     parse_ipa_metadata,
 )
 from testflying_api.schema import App, Artifact, Build, Device, DeviceBuildVisibility, Notification
@@ -33,10 +33,7 @@ def create_package_upload(
     platform: str,
     environment: str,
     changelog: str = "",
-    package_name: str | None = None,
     app_name: str | None = None,
-    version: str | None = None,
-    build_number: str | None = None,
 ) -> UploadResponse:
     normalized_platform = _parse_platform(platform)
     normalized_environment = _parse_environment(environment)
@@ -46,10 +43,7 @@ def create_package_upload(
     metadata = _metadata_for_upload(
         platform=normalized_platform,
         content=content,
-        package_name=package_name,
         app_name=app_name,
-        version=version,
-        build_number=build_number,
     )
     app = _upsert_app(session, metadata, environment=normalized_environment)
     build = _create_build(
@@ -162,20 +156,12 @@ def _metadata_for_upload(
     *,
     platform: str,
     content: bytes,
-    package_name: str | None,
     app_name: str | None,
-    version: str | None,
-    build_number: str | None,
 ) -> PackageMetadata:
     try:
         if platform == "ios":
             return parse_ipa_metadata(content)
-        return android_metadata_from_upload(
-            package_name=package_name,
-            app_name=app_name,
-            version=version,
-            build_number=build_number,
-        )
+        return parse_apk_metadata(content, app_name=app_name)
     except PackageParseError as error:
         raise ApiError("invalid_package", str(error), status_code=422) from error
 

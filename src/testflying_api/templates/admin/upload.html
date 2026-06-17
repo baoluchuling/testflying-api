@@ -30,8 +30,8 @@
   {% endif %}
 
   <section class="panel">
-    <div class="panel-header"><h2>上传 IPA / APK</h2><span>Android 需要补充包信息</span></div>
-    <form class="form" action="/admin/uploads" method="post" enctype="multipart/form-data">
+    <div class="panel-header"><h2>上传 IPA / APK</h2><span>包信息自动解析</span></div>
+    <form class="form" action="/admin/uploads" method="post" enctype="multipart/form-data" data-upload-form>
       <label>
         安装包
         <input type="file" name="file" required>
@@ -56,14 +56,70 @@
         更新说明
         <textarea name="changelog" rows="4" placeholder="本次构建变更、验证重点或风险说明"></textarea>
       </label>
-      <div class="subsection-title">Android metadata</div>
-      <div class="form-grid">
-        <label>packageName <input name="packageName" placeholder="com.example.app"></label>
-        <label>appName <input name="appName" placeholder="应用名称"></label>
-        <label>version <input name="version" placeholder="1.0.0"></label>
-        <label>buildNumber <input name="buildNumber" placeholder="100"></label>
+      <label>
+        应用名称覆盖
+        <input name="appName" placeholder="解析不到或需要改名时填写">
+      </label>
+      <div class="upload-progress" data-upload-progress hidden>
+        <div class="upload-progress-meta">
+          <span data-upload-status>等待上传</span>
+          <strong data-upload-percent>0%</strong>
+        </div>
+        <div class="upload-progress-track">
+          <span data-upload-bar></span>
+        </div>
       </div>
-      <button class="primary-button" type="submit">上传构建</button>
+      <button class="primary-button" type="submit" data-upload-submit>上传构建</button>
     </form>
   </section>
+  <script>
+    (() => {
+      const form = document.querySelector('[data-upload-form]');
+      if (!form || !window.FormData || !window.XMLHttpRequest) return;
+
+      const progress = form.querySelector('[data-upload-progress]');
+      const status = form.querySelector('[data-upload-status]');
+      const percent = form.querySelector('[data-upload-percent]');
+      const bar = form.querySelector('[data-upload-bar]');
+      const submit = form.querySelector('[data-upload-submit]');
+
+      function setProgress(value, text) {
+        const normalized = Math.max(0, Math.min(100, Math.round(value)));
+        progress.hidden = false;
+        status.textContent = text;
+        percent.textContent = `${normalized}%`;
+        bar.style.width = `${normalized}%`;
+      }
+
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const request = new XMLHttpRequest();
+        request.open('POST', form.action);
+        request.upload.addEventListener('progress', (progressEvent) => {
+          if (!progressEvent.lengthComputable) {
+            progress.hidden = false;
+            status.textContent = '正在上传';
+            percent.textContent = '-';
+            return;
+          }
+          setProgress((progressEvent.loaded / progressEvent.total) * 100, '正在上传');
+        });
+        request.addEventListener('load', () => {
+          setProgress(100, '正在处理');
+          document.open();
+          document.write(request.responseText);
+          document.close();
+        });
+        request.addEventListener('error', () => {
+          setProgress(0, '上传失败');
+          submit.disabled = false;
+          submit.textContent = '重新上传';
+        });
+        submit.disabled = true;
+        submit.textContent = '上传中';
+        setProgress(0, '准备上传');
+        request.send(new FormData(form));
+      });
+    })();
+  </script>
 {% endblock %}

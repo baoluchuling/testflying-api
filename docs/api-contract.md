@@ -72,12 +72,9 @@ Content-Type: multipart/form-data
 - `platform`：`ios` 或 `android`。
 - `environment`：`development` 或 `production`。
 - `changelog`：可选更新说明。
-- `packageName`：Android 必填。
-- `appName`：Android 必填。
-- `version`：Android 必填。
-- `buildNumber`：Android 必填。
+- `appName`：可选，仅用于覆盖服务端解析出的应用名称。
 
-iOS 上传会从 IPA 的 `Payload/*.app/Info.plist` 解析 bundle id、应用名、版本号和 build number。Android 第一版不解析二进制 APK，必须由上传方提供 metadata。
+iOS 上传会从 IPA 的 `Payload/*.app/Info.plist` 解析 bundle id、应用名、版本号和 build number。Android 上传会从 APK 的 binary manifest 和资源表解析 package name、应用名、version name 和 version code。
 
 上传成功后服务端会：
 
@@ -108,7 +105,7 @@ GET /admin/notifications
 - 用户名：`TESTFLYING_ADMIN_USERNAME`，默认 `admin`。
 - 密码：复用 `TESTFLYING_STATIC_TOKEN`。
 
-后台上传表单复用 `POST /v1/test-distribution/uploads` 的业务逻辑，上传成功后同样会创建应用、构建、制品、iOS manifest 和通知。MinIO Console 只管理对象存储文件，不能替代管理后台上传，因为直接上传到 MinIO 不会写入业务数据库。
+后台上传表单复用 `POST /v1/test-distribution/uploads` 的业务逻辑，上传成功后同样会创建应用、构建、制品、iOS manifest 和通知。后台页面使用浏览器上传进度事件展示上传百分比；服务端收到完整文件后再解析包信息和写入数据库。MinIO Console 只管理对象存储文件，不能替代管理后台上传，因为直接上传到 MinIO 不会写入业务数据库。
 
 ## 设备
 

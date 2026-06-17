@@ -14,6 +14,7 @@ from testflying_api.schema import (
     Device,
     DeviceBuildVisibility,
     Notification,
+    StoreConnector,
 )
 
 
@@ -22,11 +23,22 @@ def seed_demo_catalog(session: Session) -> None:
         return
 
     now = datetime.now(UTC)
+    account = DeveloperAccount(
+        id="account-apple-enterprise",
+        team_name="Internal Distribution Team",
+        expires_at=now + timedelta(days=12),
+        status="renewal_due",
+        renewal_action_label="去续费",
+    )
+    session.add(account)
+
     aurora = App(
         id="app-aurora-ios",
         name="Aurora Mobile",
         bundle_identifier="com.internal.aurora",
         platform="ios",
+        developer_account_id=account.id,
+        store_app_id="1234567890",
         default_channel="dev",
         icon_key="rocket",
         icon_color="#2478FF",
@@ -37,6 +49,8 @@ def seed_demo_catalog(session: Session) -> None:
         name="Insight Desk",
         bundle_identifier="com.internal.insight",
         platform="ios",
+        developer_account_id=account.id,
+        store_app_id="1234567891",
         default_channel="prod",
         icon_key="chart",
         icon_color="#20864A",
@@ -178,19 +192,22 @@ def seed_demo_catalog(session: Session) -> None:
         ]
     )
 
-    account = DeveloperAccount(
-        id="account-apple-enterprise",
-        team_name="Internal Distribution Team",
-        expires_at=now + timedelta(days=12),
-        status="renewal_due",
-        renewal_action_label="去续费",
-    )
-    session.add(account)
     session.add_all(
         [
             DeveloperAccountApp(developer_account_id=account.id, app_id=aurora.id),
             DeveloperAccountApp(developer_account_id=account.id, app_id=insight.id),
         ]
+    )
+    session.add(
+        StoreConnector(
+            id="connector-apple-enterprise",
+            developer_account_id=account.id,
+            name="Internal Store Connector",
+            base_url="mock://account-apple-enterprise",
+            auth_token="dev-connector-token",
+            status="ok",
+            last_checked_at=now - timedelta(minutes=4),
+        )
     )
     session.add_all(
         [

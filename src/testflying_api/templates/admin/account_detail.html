@@ -1,0 +1,110 @@
+{% extends "admin/base.html" %}
+{% block heading %}开发者账号详情{% endblock %}
+{% block content %}
+  <section class="context-banner">
+    <div>
+      <p class="eyebrow">当前开发者账号</p>
+      <h2>{{ account.team_name }}</h2>
+      <small>{{ account.id }}</small>
+    </div>
+    <div class="context-meta">
+      <span>到期：{{ account.expires_at|datetime }}</span>
+      <span>剩余：{{ remaining_days }} 天</span>
+      <span>状态：{{ account.status }}</span>
+    </div>
+  </section>
+
+  {% if success %}
+    <div class="alert success"><strong>{{ success }}</strong></div>
+  {% endif %}
+  {% if error %}
+    <div class="alert error"><strong>{{ error }}</strong></div>
+  {% endif %}
+
+  <section class="panel">
+    <div class="panel-header"><h2>Connector</h2><span>中心后台只调用该账号 connector</span></div>
+    {% if connector %}
+      <div class="metadata-grid">
+        <div class="metadata-item"><span>名称</span><strong>{{ connector.name }}</strong></div>
+        <div class="metadata-item"><span>状态</span><strong>{{ connector.status }}</strong></div>
+        <div class="metadata-item"><span>最近检查</span><strong>{{ connector.last_checked_at|datetime }}</strong></div>
+      </div>
+    {% else %}
+      <div class="alert error">
+        <strong>未配置 connector</strong>
+        <span>该账号暂不能同步商店元数据。</span>
+      </div>
+    {% endif %}
+    <form class="form compact-form" action="/admin/developer-accounts/{{ account.id }}/connector" method="post">
+      <div class="form-grid">
+        <label>
+          名称
+          <input name="name" value="{{ connector.name if connector else 'Store Connector' }}" required>
+        </label>
+        <label>
+          Connector 地址
+          <input name="baseUrl" value="{{ connector.base_url if connector else '' }}" placeholder="http://connector:8100" required>
+        </label>
+      </div>
+      <label>
+        调用 Token
+        <input name="authToken" type="password" placeholder="{{ '留空表示不修改' if connector else '首次配置必填' }}">
+      </label>
+      <button class="primary-button" type="submit">保存 Connector</button>
+    </form>
+  </section>
+
+  <section class="panel">
+    <div class="panel-header"><h2>账号下 App</h2><a href="/admin/uploads">上传新构建</a></div>
+    <table>
+      <thead><tr><th>App</th><th>平台</th><th>Bundle ID / Package</th><th>最新版本</th><th>商店标识</th><th>操作</th></tr></thead>
+      <tbody>
+        {% for item in apps %}
+          <tr>
+            <td><strong>{{ item.app.name }}</strong><br><small>{{ item.app.id }}</small></td>
+            <td>{{ item.app.platform|platform }}</td>
+            <td><code>{{ item.app.bundle_identifier }}</code></td>
+            <td>
+              {% if item.latest_build %}
+                {{ item.latest_build.version }} ({{ item.latest_build.build_number }})
+              {% else %}
+                -
+              {% endif %}
+            </td>
+            <td>{{ item.app.store_app_id or item.app.store_package_name or "-" }}</td>
+            <td>
+              {% if item.latest_build %}
+                <a class="ghost-link" href="/admin/developer-accounts/{{ account.id }}/apps/{{ item.app.id }}/release-notes">管理版本说明</a>
+              {% else %}
+                <span class="empty">暂无构建</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="6" class="empty">该账号下暂无 App。</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section class="panel">
+    <div class="panel-header"><h2>最近同步记录</h2><span>只展示该账号范围内的记录</span></div>
+    <table>
+      <thead><tr><th>时间</th><th>操作</th><th>版本</th><th>语言</th><th>状态</th><th>错误摘要</th></tr></thead>
+      <tbody>
+        {% for run in sync_runs %}
+          <tr>
+            <td>{{ run.started_at|datetime }}</td>
+            <td>{{ run.operation }}</td>
+            <td>{{ run.version }}</td>
+            <td>{{ run.locale }}</td>
+            <td><span class="badge {{ 'success' if run.status == 'succeeded' else 'danger' }}">{{ run.status }}</span></td>
+            <td>{{ run.error_summary or "-" }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="6" class="empty">暂无同步记录。</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+{% endblock %}

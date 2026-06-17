@@ -5,6 +5,7 @@ from base64 import b64encode
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from testflying_api.schema import StorePreflightCheck, StoreReleaseNoteDraft, StoreSyncRun
 from testflying_api.seed import seed_demo_catalog
 from tests.fixtures import make_android_apk_bytes
 
@@ -137,3 +138,93 @@ def test_admin_upload_android_package_creates_build(client: TestClient) -> None:
     assert builds_response.status_code == 200
     assert "Auto Parsed" in builds_response.text
     assert "4.5.6" in builds_response.text
+
+
+def test_admin_developer_account_detail_renders_store_sync_entry(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+
+    response = client.get(
+        "/admin/developer-accounts/account-apple-enterprise",
+        headers=_admin_headers(),
+    )
+
+    assert response.status_code == 200
+    assert "当前开发者账号" in response.text
+    assert "Internal Store Connector" in response.text
+    assert "Aurora Mobile" in response.text
+    assert "管理版本说明" in response.text
+
+
+def test_admin_can_update_connector_settings(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+
+    response = client.post(
+        "/admin/developer-accounts/account-apple-enterprise/connector",
+        headers=_admin_headers(),
+        data={
+            "name": "Account A Connector",
+            "baseUrl": "http://connector-a:8100",
+            "authToken": "new-token",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Connector 已保存" in response.text
+    assert "Account A Connector" in response.text
+    assert "http://connector-a:8100" in response.text
+
+
+def test_admin_release_notes_page_runs_cached_preflight(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+
+    path = (
+        "/admin/developer-accounts/account-apple-enterprise"
+        "/apps/app-aurora-ios/release-notes"
+    )
+    first_response = client.get(path, headers=_admin_headers())
+    second_response = client.get(path, headers=_admin_headers())
+
+    checks = db_session.query(StorePreflightCheck).all()
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    assert "可以同步" in first_response.text
+    assert "5 分钟缓存" in first_response.text
+    assert "缓存" in second_response.text
+    assert len(checks) == 1
+
+
+def test_admin_release_notes_save_and_sync_creates_records(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+
+    path = (
+        "/admin/developer-accounts/account-apple-enterprise"
+        "/apps/app-aurora-ios/release-notes/sync"
+    )
+    response = client.post(
+        path,
+        headers=_admin_headers(),
+        data={
+            "version": "2.4.0",
+            "locale": "zh-Hans",
+            "releaseNotes": "修复已知问题，优化安装体验。",
+        },
+    )
+
+    draft = db_session.query(StoreReleaseNoteDraft).one()
+    run = db_session.query(StoreSyncRun).one()
+    assert response.status_code == 200
+    assert "版本说明已同步" in response.text
+    assert draft.release_notes == "修复已知问题，优化安装体验。"
+    assert run.status == "succeeded"

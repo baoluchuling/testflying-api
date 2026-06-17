@@ -14,6 +14,15 @@ from testflying_api.schema import (
     Device,
     Notification,
 )
+from testflying_api.store_sync import (
+    DEFAULT_LOCALE,
+    account_apps,
+    account_connector,
+    draft_for_scope,
+    get_or_refresh_preflight,
+    latest_build_for_app,
+    recent_sync_runs,
+)
 
 
 @dataclass(frozen=True)
@@ -74,18 +83,100 @@ def list_accounts(session: Session) -> list[dict[str, object]]:
     accounts = list(
         session.scalars(select(DeveloperAccount).order_by(DeveloperAccount.expires_at.asc()))
     )
-    app_rows = session.execute(select(DeveloperAccountApp.developer_account_id, App.name).join(App))
+    app_rows = session.execute(
+        select(DeveloperAccount.id, App.name)
+        .select_from(DeveloperAccount)
+        .join(App, App.developer_account_id == DeveloperAccount.id, isouter=True)
+    )
     names_by_account: dict[str, list[str]] = {}
     for account_id, app_name in app_rows:
-        names_by_account.setdefault(account_id, []).append(app_name)
+        if app_name:
+            names_by_account.setdefault(account_id, []).append(app_name)
+    legacy_rows = session.execute(
+        select(DeveloperAccountApp.developer_account_id, App.name).join(App)
+    )
+    for account_id, app_name in legacy_rows:
+        names = names_by_account.setdefault(account_id, [])
+        if app_name not in names:
+            names.append(app_name)
     return [
         {
             "account": account,
             "remaining_days": remaining_days(account.expires_at),
             "apps": names_by_account.get(account.id, []),
+            "connector": account_connector(session, account.id),
         }
         for account in accounts
     ]
+
+
+def account_detail_context(session: Session, account_id: str) -> dict[str, object]:
+    account = session.get(DeveloperAccount, account_id)
+    apps = account_apps(session, account_id)
+    connector = account_connector(session, account_id)
+    return {
+        "account": account,
+        "remaining_days": remaining_days(account.expires_at) if account else 0,
+        "apps": [
+            {
+                "app": app,
+                "latest_build": latest_build_for_app(session, app.id),
+            }
+            for app in apps
+        ],
+        "connector": connector,
+        "sync_runs": recent_sync_runs(session, account_id=account_id),
+    }
+
+
+def release_notes_context(
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    version: str | None = None,
+    locale: str = DEFAULT_LOCALE,
+) -> dict[str, object]:
+    account = session.get(DeveloperAccount, account_id)
+    app = next((item for item in account_apps(session, account_id) if item.id == app_id), None)
+    latest_build = latest_build_for_app(session, app_id)
+    target_version = version or (latest_build.version if latest_build else "")
+    draft = (
+        draft_for_scope(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            platform=app.platform,
+            version=target_version,
+            locale=locale,
+        )
+        if app and target_version
+        else None
+    )
+    preflight = (
+        get_or_refresh_preflight(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            version=target_version,
+            locale=locale,
+        )
+        if app and target_version
+        else None
+    )
+    release_notes = draft.release_notes if draft else (latest_build.note if latest_build else "")
+    return {
+        "account": account,
+        "app": app,
+        "latest_build": latest_build,
+        "version": target_version,
+        "locale": locale,
+        "draft": draft,
+        "release_notes": release_notes,
+        "preflight": preflight,
+        "connector": account_connector(session, account_id),
+        "sync_runs": recent_sync_runs(session, account_id=account_id, app_id=app_id),
+    }
 
 
 def list_notifications(session: Session, *, limit: int | None = None) -> list[Notification]:

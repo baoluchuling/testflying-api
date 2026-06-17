@@ -1,0 +1,106 @@
+# 商店同步设计
+
+## 目标
+
+`testflying-server` 保持测试包管理分发主线能力，同时新增商店同步能力。商店同步必须按开发者账号隔离，避免中心后台持有多个开发者账号的商店私钥，也避免一个执行单元处理多个开发者账号的商店任务。
+
+## 项目拆分
+
+- `testflying-server`：中心化后台，负责账号、App、构建、版本说明草稿、预检查缓存、同步记录和审计。
+- `testflying-connector`：账号级子项目，每个开发者账号单独部署一份，负责保存该账号商店凭证并调用 Apple / Google 商店 API。
+
+中心后台可以调用 connector 的接口，但不能保存 Apple `.p8`、Google service account JSON 或商店访问 token。
+
+## 第一版范围
+
+第一版只做版本说明同步：
+
+- 后台在开发者账号详情页下进入 App 的版本说明页。
+- 页面进入时自动发起预检查。
+- 相同账号、App、平台、版本、语言和操作的预检查结果缓存 5 分钟。
+- 只有预检查通过时才允许同步。
+- 同步前复用同一套 5 分钟预检查规则。
+- 同步结果写入 `store_sync_runs`，操作写入 `audit_logs`。
+
+暂不做：
+
+- App 名称、副标题、描述、关键词同步。
+- 截图上传。
+- 自动提审。
+- 定时同步。
+- 跨账号批量同步。
+
+## 中心后台数据
+
+- `apps.developer_account_id`：App 直接归属开发者账号。
+- `apps.store_app_id` / `apps.store_package_name`：商店侧 App 标识。
+- `store_connectors`：账号对应 connector 地址和调用 token。
+- `store_release_note_drafts`：版本说明草稿。
+- `store_preflight_checks`：5 分钟预检查缓存。
+- `store_sync_runs`：同步执行记录。
+- `audit_logs`：后台操作审计。
+
+旧表 `developer_account_apps` 暂时保留，用于兼容现有客户端账号续费接口。商店同步新流程以 `apps.developer_account_id` 为准。
+
+## Connector 接口
+
+中心后台调用 connector：
+
+```http
+GET  /health
+POST /v1/preflight
+POST /v1/sync-runs
+GET  /v1/sync-runs/{run_id}
+```
+
+所有写接口都需要：
+
+```http
+Authorization: Bearer <connector-token>
+```
+
+`POST /v1/preflight` 示例：
+
+```json
+{
+  "developerAccountId": "account-apple-enterprise",
+  "operation": "update_release_notes",
+  "platform": "ios",
+  "version": "2.4.0",
+  "locale": "zh-Hans",
+  "app": {
+    "appId": "app-aurora-ios",
+    "bundleIdentifier": "com.internal.aurora",
+    "storeAppId": "1234567890",
+    "packageName": "com.internal.aurora"
+  }
+}
+```
+
+`POST /v1/sync-runs` 示例：
+
+```json
+{
+  "runId": "sync-001",
+  "developerAccountId": "account-apple-enterprise",
+  "operation": "update_release_notes",
+  "platform": "ios",
+  "version": "2.4.0",
+  "locale": "zh-Hans",
+  "app": {
+    "appId": "app-aurora-ios",
+    "bundleIdentifier": "com.internal.aurora",
+    "storeAppId": "1234567890",
+    "packageName": "com.internal.aurora"
+  },
+  "releaseNotes": "修复已知问题，优化安装体验。"
+}
+```
+
+## 隔离规则
+
+- 一个 connector 只能绑定一个 `developer_account_id`。
+- connector 收到请求后必须校验请求账号等于自身绑定账号。
+- 中心后台不能把一个账号的任务发给另一个账号的 connector。
+- 商店私钥只存在 connector 部署环境。
+- 中心后台日志和同步记录不能保存商店私钥、完整 Authorization header 或 service account JSON。

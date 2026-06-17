@@ -25,6 +25,15 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  connector:
+    build: ./connector
+    ports:
+      - "8100:8100"
+    environment:
+      TESTFLYING_CONNECTOR_DEVELOPER_ACCOUNT_ID: account-apple-enterprise
+      TESTFLYING_CONNECTOR_TOKEN: dev-connector-token
+    restart: unless-stopped
+
   postgres:
     image: postgres:16-alpine
     environment:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -22,6 +22,11 @@ class App(Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     bundle_identifier: Mapped[str] = mapped_column(String(180), nullable=False)
     platform: Mapped[str] = mapped_column(String(20), nullable=False)
+    developer_account_id: Mapped[str | None] = mapped_column(
+        ForeignKey("developer_accounts.id", ondelete="SET NULL"),
+    )
+    store_app_id: Mapped[str | None] = mapped_column(String(120))
+    store_package_name: Mapped[str | None] = mapped_column(String(180))
     default_channel: Mapped[str] = mapped_column(String(20), nullable=False, default="dev")
     icon_key: Mapped[str] = mapped_column(String(40), nullable=False, default="app")
     icon_color: Mapped[str] = mapped_column(String(20), nullable=False, default="#53606E")
@@ -32,6 +37,7 @@ class App(Base):
     )
 
     builds: Mapped[list[Build]] = relationship(back_populates="app", cascade="all, delete-orphan")
+    developer_account: Mapped[DeveloperAccount | None] = relationship(back_populates="apps")
 
 
 class Build(Base):
@@ -136,6 +142,8 @@ class DeveloperAccount(Base):
     status: Mapped[str] = mapped_column(String(40), nullable=False, default="renewal_due")
     renewal_action_label: Mapped[str] = mapped_column(String(40), nullable=False, default="去续费")
 
+    apps: Mapped[list[App]] = relationship(back_populates="developer_account")
+
 
 class DeveloperAccountApp(Base):
     __tablename__ = "developer_account_apps"
@@ -164,6 +172,128 @@ class Notification(Base):
     developer_account_id: Mapped[str | None] = mapped_column(
         ForeignKey("developer_accounts.id", ondelete="SET NULL"),
     )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+    )
+
+
+class StoreConnector(Base):
+    __tablename__ = "store_connectors"
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    developer_account_id: Mapped[str] = mapped_column(
+        ForeignKey("developer_accounts.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    base_url: Mapped[str] = mapped_column(String(400), nullable=False)
+    auth_token: Mapped[str] = mapped_column(String(240), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="unknown")
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+    )
+
+
+class StoreReleaseNoteDraft(Base):
+    __tablename__ = "store_release_note_drafts"
+    __table_args__ = (
+        UniqueConstraint("developer_account_id", "app_id", "platform", "version", "locale"),
+    )
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    developer_account_id: Mapped[str] = mapped_column(
+        ForeignKey("developer_accounts.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    app_id: Mapped[str] = mapped_column(ForeignKey("apps.id", ondelete="CASCADE"), nullable=False)
+    platform: Mapped[str] = mapped_column(String(20), nullable=False)
+    version: Mapped[str] = mapped_column(String(60), nullable=False)
+    locale: Mapped[str] = mapped_column(String(40), nullable=False)
+    release_notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+    )
+
+
+class StorePreflightCheck(Base):
+    __tablename__ = "store_preflight_checks"
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    developer_account_id: Mapped[str] = mapped_column(
+        ForeignKey("developer_accounts.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    app_id: Mapped[str] = mapped_column(ForeignKey("apps.id", ondelete="CASCADE"), nullable=False)
+    connector_id: Mapped[str] = mapped_column(
+        ForeignKey("store_connectors.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    platform: Mapped[str] = mapped_column(String(20), nullable=False)
+    operation: Mapped[str] = mapped_column(String(60), nullable=False)
+    version: Mapped[str] = mapped_column(String(60), nullable=False)
+    locale: Mapped[str] = mapped_column(String(40), nullable=False)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    can_sync: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    reason_code: Mapped[str | None] = mapped_column(String(80))
+    message: Mapped[str] = mapped_column(String(280), nullable=False)
+    store_state_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    checked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class StoreSyncRun(Base):
+    __tablename__ = "store_sync_runs"
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    developer_account_id: Mapped[str] = mapped_column(
+        ForeignKey("developer_accounts.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    app_id: Mapped[str] = mapped_column(ForeignKey("apps.id", ondelete="CASCADE"), nullable=False)
+    connector_id: Mapped[str] = mapped_column(
+        ForeignKey("store_connectors.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    draft_id: Mapped[str | None] = mapped_column(
+        ForeignKey("store_release_note_drafts.id", ondelete="SET NULL"),
+    )
+    platform: Mapped[str] = mapped_column(String(20), nullable=False)
+    operation: Mapped[str] = mapped_column(String(60), nullable=False)
+    version: Mapped[str] = mapped_column(String(60), nullable=False)
+    locale: Mapped[str] = mapped_column(String(40), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_code: Mapped[str | None] = mapped_column(String(80))
+    error_summary: Mapped[str | None] = mapped_column(String(280))
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    developer_account_id: Mapped[str | None] = mapped_column(
+        ForeignKey("developer_accounts.id", ondelete="SET NULL"),
+    )
+    actor: Mapped[str] = mapped_column(String(120), nullable=False)
+    action: Mapped[str] = mapped_column(String(120), nullable=False)
+    target_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    target_id: Mapped[str] = mapped_column(String(120), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

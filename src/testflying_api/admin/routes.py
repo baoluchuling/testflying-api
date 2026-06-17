@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from testflying_api.admin.security import require_admin
 from testflying_api.admin.view_models import (
+    account_detail_context,
     dashboard_context,
     environment_label,
     format_datetime,
@@ -20,11 +21,18 @@ from testflying_api.admin.view_models import (
     list_devices,
     list_notifications,
     platform_label,
+    release_notes_context,
 )
 from testflying_api.database import get_db_session
 from testflying_api.errors import ApiError
 from testflying_api.models import UploadResponse
 from testflying_api.schema import App
+from testflying_api.store_sync import (
+    DEFAULT_LOCALE,
+    save_connector,
+    save_release_note_draft,
+    sync_release_notes,
+)
 from testflying_api.upload_service import create_package_upload
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -139,6 +147,200 @@ def developer_accounts_page(
         "admin/accounts.html",
         _context(request, active="developer-accounts", accounts=list_accounts(session)),
     )
+
+
+@router.get("/developer-accounts/{account_id}", response_class=HTMLResponse)
+def developer_account_detail_page(
+    account_id: str,
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+) -> HTMLResponse:
+    context = account_detail_context(session, account_id)
+    if context["account"] is None:
+        raise ApiError("account_not_found", "开发者账号不存在", status_code=404)
+    return templates.TemplateResponse(
+        request,
+        "admin/account_detail.html",
+        _context(request, active="developer-accounts", **context),
+    )
+
+
+@router.post("/developer-accounts/{account_id}/connector", response_class=HTMLResponse)
+def save_connector_page(
+    account_id: str,
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+    name: Annotated[str, Form()],
+    base_url: Annotated[str, Form(alias="baseUrl")],
+    auth_token: Annotated[str, Form(alias="authToken")] = "",
+) -> HTMLResponse:
+    try:
+        save_connector(
+            session,
+            account_id=account_id,
+            name=name,
+            base_url=base_url,
+            auth_token=auth_token,
+        )
+        session.commit()
+        context = account_detail_context(session, account_id)
+        return templates.TemplateResponse(
+            request,
+            "admin/account_detail.html",
+            _context(request, active="developer-accounts", success="Connector 已保存", **context),
+        )
+    except ApiError as error:
+        session.rollback()
+        context = account_detail_context(session, account_id)
+        return templates.TemplateResponse(
+            request,
+            "admin/account_detail.html",
+            _context(request, active="developer-accounts", error=error.message, **context),
+            status_code=error.status_code,
+        )
+
+
+@router.get(
+    "/developer-accounts/{account_id}/apps/{app_id}/release-notes",
+    response_class=HTMLResponse,
+)
+def release_notes_page(
+    account_id: str,
+    app_id: str,
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+    version: str | None = None,
+    locale: str = DEFAULT_LOCALE,
+) -> HTMLResponse:
+    context = release_notes_context(
+        session,
+        account_id=account_id,
+        app_id=app_id,
+        version=version,
+        locale=locale,
+    )
+    if context["account"] is None or context["app"] is None:
+        raise ApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
+    session.commit()
+    return templates.TemplateResponse(
+        request,
+        "admin/release_notes.html",
+        _context(request, active="developer-accounts", **context),
+    )
+
+
+@router.post(
+    "/developer-accounts/{account_id}/apps/{app_id}/release-notes",
+    response_class=HTMLResponse,
+)
+def save_release_notes_page(
+    account_id: str,
+    app_id: str,
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+    version: Annotated[str, Form()],
+    locale: Annotated[str, Form()] = DEFAULT_LOCALE,
+    release_notes: Annotated[str, Form(alias="releaseNotes")] = "",
+) -> HTMLResponse:
+    try:
+        save_release_note_draft(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            version=version,
+            locale=locale,
+            release_notes=release_notes,
+        )
+        session.commit()
+        context = release_notes_context(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            version=version,
+            locale=locale,
+        )
+        session.commit()
+        return templates.TemplateResponse(
+            request,
+            "admin/release_notes.html",
+            _context(request, active="developer-accounts", success="草稿已保存", **context),
+        )
+    except ApiError as error:
+        session.rollback()
+        context = release_notes_context(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            version=version,
+            locale=locale,
+        )
+        return templates.TemplateResponse(
+            request,
+            "admin/release_notes.html",
+            _context(request, active="developer-accounts", error=error.message, **context),
+            status_code=error.status_code,
+        )
+
+
+@router.post(
+    "/developer-accounts/{account_id}/apps/{app_id}/release-notes/sync",
+    response_class=HTMLResponse,
+)
+def sync_release_notes_page(
+    account_id: str,
+    app_id: str,
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+    version: Annotated[str, Form()],
+    locale: Annotated[str, Form()] = DEFAULT_LOCALE,
+    release_notes: Annotated[str, Form(alias="releaseNotes")] = "",
+) -> HTMLResponse:
+    try:
+        sync_run = sync_release_notes(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            version=version,
+            locale=locale,
+            release_notes=release_notes,
+            actor="admin",
+        )
+        session.commit()
+        context = release_notes_context(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            version=version,
+            locale=locale,
+        )
+        session.commit()
+        message = "版本说明已同步" if sync_run.status == "succeeded" else "同步已完成"
+        return templates.TemplateResponse(
+            request,
+            "admin/release_notes.html",
+            _context(request, active="developer-accounts", success=message, **context),
+        )
+    except ApiError as error:
+        session.rollback()
+        context = release_notes_context(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            version=version,
+            locale=locale,
+        )
+        session.commit()
+        return templates.TemplateResponse(
+            request,
+            "admin/release_notes.html",
+            _context(request, active="developer-accounts", error=error.message, **context),
+            status_code=error.status_code,
+        )
 
 
 @router.get("/notifications", response_class=HTMLResponse)

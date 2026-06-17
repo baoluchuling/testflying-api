@@ -21,6 +21,11 @@ def test_catalog_schema_contains_no_user_state_tables() -> None:
         "developer_account_apps",
         "notifications",
         "device_build_visibility",
+        "store_connectors",
+        "store_release_note_drafts",
+        "store_preflight_checks",
+        "store_sync_runs",
+        "audit_logs",
     }.issubset(table_names)
     assert "install_tasks" not in table_names
     assert "sort_orders" not in table_names

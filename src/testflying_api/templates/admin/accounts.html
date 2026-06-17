@@ -2,9 +2,9 @@
 {% block heading %}开发者账号{% endblock %}
 {% block content %}
   <section class="panel">
-    <div class="panel-header"><h2>账号续费</h2><span>新增/编辑在下一版开放</span></div>
+    <div class="panel-header"><h2>账号续费与商店同步</h2><span>商店同步必须先进入账号上下文</span></div>
     <table>
-      <thead><tr><th>Team</th><th>状态</th><th>过期时间</th><th>剩余天数</th><th>关联应用</th></tr></thead>
+      <thead><tr><th>Team</th><th>状态</th><th>过期时间</th><th>剩余天数</th><th>关联应用</th><th>Connector</th><th>操作</th></tr></thead>
       <tbody>
         {% for item in accounts %}
           <tr>
@@ -13,9 +13,18 @@
             <td>{{ item.account.expires_at|datetime }}</td>
             <td>{{ item.remaining_days }}</td>
             <td>{{ item.apps|join(", ") if item.apps else "-" }}</td>
+            <td>
+              {% if item.connector %}
+                <span class="badge success">{{ item.connector.status }}</span><br>
+                <small>{{ item.connector.name }}</small>
+              {% else %}
+                <span class="badge muted">未配置</span>
+              {% endif %}
+            </td>
+            <td><a class="ghost-link" href="/admin/developer-accounts/{{ item.account.id }}">进入账号</a></td>
           </tr>
         {% else %}
-          <tr><td colspan="5" class="empty">暂无开发者账号</td></tr>
+          <tr><td colspan="7" class="empty">暂无开发者账号</td></tr>
         {% endfor %}
       </tbody>
     </table>

@@ -13,6 +13,7 @@
 - `GET /v1/test-distribution/developer-accounts`：读取开发者账号续费事实。
 - `GET /v1/test-distribution/developer-accounts/renewals`：读取需要续费提醒的账号。
 - `GET /v1/test-distribution/notifications`：读取服务端通知 feed，支持 `type=build|account|device`。
+- `GET /admin`：内置管理后台，用于上传包、查看应用/构建/设备/账号/通知和复制安装资源链接。
 - 请求上下文预留 `Authorization`、`X-Device-ID`、`X-Client-Platform`。
 - Docker Compose 默认启动 API、PostgreSQL、MinIO。
 
@@ -56,6 +57,21 @@ password: testflying-secret
 
 正式部署前必须修改 `docker-compose.yml` 里的数据库密码、MinIO 密码、`TESTFLYING_STATIC_TOKEN` 和公开访问域名。iOS OTA 安装真实使用时，`TESTFLYING_PUBLIC_BASE_URL` 和对象存储下载地址需要是设备可访问的 HTTPS 地址。
 
+管理后台：
+
+```text
+http://localhost:8000/admin
+```
+
+后台使用 HTTP Basic 认证：
+
+```text
+username: admin
+password: dev-token
+```
+
+`username` 来自 `TESTFLYING_ADMIN_USERNAME`，默认是 `admin`；`password` 复用 `TESTFLYING_STATIC_TOKEN`。测试环境可以沿用默认值，公网或正式环境必须替换 `TESTFLYING_STATIC_TOKEN`。
+
 默认环境变量在 `docker-compose.yml` 中配置：
 
 - `TESTFLYING_DATABASE_URL`：默认 `postgresql+psycopg://testflying:testflying@postgres:5432/testflying`
@@ -65,6 +81,7 @@ password: testflying-secret
 - `TESTFLYING_S3_PUBLIC_BASE_URL`：默认 `http://localhost:9000/testflying`
 - `TESTFLYING_S3_BUCKET`：默认 `testflying`
 - `TESTFLYING_STATIC_TOKEN`：默认 `dev-token`
+- `TESTFLYING_ADMIN_USERNAME`：默认 `admin`
 - `TESTFLYING_CORS_ALLOWED_ORIGINS`：默认允许 `http://localhost:8080,http://127.0.0.1:8080`，用于 Flutter Web 本地联调。
 
 ## 轻量本地测试
@@ -101,6 +118,14 @@ uvicorn testflying_api.main:app --reload
 ```
 
 本地启动默认使用 SQLite 和 `./data/artifacts`。应用启动时会根据 SQLAlchemy schema 自动建表，后续正式迁移路径保留在 `alembic/`。
+
+访问管理后台：
+
+```bash
+open http://localhost:8000/admin
+```
+
+第一版后台支持上传 IPA/APK、查看应用/构建/设备/开发者账号/通知，以及复制 `installUrl`、`manifestUrl` 和 `downloadUrl`。设备审批、构建删除和开发者账号编辑会放到后续管理能力里。
 
 运行测试：
 

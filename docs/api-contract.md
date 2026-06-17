@@ -90,6 +90,26 @@ iOS 上传会从 IPA 的 `Payload/*.app/Info.plist` 解析 bundle id、应用名
 
 上传不会创建安装任务，也不会记录某台设备是否安装过该构建。
 
+## 管理后台
+
+```http
+GET /admin
+GET /admin/uploads
+POST /admin/uploads
+GET /admin/apps
+GET /admin/builds
+GET /admin/devices
+GET /admin/developer-accounts
+GET /admin/notifications
+```
+
+管理后台是给内部管理员使用的 server-side HTML 页面。它使用 HTTP Basic 认证：
+
+- 用户名：`TESTFLYING_ADMIN_USERNAME`，默认 `admin`。
+- 密码：复用 `TESTFLYING_STATIC_TOKEN`。
+
+后台上传表单复用 `POST /v1/test-distribution/uploads` 的业务逻辑，上传成功后同样会创建应用、构建、制品、iOS manifest 和通知。MinIO Console 只管理对象存储文件，不能替代管理后台上传，因为直接上传到 MinIO 不会写入业务数据库。
+
 ## 设备
 
 ```http

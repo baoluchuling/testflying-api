@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -45,6 +47,7 @@ def create_app(
         app.state.engine = engine
     app.state.session_factory = session_factory
     app.state.artifact_storage = artifact_storage or storage_from_settings(app_settings)
+    package_dir = Path(__file__).parent
 
     if app_settings.storage_backend == "local":
         app_settings.storage_root.mkdir(parents=True, exist_ok=True)
@@ -53,12 +56,19 @@ def create_app(
             StaticFiles(directory=app_settings.storage_root),
             name="artifacts",
         )
+    app.mount(
+        "/static",
+        StaticFiles(directory=package_dir / "static"),
+        name="static",
+    )
 
     app.add_exception_handler(ApiError, api_error_handler)
 
+    from testflying_api.admin import routes as admin_routes
     from testflying_api.routes import accounts, devices, health, notifications, uploads, workspace
 
     app.include_router(health.router)
+    app.include_router(admin_routes.router)
     app.include_router(workspace.router)
     app.include_router(uploads.router)
     app.include_router(devices.router)

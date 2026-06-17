@@ -1,0 +1,33 @@
+{% extends "admin/base.html" %}
+{% block heading %}构建{% endblock %}
+{% block content %}
+  <section class="panel">
+    <div class="panel-header"><h2>构建列表</h2><a href="/admin/uploads">上传构建</a></div>
+    <table>
+      <thead><tr><th>应用</th><th>版本</th><th>平台</th><th>环境</th><th>大小</th><th>上传时间</th><th>链接</th></tr></thead>
+      <tbody>
+        {% for build in builds %}
+          <tr>
+            <td><strong>{{ build.app.name }}</strong><br><small>{{ build.id }}</small></td>
+            <td>{{ build.version }}<br><small>{{ build.build_number }}</small></td>
+            <td>{{ build.platform|platform }}</td>
+            <td><span class="badge">{{ build.environment|environment }}</span></td>
+            <td>{{ build.artifact.size_bytes|size if build.artifact else "-" }}</td>
+            <td>{{ build.uploaded_at|datetime }}</td>
+            <td class="actions">
+              {% if build.artifact %}
+                <button data-copy="{{ build.artifact.install_url }}">installUrl</button>
+                <button data-copy="{{ build.artifact.download_url }}">downloadUrl</button>
+                {% if build.artifact.manifest_url %}<button data-copy="{{ build.artifact.manifest_url }}">manifestUrl</button>{% endif %}
+              {% else %}
+                -
+              {% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="7" class="empty">暂无构建</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+{% endblock %}

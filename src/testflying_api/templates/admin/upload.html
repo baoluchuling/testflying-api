@@ -1,0 +1,69 @@
+{% extends "admin/base.html" %}
+{% block heading %}上传构建{% endblock %}
+{% block content %}
+  {% if error %}
+    <div class="alert error">{{ error }}</div>
+  {% endif %}
+  {% if upload %}
+    <div class="alert success">
+      <strong>上传成功</strong>
+      <span>{{ upload.app.name }} {{ upload.build.version }} ({{ upload.build.build_number }})</span>
+    </div>
+    <section class="panel">
+      <div class="panel-header"><h2>安装资源</h2><a href="/admin/builds">查看构建列表</a></div>
+      <div class="link-list">
+        <label>installUrl</label>
+        <code>{{ upload.install_info.install_url }}</code>
+        <button data-copy="{{ upload.install_info.install_url }}">复制</button>
+        {% if upload.install_info.manifest_url %}
+          <label>manifestUrl</label>
+          <code>{{ upload.install_info.manifest_url }}</code>
+          <button data-copy="{{ upload.install_info.manifest_url }}">复制</button>
+        {% endif %}
+        {% if upload.install_info.download_url %}
+          <label>downloadUrl</label>
+          <code>{{ upload.install_info.download_url }}</code>
+          <button data-copy="{{ upload.install_info.download_url }}">复制</button>
+        {% endif %}
+      </div>
+    </section>
+  {% endif %}
+
+  <section class="panel">
+    <div class="panel-header"><h2>上传 IPA / APK</h2><span>Android 需要补充包信息</span></div>
+    <form class="form" action="/admin/uploads" method="post" enctype="multipart/form-data">
+      <label>
+        安装包
+        <input type="file" name="file" required>
+      </label>
+      <div class="form-grid">
+        <label>
+          平台
+          <select name="platform">
+            <option value="ios">iOS</option>
+            <option value="android">Android</option>
+          </select>
+        </label>
+        <label>
+          环境
+          <select name="environment">
+            <option value="development">开发环境</option>
+            <option value="production">线上环境</option>
+          </select>
+        </label>
+      </div>
+      <label>
+        更新说明
+        <textarea name="changelog" rows="4" placeholder="本次构建变更、验证重点或风险说明"></textarea>
+      </label>
+      <div class="subsection-title">Android metadata</div>
+      <div class="form-grid">
+        <label>packageName <input name="packageName" placeholder="com.example.app"></label>
+        <label>appName <input name="appName" placeholder="应用名称"></label>
+        <label>version <input name="version" placeholder="1.0.0"></label>
+        <label>buildNumber <input name="buildNumber" placeholder="100"></label>
+      </div>
+      <button class="primary-button" type="submit">上传构建</button>
+    </form>
+  </section>
+{% endblock %}

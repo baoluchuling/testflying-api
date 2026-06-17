@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}testflying 管理后台{% endblock %}</title>
+    <link rel="stylesheet" href="/static/admin/admin.css">
+  </head>
+  <body>
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">TF</span>
+        <div>
+          <strong>testflying</strong>
+          <small>管理后台</small>
+        </div>
+      </div>
+      <nav class="nav">
+        {% for key, href, label in nav_items %}
+          <a class="nav-link {% if active == key %}is-active{% endif %}" href="{{ href }}">{{ label }}</a>
+        {% endfor %}
+      </nav>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Internal Distribution</p>
+          <h1>{% block heading %}testflying 管理后台{% endblock %}</h1>
+        </div>
+        <a class="ghost-link" href="/health" target="_blank">服务健康</a>
+      </header>
+      {% block content %}{% endblock %}
+    </main>
+    <script>
+      async function copyText(value) {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(value);
+          return;
+        }
+        const textarea = document.createElement('textarea');
+        textarea.value = value;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        document.execCommand('copy');
+        textarea.remove();
+      }
+
+      document.addEventListener('click', async (event) => {
+        const button = event.target.closest('[data-copy]');
+        if (!button) return;
+        await copyText(button.dataset.copy);
+        const previous = button.textContent;
+        button.textContent = '已复制';
+        setTimeout(() => { button.textContent = previous; }, 1200);
+      });
+    </script>
+  </body>
+</html>

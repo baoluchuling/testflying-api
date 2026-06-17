@@ -23,6 +23,7 @@ class Settings:
     s3_access_key_id: str | None
     s3_secret_access_key: str | None
     cors_allowed_origins: tuple[str, ...]
+    admin_username: str
 
     @classmethod
     def from_environment(cls) -> Settings:
@@ -48,6 +49,7 @@ class Settings:
             cors_allowed_origins=_split_origins(
                 os.getenv("TESTFLYING_CORS_ALLOWED_ORIGINS"),
             ),
+            admin_username=os.getenv("TESTFLYING_ADMIN_USERNAME", "admin"),
         )
 
 

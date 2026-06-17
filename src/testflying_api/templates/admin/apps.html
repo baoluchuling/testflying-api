@@ -1,0 +1,25 @@
+{% extends "admin/base.html" %}
+{% block heading %}应用{% endblock %}
+{% block content %}
+  <section class="panel">
+    <div class="panel-header"><h2>应用列表</h2><a href="/admin/uploads">上传新构建</a></div>
+    <table>
+      <thead><tr><th>应用</th><th>平台</th><th>Bundle ID / Package</th><th>默认环境</th><th>构建数</th><th>创建时间</th></tr></thead>
+      <tbody>
+        {% for app in apps %}
+          <tr>
+            <td><strong>{{ app.name }}</strong></td>
+            <td>{{ app.platform|platform }}</td>
+            <td><code>{{ app.bundle_identifier }}</code></td>
+            {% set default_environment = "production" if app.default_channel == "prod" else "development" %}
+            <td><span class="badge">{{ default_environment|environment }}</span></td>
+            <td>{{ app.builds|length }}</td>
+            <td>{{ app.added_at|datetime }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="6" class="empty">暂无应用，先上传一个 IPA 或 APK。</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+{% endblock %}

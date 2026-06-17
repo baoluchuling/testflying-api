@@ -9,6 +9,7 @@ services:
       TESTFLYING_STORAGE_BACKEND: local
       TESTFLYING_STORAGE_ROOT: /app/data/artifacts
       TESTFLYING_STATIC_TOKEN: dev-token
+      TESTFLYING_ADMIN_USERNAME: admin
       TESTFLYING_CORS_ALLOWED_ORIGINS: http://localhost:8080,http://127.0.0.1:8080
     volumes:
       - ./data:/app/data

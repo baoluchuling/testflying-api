@@ -1,0 +1,23 @@
+{% extends "admin/base.html" %}
+{% block heading %}开发者账号{% endblock %}
+{% block content %}
+  <section class="panel">
+    <div class="panel-header"><h2>账号续费</h2><span>新增/编辑在下一版开放</span></div>
+    <table>
+      <thead><tr><th>Team</th><th>状态</th><th>过期时间</th><th>剩余天数</th><th>关联应用</th></tr></thead>
+      <tbody>
+        {% for item in accounts %}
+          <tr>
+            <td><strong>{{ item.account.team_name }}</strong><br><small>{{ item.account.id }}</small></td>
+            <td><span class="badge danger">{{ item.account.status }}</span></td>
+            <td>{{ item.account.expires_at|datetime }}</td>
+            <td>{{ item.remaining_days }}</td>
+            <td>{{ item.apps|join(", ") if item.apps else "-" }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5" class="empty">暂无开发者账号</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+{% endblock %}

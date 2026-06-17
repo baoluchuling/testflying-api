@@ -5,11 +5,11 @@ services:
       - "8000:8000"
     environment:
       TESTFLYING_DATABASE_URL: postgresql+psycopg://testflying:testflying@postgres:5432/testflying
-      TESTFLYING_PUBLIC_BASE_URL: http://localhost:8000
+      TESTFLYING_PUBLIC_BASE_URL: ${TESTFLYING_PUBLIC_BASE_URL:-http://47.90.163.122:8000}
       TESTFLYING_STORAGE_BACKEND: s3
       TESTFLYING_STORAGE_ROOT: /app/data/artifacts
       TESTFLYING_S3_ENDPOINT_URL: http://minio:9000
-      TESTFLYING_S3_PUBLIC_BASE_URL: http://localhost:9000/testflying
+      TESTFLYING_S3_PUBLIC_BASE_URL: ${TESTFLYING_S3_PUBLIC_BASE_URL:-http://47.90.163.122:9000/testflying}
       TESTFLYING_S3_BUCKET: testflying
       TESTFLYING_S3_ACCESS_KEY_ID: testflying
       TESTFLYING_S3_SECRET_ACCESS_KEY: testflying-secret

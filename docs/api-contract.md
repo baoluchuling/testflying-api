@@ -85,6 +85,8 @@ iOS 上传会从 IPA 的 `Payload/*.app/Info.plist` 解析 bundle id、应用名
 - 创建一条 `build` 类型通知。
 - 给同平台已登记设备创建构建可见性。
 
+`installUrl`、`manifestUrl` 和 `downloadUrl` 在上传时由当前部署的公开 URL 配置生成。S3/MinIO 部署依赖 `TESTFLYING_S3_PUBLIC_BASE_URL`，本地文件部署依赖 `TESTFLYING_PUBLIC_BASE_URL`。这些 URL 写入数据库后不会随环境变量自动变化。
+
 上传不会创建安装任务，也不会记录某台设备是否安装过该构建。
 
 ## 管理后台

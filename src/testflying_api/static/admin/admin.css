@@ -97,6 +97,61 @@ h2 { font-size: 18px; }
   text-decoration: none;
 }
 
+.health-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ghost-button {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--blue);
+  padding: 8px 11px;
+}
+
+.ghost-button:disabled {
+  cursor: wait;
+  opacity: .7;
+}
+
+.health-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.health-status::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.health-status[data-state="checking"] {
+  background: #edf4ff;
+  color: var(--blue);
+}
+
+.health-status[data-state="ok"] {
+  background: #ecfdf3;
+  color: var(--green);
+}
+
+.health-status[data-state="error"] {
+  background: #fef2f2;
+  color: var(--red);
+}
+
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

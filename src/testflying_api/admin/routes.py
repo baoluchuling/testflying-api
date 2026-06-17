@@ -82,10 +82,7 @@ async def upload_package(
     platform: Annotated[str, Form()],
     environment: Annotated[str, Form()],
     changelog: Annotated[str, Form()] = "",
-    package_name: Annotated[str | None, Form(alias="packageName")] = None,
     app_name: Annotated[str | None, Form(alias="appName")] = None,
-    version: Annotated[str | None, Form()] = None,
-    build_number: Annotated[str | None, Form(alias="buildNumber")] = None,
 ) -> HTMLResponse:
     try:
         upload = create_package_upload(
@@ -97,10 +94,7 @@ async def upload_package(
             platform=platform,
             environment=environment,
             changelog=changelog,
-            package_name=package_name,
             app_name=app_name,
-            version=version,
-            build_number=build_number,
         )
     except ApiError as error:
         session.rollback()

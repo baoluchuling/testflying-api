@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-import plistlib
-from io import BytesIO
-from zipfile import ZipFile
-
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from testflying_api.schema import DeviceBuildVisibility
+from testflying_api.schema import App, DeviceBuildVisibility
 from testflying_api.seed import seed_demo_catalog
+from tests.fixtures import make_android_apk_bytes, make_ipa_bytes
 
 
 def test_upload_ipa_creates_build_without_install_task(
@@ -45,27 +42,33 @@ def test_upload_ipa_creates_build_without_install_task(
     )
 
 
-def test_upload_android_requires_metadata(client: TestClient) -> None:
+def test_upload_android_parses_metadata_from_apk(
+    client: TestClient,
+    db_session: Session,
+) -> None:
     response = client.post(
         "/v1/test-distribution/uploads",
-        data={"platform": "android", "environment": "development"},
-        files={"file": ("app.apk", b"apk-bytes", "application/vnd.android.package-archive")},
+        data={
+            "platform": "android",
+            "environment": "development",
+            "changelog": "自动解析 Android metadata",
+        },
+        files={
+            "file": (
+                "app.apk",
+                make_android_apk_bytes(),
+                "application/vnd.android.package-archive",
+            )
+        },
     )
 
-    assert response.status_code == 422
-    assert response.json()["code"] == "invalid_package"
+    assert response.status_code == 200
+    body = response.json()
+    assert body["app"]["name"] == "Auto Parsed"
+    assert body["build"]["version"] == "4.5.6"
+    assert body["build"]["buildNumber"] == "321"
+    assert body["build"]["installInfo"]["installUrl"].endswith("/app.apk")
 
-
-def make_ipa_bytes() -> bytes:
-    plist = plistlib.dumps(
-        {
-            "CFBundleIdentifier": "com.example.uploaded",
-            "CFBundleDisplayName": "Uploaded App",
-            "CFBundleShortVersionString": "1.0.0",
-            "CFBundleVersion": "100",
-        }
-    )
-    buffer = BytesIO()
-    with ZipFile(buffer, "w") as archive:
-        archive.writestr("Payload/Uploaded.app/Info.plist", plist)
-    return buffer.getvalue()
+    app = db_session.get(App, body["app"]["id"])
+    assert app is not None
+    assert app.bundle_identifier == "com.example.autoparse"

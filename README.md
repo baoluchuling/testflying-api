@@ -6,7 +6,7 @@
 
 - `GET /health`：服务健康检查。
 - `GET /v1/test-distribution/workspace`：返回客户端首屏需要的 workspace 快照结构。
-- `POST /v1/test-distribution/uploads`：上传 IPA/APK，创建应用、构建、制品和构建通知。
+- `POST /v1/test-distribution/uploads`：上传 IPA/APK，自动解析包信息，创建应用、构建、制品和构建通知。
 - `GET /v1/test-distribution/devices/current`：读取当前设备登记事实。
 - `GET /v1/test-distribution/devices`：读取设备列表。
 - `POST /v1/test-distribution/devices/registration-link`：生成设备登记请求链接，不自动审批设备。
@@ -125,7 +125,7 @@ uvicorn testflying_api.main:app --reload
 open http://localhost:8000/admin
 ```
 
-第一版后台支持上传 IPA/APK、查看应用/构建/设备/开发者账号/通知，以及复制 `installUrl`、`manifestUrl` 和 `downloadUrl`。设备审批、构建删除和开发者账号编辑会放到后续管理能力里。
+第一版后台支持上传 IPA/APK、查看应用/构建/设备/开发者账号/通知，以及复制 `installUrl`、`manifestUrl` 和 `downloadUrl`。上传页会显示上传进度；IPA/APK 的包名、应用名、版本号和构建号由服务端自动解析，必要时可以在后台覆盖应用名称。设备审批、构建删除和开发者账号编辑会放到后续管理能力里。
 
 运行测试：
 
@@ -139,6 +139,7 @@ ruff check src tests
 服务端拥有这些事实：
 
 - 应用、构建、制品和 iOS `manifest.plist` 地址。
+- IPA/APK 自动解析出的包名、应用名、版本号和构建号。
 - 构建环境分类：`development` 或 `production`。
 - 设备登记事实和设备对构建的可见性。
 - 开发者账号续费事实。

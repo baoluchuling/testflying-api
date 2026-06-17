@@ -55,7 +55,7 @@ username: testflying
 password: testflying-secret
 ```
 
-正式部署前必须修改 `docker-compose.yml` 里的数据库密码、MinIO 密码、`TESTFLYING_STATIC_TOKEN` 和公开访问域名。iOS OTA 安装真实使用时，`TESTFLYING_PUBLIC_BASE_URL` 和对象存储下载地址需要是设备可访问的 HTTPS 地址。
+正式部署前必须修改 `docker-compose.yml` 里的数据库密码、MinIO 密码、`TESTFLYING_STATIC_TOKEN` 和公开访问域名。当前全栈 Compose 的公开访问域名默认指向测试服务器 `47.90.163.122`，也可以通过同名环境变量或 `.env` 覆盖。iOS OTA 安装真实使用时，`TESTFLYING_PUBLIC_BASE_URL` 和对象存储下载地址需要是设备可访问的 HTTPS 地址。
 
 管理后台：
 
@@ -75,14 +75,16 @@ password: dev-token
 默认环境变量在 `docker-compose.yml` 中配置：
 
 - `TESTFLYING_DATABASE_URL`：默认 `postgresql+psycopg://testflying:testflying@postgres:5432/testflying`
-- `TESTFLYING_PUBLIC_BASE_URL`：默认 `http://localhost:8000`
+- `TESTFLYING_PUBLIC_BASE_URL`：默认 `http://47.90.163.122:8000`
 - `TESTFLYING_STORAGE_BACKEND`：默认 `s3`
 - `TESTFLYING_S3_ENDPOINT_URL`：默认 `http://minio:9000`
-- `TESTFLYING_S3_PUBLIC_BASE_URL`：默认 `http://localhost:9000/testflying`
+- `TESTFLYING_S3_PUBLIC_BASE_URL`：默认 `http://47.90.163.122:9000/testflying`
 - `TESTFLYING_S3_BUCKET`：默认 `testflying`
 - `TESTFLYING_STATIC_TOKEN`：默认 `dev-token`
 - `TESTFLYING_ADMIN_USERNAME`：默认 `admin`
 - `TESTFLYING_CORS_ALLOWED_ORIGINS`：默认允许 `http://localhost:8080,http://127.0.0.1:8080`，用于 Flutter Web 本地联调。
+
+这些公开 URL 会在上传时写入构建制品记录。修改环境变量后，已经上传过的构建不会自动改 URL；需要重新上传包，或者用 SQL 替换 `artifacts.download_url`、`artifacts.manifest_url` 和 `artifacts.install_url` 里的旧域名。
 
 ## 轻量本地测试
 

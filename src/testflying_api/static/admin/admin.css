@@ -376,6 +376,73 @@ textarea {
   transition: width .18s ease;
 }
 
+.upload-dock {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  gap: 10px 12px;
+  width: min(520px, calc(100vw - 48px));
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 18px 45px rgb(15 23 42 / 18%);
+}
+
+.upload-dock[hidden] {
+  display: none;
+}
+
+.upload-dock-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.upload-dock-main strong {
+  color: var(--text);
+}
+
+.upload-dock-track {
+  grid-column: 1 / -1;
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e7edf5;
+}
+
+.upload-dock-track span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--blue);
+  transition: width .18s ease;
+}
+
+.upload-dock[data-state="done"] .upload-dock-track span {
+  background: var(--green);
+}
+
+.upload-dock[data-state="error"] .upload-dock-track span {
+  background: var(--red);
+}
+
+.upload-dock-action {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #eef4ff;
+  color: var(--blue);
+  white-space: nowrap;
+}
+
 .metadata-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -498,5 +565,11 @@ textarea {
 
   .link-list button {
     justify-self: start;
+  }
+
+  .upload-dock {
+    right: 12px;
+    bottom: 12px;
+    width: calc(100vw - 24px);
   }
 }

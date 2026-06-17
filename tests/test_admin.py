@@ -36,6 +36,18 @@ def test_admin_dashboard_renders_seeded_catalog(
     assert "Apple 开发者账号即将到期" in response.text
 
 
+def test_admin_shell_supports_inline_navigation_and_upload_dock(client: TestClient) -> None:
+    response = client.get("/admin", headers=_admin_headers())
+
+    assert response.status_code == 200
+    assert "data-admin-main" in response.text
+    assert "data-upload-dock" in response.text
+    assert "navigateAdmin" in response.text
+    assert "history.pushState" in response.text
+    assert "adminUploadState.responseText" in response.text
+    assert "beforeunload" in response.text
+
+
 def test_admin_health_check_renders_inline_status(client: TestClient) -> None:
     response = client.get("/admin", headers=_admin_headers())
 
@@ -85,8 +97,10 @@ def test_admin_upload_page_uses_auto_metadata_and_progress(client: TestClient) -
     assert response.status_code == 200
     assert "包信息自动解析" in response.text
     assert "data-upload-progress" in response.text
-    assert "form.dataset.uploading === 'true'" in response.text
-    assert "submit.disabled = true" in response.text
+    assert "data-upload-submit" in response.text
+    assert "startAdminUpload" in response.text
+    assert "form.dataset.uploading = isUploading ? 'true' : 'false'" in response.text
+    assert "submit.disabled = isUploading" in response.text
     assert "name=\"appName\"" in response.text
     assert "name=\"packageName\"" not in response.text
     assert "name=\"buildNumber\"" not in response.text

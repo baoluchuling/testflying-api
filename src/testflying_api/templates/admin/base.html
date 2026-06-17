@@ -21,7 +21,7 @@
         {% endfor %}
       </nav>
     </aside>
-    <main class="main">
+    <main class="main" data-admin-main>
       <header class="topbar">
         <div>
           <p class="eyebrow">Internal Distribution</p>
@@ -34,7 +34,22 @@
       </header>
       {% block content %}{% endblock %}
     </main>
+    <div class="upload-dock" data-upload-dock hidden>
+      <div class="upload-dock-main">
+        <span data-upload-dock-status>等待上传</span>
+        <strong data-upload-dock-percent>0%</strong>
+      </div>
+      <div class="upload-dock-track"><span data-upload-dock-bar></span></div>
+      <button class="upload-dock-action" type="button" data-upload-result>查看上传</button>
+    </div>
     <script>
+      const adminUploadState = {
+        status: 'idle',
+        percent: 0,
+        text: '等待上传',
+        responseText: null
+      };
+
       async function copyText(value) {
         if (navigator.clipboard && window.isSecureContext) {
           await navigator.clipboard.writeText(value);
@@ -49,6 +64,142 @@
         textarea.select();
         document.execCommand('copy');
         textarea.remove();
+      }
+
+      function adminMain() {
+        return document.querySelector('[data-admin-main]');
+      }
+
+      function adminPathFromUrl(url) {
+        const parsed = new URL(url, window.location.origin);
+        return `${parsed.pathname}${parsed.search}`;
+      }
+
+      function updateActiveNav(path) {
+        document.querySelectorAll('.nav-link').forEach((link) => {
+          link.classList.toggle('is-active', adminPathFromUrl(link.href) === path);
+        });
+      }
+
+      function renderAdminHtml(html, path, shouldPushState = true) {
+        const parser = new DOMParser();
+        const nextDocument = parser.parseFromString(html, 'text/html');
+        const nextMain = nextDocument.querySelector('[data-admin-main]');
+        const currentMain = adminMain();
+        if (!nextMain || !currentMain) {
+          window.location.href = path;
+          return;
+        }
+        currentMain.innerHTML = nextMain.innerHTML;
+        document.title = nextDocument.title || document.title;
+        updateActiveNav(path);
+        if (shouldPushState && window.location.pathname !== path) {
+          history.pushState({ adminPath: path }, '', path);
+        }
+        syncUploadViews();
+        window.scrollTo({ top: 0, behavior: 'auto' });
+      }
+
+      async function navigateAdmin(path, shouldPushState = true) {
+        if (path === '/admin/uploads' && adminUploadState.responseText) {
+          renderAdminHtml(adminUploadState.responseText, path, shouldPushState);
+          return;
+        }
+        const response = await fetch(path, {
+          headers: { Accept: 'text/html' },
+          cache: 'no-store'
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        renderAdminHtml(await response.text(), path, shouldPushState);
+      }
+
+      function updateUploadState(status, percent, text) {
+        adminUploadState.status = status;
+        adminUploadState.percent = Math.max(0, Math.min(100, Math.round(percent)));
+        adminUploadState.text = text;
+        syncUploadViews();
+      }
+
+      function syncUploadViews() {
+        const dock = document.querySelector('[data-upload-dock]');
+        const dockStatus = document.querySelector('[data-upload-dock-status]');
+        const dockPercent = document.querySelector('[data-upload-dock-percent]');
+        const dockBar = document.querySelector('[data-upload-dock-bar]');
+        const dockAction = document.querySelector('[data-upload-result]');
+        const isActive = adminUploadState.status !== 'idle';
+
+        if (dock) {
+          dock.hidden = !isActive;
+          dock.dataset.state = adminUploadState.status;
+        }
+        if (dockStatus) dockStatus.textContent = adminUploadState.text;
+        if (dockPercent) dockPercent.textContent = `${adminUploadState.percent}%`;
+        if (dockBar) dockBar.style.width = `${adminUploadState.percent}%`;
+        if (dockAction) {
+          dockAction.textContent = adminUploadState.status === 'done' ? '查看结果' : '查看上传';
+        }
+
+        const form = document.querySelector('[data-upload-form]');
+        if (!form) return;
+        const progress = form.querySelector('[data-upload-progress]');
+        const status = form.querySelector('[data-upload-status]');
+        const percent = form.querySelector('[data-upload-percent]');
+        const bar = form.querySelector('[data-upload-bar]');
+        const submit = form.querySelector('[data-upload-submit]');
+        const isUploading = adminUploadState.status === 'uploading'
+          || adminUploadState.status === 'processing';
+
+        if (progress && isActive) progress.hidden = false;
+        if (status && isActive) status.textContent = adminUploadState.text;
+        if (percent && isActive) percent.textContent = `${adminUploadState.percent}%`;
+        if (bar && isActive) bar.style.width = `${adminUploadState.percent}%`;
+        form.dataset.uploading = isUploading ? 'true' : 'false';
+        form.classList.toggle('is-uploading', isUploading);
+        if (submit) {
+          submit.disabled = isUploading;
+          submit.toggleAttribute('aria-busy', isUploading);
+          submit.textContent = isUploading ? '上传中' : '上传构建';
+        }
+      }
+
+      function startAdminUpload(form) {
+        if (adminUploadState.status === 'uploading' || adminUploadState.status === 'processing') {
+          return;
+        }
+
+        adminUploadState.responseText = null;
+        const request = new XMLHttpRequest();
+        request.open('POST', form.action);
+        request.upload.addEventListener('progress', (progressEvent) => {
+          if (!progressEvent.lengthComputable) {
+            updateUploadState('uploading', adminUploadState.percent, '正在上传');
+            return;
+          }
+          updateUploadState(
+            'uploading',
+            (progressEvent.loaded / progressEvent.total) * 100,
+            '正在上传'
+          );
+        });
+        request.upload.addEventListener('load', () => {
+          updateUploadState('processing', 100, '正在处理');
+        });
+        request.addEventListener('load', () => {
+          adminUploadState.responseText = request.responseText;
+          updateUploadState(
+            request.status >= 200 && request.status < 300 ? 'done' : 'error',
+            100,
+            request.status >= 200 && request.status < 300 ? '上传完成' : '上传失败'
+          );
+          if (window.location.pathname === '/admin/uploads') {
+            renderAdminHtml(request.responseText, '/admin/uploads', false);
+          }
+        });
+        request.addEventListener('error', () => {
+          updateUploadState('error', 0, '上传失败');
+        });
+        updateUploadState('uploading', 0, '准备上传');
+        request.send(new FormData(form));
       }
 
       document.addEventListener('click', async (event) => {
@@ -86,6 +237,49 @@
           button.disabled = false;
           button.textContent = previous;
         }
+      });
+
+      document.addEventListener('click', async (event) => {
+        const action = event.target.closest('[data-upload-result]');
+        if (!action) return;
+        event.preventDefault();
+        await navigateAdmin('/admin/uploads');
+      });
+
+      document.addEventListener('click', async (event) => {
+        const link = event.target.closest('a[href^="/admin"]');
+        if (!link || link.target || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+          return;
+        }
+        event.preventDefault();
+        try {
+          await navigateAdmin(adminPathFromUrl(link.href));
+        } catch (error) {
+          window.location.href = link.href;
+        }
+      });
+
+      document.addEventListener('submit', (event) => {
+        const form = event.target.closest('[data-upload-form]');
+        if (!form || !window.FormData || !window.XMLHttpRequest) return;
+        event.preventDefault();
+        startAdminUpload(form);
+      });
+
+      window.addEventListener('popstate', async () => {
+        try {
+          await navigateAdmin(window.location.pathname, false);
+        } catch (error) {
+          window.location.reload();
+        }
+      });
+
+      window.addEventListener('beforeunload', (event) => {
+        if (adminUploadState.status !== 'uploading' && adminUploadState.status !== 'processing') {
+          return;
+        }
+        event.preventDefault();
+        event.returnValue = '';
       });
     </script>
   </body>

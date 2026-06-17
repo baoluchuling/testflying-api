@@ -23,6 +23,8 @@ from testflying_api.admin.view_models import (
 )
 from testflying_api.database import get_db_session
 from testflying_api.errors import ApiError
+from testflying_api.models import UploadResponse
+from testflying_api.schema import App
 from testflying_api.upload_service import create_package_upload
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -108,7 +110,12 @@ async def upload_package(
     return templates.TemplateResponse(
         request,
         "admin/upload.html",
-        _context(request, active="uploads", upload=upload),
+        _context(
+            request,
+            active="uploads",
+            upload=upload,
+            upload_details=_upload_details(session, upload),
+        ),
     )
 
 
@@ -157,4 +164,16 @@ def _context(request: Request, *, active: str, **values: object) -> dict[str, ob
             ("notifications", "/admin/notifications", "通知"),
         ],
         **values,
+    }
+
+
+def _upload_details(session: Session, upload: UploadResponse) -> dict[str, str]:
+    app = session.get(App, upload.app.id)
+    return {
+        "app_name": upload.app.name,
+        "bundle_identifier": app.bundle_identifier if app else "-",
+        "platform": upload.install_info.platform,
+        "environment": upload.build.environment,
+        "version": upload.build.version,
+        "build_number": upload.build.build_number,
     }

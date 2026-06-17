@@ -10,6 +10,35 @@
       <span>{{ upload.app.name }} {{ upload.build.version }} ({{ upload.build.build_number }})</span>
     </div>
     <section class="panel">
+      <div class="panel-header"><h2>解析结果</h2><span>服务端从安装包读取</span></div>
+      <div class="metadata-grid">
+        <div class="metadata-item">
+          <span>应用名称</span>
+          <strong>{{ upload_details.app_name }}</strong>
+        </div>
+        <div class="metadata-item">
+          <span>包名 / Bundle ID</span>
+          <strong><code>{{ upload_details.bundle_identifier }}</code></strong>
+        </div>
+        <div class="metadata-item">
+          <span>平台</span>
+          <strong>{{ upload_details.platform|platform }}</strong>
+        </div>
+        <div class="metadata-item">
+          <span>环境</span>
+          <strong>{{ upload_details.environment|environment }}</strong>
+        </div>
+        <div class="metadata-item">
+          <span>版本号</span>
+          <strong>{{ upload_details.version }}</strong>
+        </div>
+        <div class="metadata-item">
+          <span>构建号</span>
+          <strong>{{ upload_details.build_number }}</strong>
+        </div>
+      </div>
+    </section>
+    <section class="panel">
       <div class="panel-header"><h2>安装资源</h2><a href="/admin/builds">查看构建列表</a></div>
       <div class="link-list">
         <label>installUrl</label>
@@ -93,6 +122,7 @@
 
       form.addEventListener('submit', (event) => {
         event.preventDefault();
+        if (form.dataset.uploading === 'true') return;
         const request = new XMLHttpRequest();
         request.open('POST', form.action);
         request.upload.addEventListener('progress', (progressEvent) => {
@@ -112,10 +142,16 @@
         });
         request.addEventListener('error', () => {
           setProgress(0, '上传失败');
+          form.dataset.uploading = 'false';
+          form.classList.remove('is-uploading');
           submit.disabled = false;
+          submit.removeAttribute('aria-busy');
           submit.textContent = '重新上传';
         });
+        form.dataset.uploading = 'true';
+        form.classList.add('is-uploading');
         submit.disabled = true;
+        submit.setAttribute('aria-busy', 'true');
         submit.textContent = '上传中';
         setProgress(0, '准备上传');
         request.send(new FormData(form));

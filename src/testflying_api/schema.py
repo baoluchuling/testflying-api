@@ -181,6 +181,7 @@ class Notification(Base):
 
 class StoreConnector(Base):
     __tablename__ = "store_connectors"
+    __table_args__ = (UniqueConstraint("developer_account_id"),)
 
     id: Mapped[str] = mapped_column(String(80), primary_key=True)
     developer_account_id: Mapped[str] = mapped_column(

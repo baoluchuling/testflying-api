@@ -39,3 +39,18 @@ docker run --rm -p 8100:8100 \
 - `POST /v1/sync-runs`
 
 第一版实现 `update_release_notes` 和 `update_app_metadata` 两类同步协议。商店元数据页会通过 `supported-locales` 拉取当前 App 和版本支持的语言；关键词、宣传文本和描述按语言提交。当前 connector 仍是可运行的示例中转器，真实 Apple / Google 调用后续在 `store_clients` 层替换。
+
+## 限流
+
+`GET /health` 不限流。其它商店接口按平台限流：
+
+- Google / Android 默认 `200` 次 / `60` 秒。
+- Apple / iOS 根据 Apple 返回的 `X-Rate-Limit` 中 `user-hour-lim` 下调 20% 后执行；未拿到响应头前使用 fallback `2880` 次 / 小时。
+
+可用环境变量覆盖：
+
+- `TESTFLYING_CONNECTOR_GOOGLE_RATE_LIMIT_MAX_REQUESTS`
+- `TESTFLYING_CONNECTOR_GOOGLE_RATE_LIMIT_WINDOW_SECONDS`
+- `TESTFLYING_CONNECTOR_APPLE_RATE_LIMIT_FALLBACK_MAX_REQUESTS`
+- `TESTFLYING_CONNECTOR_APPLE_RATE_LIMIT_WINDOW_SECONDS`
+- `TESTFLYING_CONNECTOR_APPLE_RATE_LIMIT_SAFETY_RATIO`

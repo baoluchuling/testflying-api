@@ -23,13 +23,16 @@
   {% endif %}
 
   <section class="panel">
-    <div class="panel-header"><h2>Connector</h2><span>中心后台只调用该账号 connector</span></div>
+    <div class="panel-header"><h2>Connector</h2><span>一个开发者账号只能配置一个 connector</span></div>
     {% if connector %}
       <div class="metadata-grid">
         <div class="metadata-item"><span>名称</span><strong>{{ connector.name }}</strong></div>
-        <div class="metadata-item"><span>状态</span><strong>{{ connector.status }}</strong></div>
+        <div class="metadata-item"><span>状态</span><strong><span class="badge {{ 'success' if connector.status == 'ok' else 'danger' }}">{{ connector.status }}</span></strong></div>
         <div class="metadata-item"><span>最近检查</span><strong>{{ connector.last_checked_at|datetime }}</strong></div>
       </div>
+      <form class="inline-form connector-check-form" action="/admin/developer-accounts/{{ account.id }}/connector/check" method="post">
+        <button class="ghost-button" type="submit">检查连接</button>
+      </form>
     {% else %}
       <div class="alert error">
         <strong>未配置 connector</strong>
@@ -55,7 +58,7 @@
         调用 Token
         <input name="authToken" type="password" placeholder="{{ '留空表示不修改' if connector else '首次配置必填' }}">
       </label>
-      <button class="primary-button" type="submit">保存 Connector</button>
+      <button class="primary-button" type="submit">{{ "保存修改" if connector else "保存 Connector" }}</button>
     </form>
   </section>
 
@@ -78,8 +81,13 @@
             </td>
             <td>
               <form class="inline-form" action="/admin/developer-accounts/{{ account.id }}/apps/{{ item.app.id }}/settings" method="post">
-                <input name="storeAppId" value="{{ item.app.store_app_id or '' }}" placeholder="Apple App ID">
-                <input name="storePackageName" value="{{ item.app.store_package_name or '' }}" placeholder="Google package / 可留空">
+                {% if item.app.platform == "ios" %}
+                  <input name="storeAppId" value="{{ item.app.store_app_id or '' }}" placeholder="Apple App ID">
+                  <input name="storePackageName" value="" type="hidden">
+                {% else %}
+                  <input name="storeAppId" value="" type="hidden">
+                  <input name="storePackageName" value="{{ item.app.store_package_name or '' }}" placeholder="Google package">
+                {% endif %}
                 <button class="ghost-button" type="submit">保存</button>
               </form>
             </td>
@@ -112,18 +120,18 @@
             App
             <select name="appId" required>
               {% for app in unassigned_apps %}
-                <option value="{{ app.id }}">{{ app.name }} / {{ app.bundle_identifier }}</option>
+                <option value="{{ app.id }}" data-platform="{{ app.platform }}">{{ app.name }} / {{ app.bundle_identifier }}</option>
               {% endfor %}
             </select>
           </label>
-          <label>
+          <label data-store-field="ios">
             Apple App ID
             <input name="storeAppId" placeholder="iOS App Store Connect App ID">
           </label>
         </div>
-        <label>
-          Google package / 备用包名
-          <input name="storePackageName" placeholder="Android 可填 Google Play package，iOS 可留空">
+        <label data-store-field="android">
+          Google package
+          <input name="storePackageName" placeholder="Android Google Play package">
         </label>
         <button class="primary-button" type="submit">绑定 App</button>
       </form>
@@ -152,4 +160,22 @@
       </tbody>
     </table>
   </section>
+  <script>
+    (() => {
+      const select = document.querySelector('select[name="appId"]');
+      const fields = document.querySelectorAll('[data-store-field]');
+      if (!select || fields.length === 0) return;
+      const syncStoreFields = () => {
+        const platform = select.selectedOptions[0]?.dataset.platform || 'ios';
+        fields.forEach((field) => {
+          const active = field.dataset.storeField === platform;
+          field.hidden = !active;
+          const input = field.querySelector('input');
+          if (input && !active) input.value = '';
+        });
+      };
+      select.addEventListener('change', syncStoreFields);
+      syncStoreFields();
+    })();
+  </script>
 {% endblock %}

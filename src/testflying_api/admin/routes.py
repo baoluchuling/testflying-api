@@ -40,6 +40,7 @@ from testflying_api.models import UploadResponse
 from testflying_api.schema import App, DeveloperAccount
 from testflying_api.store_sync import (
     DEFAULT_LOCALE,
+    check_connector_health,
     resolve_connector_base_url,
     save_app_metadata_draft,
     save_connector,
@@ -243,6 +244,8 @@ def developer_account_detail_page(
     session: SessionDep,
     _: AdminDep,
 ) -> HTMLResponse:
+    _auto_check_connector(session, account_id)
+    session.commit()
     context = _account_detail_context(request, session, account_id)
     if context["account"] is None:
         raise ApiError("account_not_found", "开发者账号不存在", status_code=404)
@@ -357,6 +360,40 @@ def save_connector_page(
             request,
             "admin/account_detail.html",
             _context(request, active="developer-accounts", success="Connector 已保存", **context),
+        )
+    except ApiError as error:
+        session.rollback()
+        context = _account_detail_context(request, session, account_id)
+        return templates.TemplateResponse(
+            request,
+            "admin/account_detail.html",
+            _context(request, active="developer-accounts", error=error.message, **context),
+            status_code=error.status_code,
+        )
+
+
+@router.post("/developer-accounts/{account_id}/connector/check", response_class=HTMLResponse)
+def check_connector_page(
+    account_id: str,
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+) -> HTMLResponse:
+    try:
+        result = check_connector_health(session, account_id=account_id)
+        session.commit()
+        context = _account_detail_context(request, session, account_id)
+        return templates.TemplateResponse(
+            request,
+            "admin/account_detail.html",
+            _context(
+                request,
+                active="developer-accounts",
+                success=result.message if result.ok else None,
+                error=None if result.ok else result.message,
+                **context,
+            ),
+            status_code=200 if result.ok else 502,
         )
     except ApiError as error:
         session.rollback()
@@ -831,6 +868,14 @@ def _account_detail_context(
         base_url_template=request.app.state.settings.connector_base_url_template,
     )
     return context
+
+
+def _auto_check_connector(session: Session, account_id: str) -> None:
+    try:
+        check_connector_health(session, account_id=account_id)
+    except ApiError as error:
+        if error.code not in {"connector_missing", "account_not_found"}:
+            raise
 
 
 def _metadata_rows_from_form(

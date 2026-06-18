@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from testflying_api.errors import ApiError
 from testflying_api.schema import App, DeveloperAccount, DeveloperAccountApp
+from testflying_api.store_identifiers import normalize_store_identifiers
 
 ACCOUNT_STATUSES = ("ok", "renewal_due", "expired", "disabled")
 
@@ -100,9 +101,14 @@ def bind_app_to_account(
             status_code=422,
         )
 
+    normalized_store_app_id, normalized_store_package = normalize_store_identifiers(
+        platform=app.platform,
+        store_app_id=store_app_id,
+        store_package_name=store_package_name,
+    )
     app.developer_account_id = account_id
-    app.store_app_id = _empty_to_none(store_app_id)
-    app.store_package_name = _empty_to_none(store_package_name)
+    app.store_app_id = normalized_store_app_id
+    app.store_package_name = normalized_store_package
     session.execute(delete(DeveloperAccountApp).where(DeveloperAccountApp.app_id == app_id))
     session.flush()
     return app
@@ -125,8 +131,13 @@ def update_bound_app_store_settings(
             raise ApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
         app.developer_account_id = account_id
         session.execute(delete(DeveloperAccountApp).where(DeveloperAccountApp.app_id == app_id))
-    app.store_app_id = _empty_to_none(store_app_id)
-    app.store_package_name = _empty_to_none(store_package_name)
+    normalized_store_app_id, normalized_store_package = normalize_store_identifiers(
+        platform=app.platform,
+        store_app_id=store_app_id,
+        store_package_name=store_package_name,
+    )
+    app.store_app_id = normalized_store_app_id
+    app.store_package_name = normalized_store_package
     session.flush()
     return app
 

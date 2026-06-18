@@ -48,7 +48,22 @@ class PreflightState:
         return max(int((_as_utc(self.expires_at) - datetime.now(UTC)).total_seconds()), 0)
 
 
+@dataclass(frozen=True)
+class ConnectorHealthResult:
+    connector: StoreConnector
+    ok: bool
+    message: str
+
+
 class StoreConnectorClient:
+    def health(self, connector: StoreConnector) -> dict[str, object]:
+        if connector.base_url.startswith("mock://"):
+            return {
+                "status": "ok",
+                "developerAccountId": connector.developer_account_id,
+            }
+        return _get_json(connector, "/health", include_auth=False, timeout=3)
+
     def supported_locales(
         self,
         connector: StoreConnector,
@@ -184,6 +199,37 @@ def save_connector(
         connector.status = connector.status or "unknown"
     session.flush()
     return connector
+
+
+def check_connector_health(
+    session: Session,
+    *,
+    account_id: str,
+    client: StoreConnectorClient | None = None,
+) -> ConnectorHealthResult:
+    account_or_404(session, account_id)
+    connector = account_connector(session, account_id)
+    if connector is None:
+        raise ApiError("connector_missing", "当前开发者账号还没有配置 connector", status_code=422)
+    connector_client = client or StoreConnectorClient()
+    checked_at = datetime.now(UTC)
+    try:
+        response = connector_client.health(connector)
+        status = str(response.get("status") or "")
+        response_account_id = str(response.get("developerAccountId") or account_id)
+        if status != "ok":
+            raise ConnectorCallError(f"connector 健康状态异常: {status or 'unknown'}")
+        if response_account_id != account_id:
+            raise ConnectorCallError("connector 返回的开发者账号和当前账号不一致")
+    except ConnectorCallError as error:
+        connector.status = "error"
+        connector.last_checked_at = checked_at
+        session.flush()
+        return ConnectorHealthResult(connector=connector, ok=False, message=error.message)
+    connector.status = "ok"
+    connector.last_checked_at = checked_at
+    session.flush()
+    return ConnectorHealthResult(connector=connector, ok=True, message="Connector 连接正常")
 
 
 def resolve_connector_base_url(
@@ -814,18 +860,21 @@ def _post_json(
 def _get_json(
     connector: StoreConnector,
     path: str,
+    *,
+    include_auth: bool = True,
+    timeout: int = 20,
 ) -> dict[str, object]:
     url = connector.base_url.rstrip("/") + path
+    headers = {"Accept": "application/json"}
+    if include_auth:
+        headers["Authorization"] = f"Bearer {connector.auth_token}"
     request = Request(
         url,
-        headers={
-            "Authorization": f"Bearer {connector.auth_token}",
-            "Accept": "application/json",
-        },
+        headers=headers,
         method="GET",
     )
     try:
-        with urlopen(request, timeout=20) as response:  # noqa: S310 - connector URL is admin configured.
+        with urlopen(request, timeout=timeout) as response:  # noqa: S310 - connector URL is admin configured.
             return json.loads(response.read().decode("utf-8"))
     except HTTPError as error:
         body = error.read().decode("utf-8", errors="replace")

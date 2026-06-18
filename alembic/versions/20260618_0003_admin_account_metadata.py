@@ -47,25 +47,22 @@ def upgrade() -> None:
             name="uq_store_app_metadata_drafts_scope",
         ),
     )
-    op.add_column(
-        "store_sync_runs",
-        sa.Column("metadata_draft_id", sa.String(length=80), nullable=True),
-    )
-    op.create_foreign_key(
-        "fk_store_sync_runs_metadata_draft_id",
-        "store_sync_runs",
-        "store_app_metadata_drafts",
-        ["metadata_draft_id"],
-        ["id"],
-        ondelete="SET NULL",
-    )
+    with op.batch_alter_table("store_sync_runs") as batch_op:
+        batch_op.add_column(sa.Column("metadata_draft_id", sa.String(length=80), nullable=True))
+        batch_op.create_foreign_key(
+            "fk_store_sync_runs_metadata_draft_id",
+            "store_app_metadata_drafts",
+            ["metadata_draft_id"],
+            ["id"],
+            ondelete="SET NULL",
+        )
 
 
 def downgrade() -> None:
-    op.drop_constraint(
-        "fk_store_sync_runs_metadata_draft_id",
-        "store_sync_runs",
-        type_="foreignkey",
-    )
-    op.drop_column("store_sync_runs", "metadata_draft_id")
+    with op.batch_alter_table("store_sync_runs") as batch_op:
+        batch_op.drop_constraint(
+            "fk_store_sync_runs_metadata_draft_id",
+            type_="foreignkey",
+        )
+        batch_op.drop_column("metadata_draft_id")
     op.drop_table("store_app_metadata_drafts")

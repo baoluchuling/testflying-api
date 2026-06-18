@@ -29,6 +29,7 @@ from testflying_api.schema import (
     Notification,
 )
 from testflying_api.storage import ArtifactStorage
+from testflying_api.store_identifiers import normalize_store_identifiers
 
 
 def create_package_upload(
@@ -197,6 +198,11 @@ def _upsert_app(
     normalized_account_id = _normalize_optional(developer_account_id)
     if normalized_account_id and session.get(DeveloperAccount, normalized_account_id) is None:
         raise ApiError("account_not_found", "开发者账号不存在", status_code=404)
+    normalized_store_app_id, normalized_store_package = normalize_store_identifiers(
+        platform=metadata.platform,
+        store_app_id=store_app_id,
+        store_package_name=store_package_name,
+    )
 
     app = session.scalar(
         select(App).where(
@@ -215,8 +221,8 @@ def _upsert_app(
             app.developer_account_id = normalized_account_id
         _apply_store_identifiers(
             app,
-            store_app_id=store_app_id,
-            store_package_name=store_package_name,
+            store_app_id=normalized_store_app_id,
+            store_package_name=normalized_store_package,
         )
         app.name = metadata.app_name
         app.default_channel = channel_for_environment(environment)
@@ -229,8 +235,8 @@ def _upsert_app(
         platform=metadata.platform,
         default_channel=channel_for_environment(environment),
         developer_account_id=normalized_account_id,
-        store_app_id=_normalize_optional(store_app_id),
-        store_package_name=_normalize_optional(store_package_name),
+        store_app_id=normalized_store_app_id,
+        store_package_name=normalized_store_package,
         icon_key="rocket" if metadata.platform == "ios" else "layers",
         icon_color="#2478FF" if metadata.platform == "ios" else "#B45309",
     )
@@ -295,12 +301,14 @@ def _apply_store_identifiers(
     store_app_id: str | None,
     store_package_name: str | None,
 ) -> None:
-    normalized_store_app_id = _normalize_optional(store_app_id)
-    normalized_store_package_name = _normalize_optional(store_package_name)
-    if normalized_store_app_id is not None:
-        app.store_app_id = normalized_store_app_id
-    if normalized_store_package_name is not None:
-        app.store_package_name = normalized_store_package_name
+    if app.platform == "ios":
+        app.store_package_name = None
+        if store_app_id is not None:
+            app.store_app_id = store_app_id
+    elif app.platform == "android":
+        app.store_app_id = None
+        if store_package_name is not None:
+            app.store_package_name = store_package_name
 
 
 def _normalize_optional(value: str | None) -> str | None:

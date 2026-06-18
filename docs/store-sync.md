@@ -18,6 +18,8 @@
 - 后台可以新增/编辑开发者账号。
 - 上传包时可以选择开发者账号，也可以在账号详情页绑定已有 App。
 - 账号详情页可以维护 App 的 `store_app_id` / `store_package_name`。
+- 账号详情页会自动检查 connector，也支持手动检查连接状态。
+- 账号下 App 商店标识按平台收窄：iOS 只填 Apple App ID，Android 只填 package。
 - 后台在开发者账号详情页下进入 App 的 `商店元数据` 或 `管理版本说明` 页面。
 - 页面进入时自动发起预检查。
 - 商店元数据页进入时通过 connector 拉取商店支持语言；关键词、宣传文本和描述支持多语言编辑，缺少翻译时默认使用当前语言内容填充。
@@ -149,7 +151,9 @@ GET /v1/apps/app-aurora-ios/supported-locales?developerAccountId=account-apple-e
 ## 隔离规则
 
 - 一个 connector 只能绑定一个 `developer_account_id`。
+- 中心后台对 `store_connectors.developer_account_id` 加唯一约束，同一账号重复保存时只能编辑原 connector。
 - connector 收到请求后必须校验请求账号等于自身绑定账号。
 - 中心后台不能把一个账号的任务发给另一个账号的 connector。
 - 商店私钥只存在 connector 部署环境。
 - 中心后台日志和同步记录不能保存商店私钥、完整 Authorization header 或 service account JSON。
+- connector 对商店接口做平台限流：Google / Android 默认 200 次 / 分钟；Apple / iOS 根据 Apple `X-Rate-Limit` 的 `user-hour-lim` 下调 20% 后执行，未拿到响应头前使用 fallback。

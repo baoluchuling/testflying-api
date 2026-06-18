@@ -31,3 +31,14 @@ def test_catalog_schema_contains_no_user_state_tables() -> None:
     assert "install_tasks" not in table_names
     assert "sort_orders" not in table_names
     assert "notification_reads" not in table_names
+
+
+def test_store_connector_is_unique_per_account() -> None:
+    engine = create_engine_for_url("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+
+    constraints = inspect(engine).get_unique_constraints("store_connectors")
+
+    assert any(
+        constraint["column_names"] == ["developer_account_id"] for constraint in constraints
+    )

@@ -142,6 +142,11 @@ password: dev-token
 - `TESTFLYING_CONNECTOR_BASE_URL_TEMPLATE`：按开发者账号 ID 自动生成 connector 地址的模板。支持 `{account_id}` 占位符，例如 `http://connector-{account_id}:8100`。账号详情页手填地址时优先使用手填值；留空时使用该模板。
 - `TESTFLYING_CONNECTOR_DEVELOPER_ACCOUNT_ID`：connector 绑定的开发者账号 ID。
 - `TESTFLYING_CONNECTOR_TOKEN`：中心后台调用 connector 的 Bearer token。
+- `TESTFLYING_CONNECTOR_GOOGLE_RATE_LIMIT_MAX_REQUESTS`：connector Google / Android 接口默认 `200` 次。
+- `TESTFLYING_CONNECTOR_GOOGLE_RATE_LIMIT_WINDOW_SECONDS`：connector Google / Android 限流窗口默认 `60` 秒。
+- `TESTFLYING_CONNECTOR_APPLE_RATE_LIMIT_FALLBACK_MAX_REQUESTS`：connector 未拿到 Apple `X-Rate-Limit` 前的 fallback，默认 `2880` 次。
+- `TESTFLYING_CONNECTOR_APPLE_RATE_LIMIT_WINDOW_SECONDS`：connector Apple fallback 窗口默认 `3600` 秒。
+- `TESTFLYING_CONNECTOR_APPLE_RATE_LIMIT_SAFETY_RATIO`：connector 读取 Apple `user-hour-lim` 后使用的安全比例，默认 `0.8`。
 
 这些公开 URL 会在上传时写入构建制品记录。修改环境变量后，已经上传过的构建不会自动改 URL；需要重新上传包，或者用 SQL 替换 `artifacts.download_url`、`artifacts.manifest_url` 和 `artifacts.install_url` 里的旧域名。
 
@@ -193,13 +198,14 @@ open http://localhost:8000/admin
 1. 进入 `开发者账号`。
 2. 新增或编辑开发者账号。
 3. 打开某个账号详情，配置该账号的 connector 地址和调用 token。若已配置 `TESTFLYING_CONNECTOR_BASE_URL_TEMPLATE`，connector 地址可以留空，由后台按账号 ID 自动生成。
-4. 上传新构建时直接选择账号，或者在账号详情里绑定已有 App。
-5. 在账号下维护 App 的 `store_app_id` / `store_package_name`。
-6. 进入 `商店元数据` 或 `管理版本说明`。
-7. 页面进入时自动检查目标商店版本是否存在、是否可编辑。
-8. 商店元数据页会从 connector 拉取支持语言；没有翻译时默认用当前语言内容填充。
-9. 5 分钟内相同账号、App、平台、版本、语言和操作返回同一个预检查状态。
-10. `canSync=true` 时可以手动同步草稿。
+4. 账号详情页会自动检查 connector，也可以手动点击 `检查连接`。
+5. 上传新构建时直接选择账号，或者在账号详情里绑定已有 App。
+6. 在账号下维护 App 的商店标识；iOS 只填 Apple App ID，Android 只填 package。
+7. 进入 `商店元数据` 或 `管理版本说明`。
+8. 页面进入时自动检查目标商店版本是否存在、是否可编辑。
+9. 商店元数据页会从 connector 拉取支持语言；没有翻译时默认用当前语言内容填充。
+10. 5 分钟内相同账号、App、平台、版本、语言和操作返回同一个预检查状态。
+11. `canSync=true` 时可以手动同步草稿。
 
 运行测试：
 

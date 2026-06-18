@@ -12,6 +12,7 @@ from testflying_connector.models import (
     SyncRunRequest,
     SyncRunResponse,
 )
+from testflying_connector.rate_limit import SlidingWindowRateLimiter, StoreRateLimitPolicy
 
 app = FastAPI(
     title="testflying-connector",
@@ -19,6 +20,8 @@ app = FastAPI(
     description="Account-scoped store sync connector for testflying-server.",
 )
 settings = Settings.from_environment()
+rate_limiter = SlidingWindowRateLimiter()
+rate_limit_policy = StoreRateLimitPolicy(settings)
 
 
 def require_token(authorization: str = Header(default="")) -> None:
@@ -38,6 +41,16 @@ def validate_account(developer_account_id: str) -> None:
         )
 
 
+def enforce_rate_limit(platform: str) -> None:
+    decision = rate_limiter.check(rate_limit_policy.rule_for_platform(platform))
+    if not decision.allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="connector rate limit exceeded",
+            headers={"Retry-After": str(decision.retry_after)},
+        )
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {
@@ -49,6 +62,7 @@ def health() -> dict[str, str]:
 @app.post("/v1/preflight", response_model=PreflightResponse, dependencies=[Depends(require_token)])
 def preflight(payload: PreflightRequest) -> PreflightResponse:
     validate_account(payload.developer_account_id)
+    enforce_rate_limit(payload.platform)
     operation_label = _operation_label(payload.operation)
     if not payload.version or "missing" in payload.version.lower():
         return PreflightResponse(
@@ -88,6 +102,7 @@ def supported_locales(
     version: str = "",
 ) -> SupportedLocalesResponse:
     validate_account(developer_account_id)
+    enforce_rate_limit(platform)
     locales = ["zh-Hans", "en-US", "ja", "ko"] if platform == "ios" else ["zh-Hans", "en-US"]
     return SupportedLocalesResponse(locales=locales)
 
@@ -95,6 +110,7 @@ def supported_locales(
 @app.post("/v1/sync-runs", response_model=SyncRunResponse, dependencies=[Depends(require_token)])
 def create_sync_run(payload: SyncRunRequest) -> SyncRunResponse:
     validate_account(payload.developer_account_id)
+    enforce_rate_limit(payload.platform)
     if payload.operation == "update_app_metadata":
         if payload.metadata is None or not payload.metadata.title.strip():
             response = SyncRunResponse(

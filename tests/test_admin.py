@@ -166,6 +166,7 @@ def test_admin_developer_account_detail_renders_store_sync_entry(
     assert response.status_code == 200
     assert "当前开发者账号" in response.text
     assert "Internal Store Connector" in response.text
+    assert "检查连接" in response.text
     assert "Aurora Mobile" in response.text
     assert "商店元数据" in response.text
     assert "管理版本说明" in response.text
@@ -302,7 +303,6 @@ def test_admin_account_detail_can_bind_update_and_unbind_app(
         f"/admin/developer-accounts/account-apple-enterprise/apps/{app_id}/settings",
         headers=_admin_headers(),
         data={
-            "storeAppId": "9876543210",
             "storePackageName": "com.example.autoparse.store",
         },
     )
@@ -311,7 +311,7 @@ def test_admin_account_detail_can_bind_update_and_unbind_app(
     assert app is not None
     assert settings_response.status_code == 200
     assert "商店标识已保存" in settings_response.text
-    assert app.store_app_id == "9876543210"
+    assert app.store_app_id is None
     assert app.store_package_name == "com.example.autoparse.store"
 
     unbind_response = client.post(
@@ -325,6 +325,52 @@ def test_admin_account_detail_can_bind_update_and_unbind_app(
     assert "App 已解绑" in unbind_response.text
     assert app.developer_account_id is None
     assert app.store_app_id is None
+
+
+def test_admin_rejects_store_identifier_for_wrong_platform(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+
+    ios_response = client.post(
+        "/admin/developer-accounts/account-apple-enterprise/apps/app-aurora-ios/settings",
+        headers=_admin_headers(),
+        data={
+            "storePackageName": "com.example.ios.invalid",
+        },
+    )
+    android_upload = client.post(
+        "/admin/uploads",
+        headers=_admin_headers(),
+        data={
+            "platform": "android",
+            "environment": "development",
+            "changelog": "待绑定 App",
+        },
+        files={
+            "file": (
+                "admin.apk",
+                make_android_apk_bytes(),
+                "application/vnd.android.package-archive",
+            )
+        },
+    )
+    android_app = db_session.query(App).filter_by(bundle_identifier="com.example.autoparse").one()
+    android_bind_response = client.post(
+        "/admin/developer-accounts/account-apple-enterprise/apps",
+        headers=_admin_headers(),
+        data={
+            "appId": android_app.id,
+            "storeAppId": "1234567890",
+        },
+    )
+
+    assert android_upload.status_code == 200
+    assert ios_response.status_code == 422
+    assert "iOS App 只能填写 Apple App ID" in ios_response.text
+    assert android_bind_response.status_code == 422
+    assert "Android App 只能填写 package" in android_bind_response.text
 
 
 def test_admin_can_update_connector_settings(
@@ -347,6 +393,50 @@ def test_admin_can_update_connector_settings(
     assert "Connector 已保存" in response.text
     assert "Account A Connector" in response.text
     assert "http://connector-a:8100" in response.text
+    assert db_session.query(StoreConnector).count() == 1
+
+
+def test_admin_account_detail_auto_checks_connector(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+    connector = db_session.query(StoreConnector).one()
+    connector.status = "unknown"
+    connector.last_checked_at = None
+    db_session.commit()
+
+    response = client.get(
+        "/admin/developer-accounts/account-apple-enterprise",
+        headers=_admin_headers(),
+    )
+
+    db_session.refresh(connector)
+    assert response.status_code == 200
+    assert connector.status == "ok"
+    assert connector.last_checked_at is not None
+
+
+def test_admin_can_check_connector_manually(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+    connector = db_session.query(StoreConnector).one()
+    connector.status = "unknown"
+    connector.last_checked_at = None
+    db_session.commit()
+
+    response = client.post(
+        "/admin/developer-accounts/account-apple-enterprise/connector/check",
+        headers=_admin_headers(),
+    )
+
+    db_session.refresh(connector)
+    assert response.status_code == 200
+    assert "Connector 连接正常" in response.text
+    assert connector.status == "ok"
+    assert connector.last_checked_at is not None
 
 
 def test_admin_can_generate_connector_url_from_account_template(

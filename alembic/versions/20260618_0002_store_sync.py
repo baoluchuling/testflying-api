@@ -11,17 +11,17 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("apps", sa.Column("developer_account_id", sa.String(length=80), nullable=True))
-    op.add_column("apps", sa.Column("store_app_id", sa.String(length=120), nullable=True))
-    op.add_column("apps", sa.Column("store_package_name", sa.String(length=180), nullable=True))
-    op.create_foreign_key(
-        "fk_apps_developer_account_id",
-        "apps",
-        "developer_accounts",
-        ["developer_account_id"],
-        ["id"],
-        ondelete="SET NULL",
-    )
+    with op.batch_alter_table("apps") as batch_op:
+        batch_op.add_column(sa.Column("developer_account_id", sa.String(length=80), nullable=True))
+        batch_op.add_column(sa.Column("store_app_id", sa.String(length=120), nullable=True))
+        batch_op.add_column(sa.Column("store_package_name", sa.String(length=180), nullable=True))
+        batch_op.create_foreign_key(
+            "fk_apps_developer_account_id",
+            "developer_accounts",
+            ["developer_account_id"],
+            ["id"],
+            ondelete="SET NULL",
+        )
 
     op.create_table(
         "store_connectors",
@@ -159,7 +159,8 @@ def downgrade() -> None:
     op.drop_table("store_preflight_checks")
     op.drop_table("store_release_note_drafts")
     op.drop_table("store_connectors")
-    op.drop_constraint("fk_apps_developer_account_id", "apps", type_="foreignkey")
-    op.drop_column("apps", "store_package_name")
-    op.drop_column("apps", "store_app_id")
-    op.drop_column("apps", "developer_account_id")
+    with op.batch_alter_table("apps") as batch_op:
+        batch_op.drop_constraint("fk_apps_developer_account_id", type_="foreignkey")
+        batch_op.drop_column("store_package_name")
+        batch_op.drop_column("store_app_id")
+        batch_op.drop_column("developer_account_id")

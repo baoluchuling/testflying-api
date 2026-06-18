@@ -104,3 +104,31 @@ def test_upload_can_attach_new_app_to_developer_account(
     assert app is not None
     assert app.developer_account_id == "account-apple-enterprise"
     assert app.store_package_name == "com.example.autoparse"
+
+
+def test_upload_rejects_wrong_store_identifier_for_android(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+
+    response = client.post(
+        "/v1/test-distribution/uploads",
+        data={
+            "platform": "android",
+            "environment": "development",
+            "developerAccountId": "account-apple-enterprise",
+            "storeAppId": "1234567890",
+            "changelog": "带错误商店标识上传",
+        },
+        files={
+            "file": (
+                "app.apk",
+                make_android_apk_bytes(),
+                "application/vnd.android.package-archive",
+            )
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["message"] == "Android App 只能填写 package，不能填写 Apple App ID。"

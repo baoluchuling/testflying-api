@@ -57,12 +57,28 @@ SessionDep = Annotated[Session, Depends(get_db_session)]
 AdminDep = Annotated[None, Depends(require_admin)]
 CONNECTOR_AUTO_CHECK_TTL = timedelta(minutes=5)
 
+
+def preflight_title_label(preflight: object | None) -> str:
+    return _preflight_copy(preflight)["title"]
+
+
+def preflight_summary_label(preflight: object | None) -> str:
+    return _preflight_copy(preflight)["summary"]
+
+
+def preflight_action_label(preflight: object | None) -> str:
+    return _preflight_copy(preflight)["action"]
+
+
 templates = Jinja2Templates(directory=str(Path(__file__).parents[1] / "templates"))
 templates.env.filters["datetime"] = format_datetime
 templates.env.filters["size"] = format_size
 templates.env.filters["environment"] = environment_label
 templates.env.filters["platform"] = platform_label
 templates.env.filters["account_status"] = account_status_label
+templates.env.filters["preflight_title"] = preflight_title_label
+templates.env.filters["preflight_summary"] = preflight_summary_label
+templates.env.filters["preflight_action"] = preflight_action_label
 
 
 @router.get("", response_class=HTMLResponse)
@@ -986,3 +1002,50 @@ def _store_identifier_label(app: App | None) -> str:
     if app.platform == "android":
         return app.store_package_name or app.bundle_identifier
     return app.store_app_id or "需手动填写 Apple App ID"
+
+
+def _preflight_copy(preflight: object | None) -> dict[str, str]:
+    if preflight is None:
+        return {
+            "title": "等待检查",
+            "summary": "请先确认 App 和目标版本信息完整。",
+            "action": "填写目标版本后，系统会自动检查商店状态。",
+        }
+    if bool(getattr(preflight, "can_sync", False)):
+        return {
+            "title": "商店状态正常",
+            "summary": "目标版本已存在且允许修改，可以同步到商店。",
+            "action": "确认草稿内容后即可提交同步。",
+        }
+
+    reason_code = str(getattr(preflight, "reason_code", "") or "")
+    blocked_copy = {
+        "store_version_missing": {
+            "title": "目标版本还没有创建",
+            "summary": "当前商店后台还没有对应版本，所以暂时不能同步。",
+            "action": "请先在商店后台创建这个版本，再回到这里同步。",
+        },
+        "connector_missing": {
+            "title": "Connector 还未配置",
+            "summary": "当前开发者账号还没有可用的商店连接配置。",
+            "action": "请先回到账号详情配置 Connector。",
+        },
+        "connector_error": {
+            "title": "暂时无法连接商店",
+            "summary": "系统没有拿到可靠的商店状态，暂时不会提交同步。",
+            "action": "请检查 Connector 服务、账号凭据和网络后重试。",
+        },
+        "app_not_found": {
+            "title": "App 未关联到当前账号",
+            "summary": "当前账号下没有找到这个 App，不能执行商店同步。",
+            "action": "请先把 App 绑定到这个开发者账号。",
+        },
+    }
+    return blocked_copy.get(
+        reason_code,
+        {
+            "title": "当前状态暂不能同步",
+            "summary": "系统检查到商店状态还不满足同步条件。",
+            "action": "请确认商店版本状态、账号配置和 Connector 状态后重试。",
+        },
+    )

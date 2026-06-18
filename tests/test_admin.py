@@ -532,10 +532,30 @@ def test_admin_release_notes_page_runs_cached_preflight(
     checks = db_session.query(StorePreflightCheck).all()
     assert first_response.status_code == 200
     assert second_response.status_code == 200
-    assert "可以同步" in first_response.text
+    assert "商店状态正常" in first_response.text
+    assert "目标版本已存在且允许修改，可以同步到商店。" in first_response.text
     assert "5 分钟缓存" in first_response.text
     assert "缓存" in second_response.text
     assert len(checks) == 1
+
+
+def test_admin_preflight_uses_friendly_blocked_copy(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+
+    response = client.get(
+        "/admin/developer-accounts/account-apple-enterprise"
+        "/apps/app-aurora-ios/release-notes?version=missing-2.4.0",
+        headers=_admin_headers(),
+    )
+
+    assert response.status_code == 200
+    assert "目标版本还没有创建" in response.text
+    assert "请先在商店后台创建这个版本，再回到这里同步。" in response.text
+    assert "store_version_missing" in response.text
+    assert "商店中还没有创建 missing-2.4.0" not in response.text
 
 
 def test_admin_release_notes_save_and_sync_creates_records(

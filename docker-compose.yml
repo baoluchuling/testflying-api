@@ -59,7 +59,7 @@ services:
       MINIO_ROOT_PASSWORD: testflying-secret
     ports:
       - "9000:9000"
-      - "9001:9001"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
     volumes:
       - minio-data:/data
     restart: unless-stopped

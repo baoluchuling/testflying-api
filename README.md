@@ -98,6 +98,12 @@ MinIO 控制台：
 http://localhost:9001
 ```
 
+如果服务器上 `9001` 已被占用，可以通过 `.env` 覆盖控制台端口：
+
+```bash
+MINIO_CONSOLE_PORT=8082
+```
+
 本地默认账号仅用于开发和内网试部署：
 
 ```text

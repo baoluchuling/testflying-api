@@ -487,6 +487,30 @@
         )).join('');
       }
 
+      function syncCollapsibleLocaleGroups(form, activeLocale) {
+        form.querySelectorAll('[data-locale-group]').forEach((group) => {
+          const expanded = group.dataset.expanded === 'true';
+          group.classList.toggle('is-expanded', expanded);
+          group.querySelectorAll('[data-current-locale-label]').forEach((label) => {
+            label.textContent = activeLocale;
+          });
+          group.querySelectorAll('[data-locale-row]').forEach((row) => {
+            row.hidden = !expanded && row.dataset.locale !== activeLocale;
+          });
+          const toggle = group.querySelector('[data-locale-group-toggle]');
+          if (toggle) {
+            toggle.textContent = expanded ? '收起多语言' : '展开多语言';
+            toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+          }
+        });
+      }
+
+      function syncVisibleRequiredFields(form) {
+        form.querySelectorAll('[data-required-field="true"]').forEach((input) => {
+          input.required = !input.disabled && !input.closest('[hidden]');
+        });
+      }
+
       function syncMetadataEditor(root = document) {
         root.querySelectorAll('[data-metadata-form]').forEach((form) => {
           const fieldView = form.querySelector('[data-field-view]');
@@ -498,6 +522,7 @@
           form.querySelector('[data-metadata-editor]')?.setAttribute('data-mode', activeMode);
           if (fieldView) fieldView.hidden = activeMode !== 'field';
           if (languageView) languageView.hidden = activeMode !== 'language';
+          syncCollapsibleLocaleGroups(form, activeLocale);
 
           fieldView?.querySelectorAll('input, textarea, select').forEach((input) => {
             input.disabled = activeMode !== 'field';
@@ -509,6 +534,7 @@
               input.disabled = activeMode !== 'language' || !isActiveBlock;
             });
           });
+          syncVisibleRequiredFields(form);
           syncContentSetControls(form);
         });
       }
@@ -669,6 +695,16 @@
             item.classList.toggle('is-active', item === metadataMode);
           });
           syncMetadataEditor();
+          return;
+        }
+
+        const localeToggle = event.target.closest('[data-locale-group-toggle]');
+        if (localeToggle) {
+          const group = localeToggle.closest('[data-locale-group]');
+          if (group) {
+            group.dataset.expanded = group.dataset.expanded === 'true' ? 'false' : 'true';
+            syncMetadataEditor();
+          }
           return;
         }
 

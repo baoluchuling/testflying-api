@@ -415,6 +415,25 @@ textarea {
   color: #111827;
 }
 
+.metadata-field-title {
+  display: grid;
+  gap: 3px;
+}
+
+.metadata-field-title strong {
+  color: var(--text);
+}
+
+.metadata-field-title span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 780;
+}
+
+.metadata-field-title b {
+  color: #344054;
+}
+
 .store-metadata-panel {
   min-width: 0;
 }
@@ -478,6 +497,18 @@ textarea {
   color: white;
 }
 
+.ghost-button.subtle {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+.ghost-button.subtle:hover {
+  border-color: var(--line);
+  background: #f8fafc;
+  color: var(--text);
+}
+
 .language-picker {
   min-width: 150px;
   font-size: 12px;
@@ -522,6 +553,31 @@ textarea {
   background: #fbfdff;
 }
 
+.store-image-section-header {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #dbe3ef;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.store-image-section-header .subsection-title {
+  padding-top: 0;
+}
+
+.store-image-section-header > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.store-image-section-header > div:first-child > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 760;
+  line-height: 1.45;
+}
+
 .store-image-bulk-drop {
   display: grid;
   gap: 10px;
@@ -529,6 +585,11 @@ textarea {
   border: 1px dashed #9fb9e8;
   border-radius: 8px;
   background: #f5f9ff;
+}
+
+.store-image-bulk-drop.compact-bulk {
+  padding: 12px;
+  background: white;
 }
 
 .store-image-bulk-drop input[type="file"],
@@ -614,6 +675,10 @@ textarea {
   display: grid;
   grid-template-columns: 1fr;
   gap: 10px;
+}
+
+.metadata-locale-input[hidden] {
+  display: none;
 }
 
 .metadata-locale-input {

@@ -389,8 +389,7 @@ def check_connector_page(
             _context(
                 request,
                 active="developer-accounts",
-                success=result.message if result.ok else None,
-                error=None if result.ok else result.message,
+                connector_check_result=result,
                 **context,
             ),
             status_code=200 if result.ok else 502,
@@ -401,7 +400,15 @@ def check_connector_page(
         return templates.TemplateResponse(
             request,
             "admin/account_detail.html",
-            _context(request, active="developer-accounts", error=error.message, **context),
+            _context(
+                request,
+                active="developer-accounts",
+                connector_check_result={
+                    "ok": False,
+                    "message": error.message,
+                },
+                **context,
+            ),
             status_code=error.status_code,
         )
 

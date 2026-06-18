@@ -177,6 +177,8 @@ def test_admin_developer_account_detail_renders_store_sync_entry(
     assert "管理版本说明" in response.text
     assert "data-connector-edit" in response.text
     assert "data-connector-form" in response.text
+    assert "data-connector-check-result" in response.text
+    assert "connector-inline-status" in response.text
     assert "hidden" in response.text
 
 
@@ -443,6 +445,9 @@ def test_admin_can_check_connector_manually(
     db_session.refresh(connector)
     assert response.status_code == 200
     assert "Connector 连接正常" in response.text
+    assert "data-connector-check-result" in response.text
+    assert "connector-inline-status success" in response.text
+    assert "alert success" not in response.text
     assert connector.status == "ok"
     assert connector.last_checked_at is not None
 

@@ -4,6 +4,8 @@
   {% set connector_state = connector.status if connector else "missing" %}
   {% set status_tone = "success" if account.status == "ok" else "danger" if account.status in ["expired", "disabled"] else "warning" %}
   {% set connector_tone = "success" if connector_state == "ok" else "danger" %}
+  {% set connector_check_result = connector_check_result if connector_check_result is defined else none %}
+  {% set connector_check_tone = "success" if connector_check_result and connector_check_result.ok else "danger" if connector_check_result else connector_tone %}
 
   <div class="account-breadcrumb">
     <a href="/admin/developer-accounts">开发者账号</a>
@@ -81,9 +83,20 @@
           <div class="connector-panel-actions">
             {% if connector %}
               <button class="ghost-button" type="button" data-connector-edit>编辑配置</button>
-              <form action="/admin/developer-accounts/{{ account.id }}/connector/check" method="post">
-                <button class="ghost-button" type="submit">检查连接</button>
-              </form>
+              <div class="connector-check-cluster">
+                <form action="/admin/developer-accounts/{{ account.id }}/connector/check" method="post">
+                  <button class="ghost-button" type="submit">检查连接</button>
+                </form>
+                <span class="connector-inline-status {{ connector_check_tone }}" data-connector-check-result>
+                  {% if connector_check_result %}
+                    {{ connector_check_result.message }}
+                  {% elif connector.status == "ok" %}
+                    连接正常
+                  {% else %}
+                    {{ connector.status }}
+                  {% endif %}
+                </span>
+              </div>
             {% endif %}
           </div>
         </div>

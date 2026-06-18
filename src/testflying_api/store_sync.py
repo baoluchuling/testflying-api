@@ -446,23 +446,15 @@ def save_app_metadata_draft(
     locale: str,
     content_set_id: str = DEFAULT_CONTENT_SET_ID,
     content_set_name: str = DEFAULT_CONTENT_SET_NAME,
-    title: str,
-    subtitle: str,
     keywords: str,
     promotional_text: str,
     description: str,
-    privacy_policy_url: str,
-    support_url: str,
-    marketing_url: str,
     store_images: dict[str, object] | None = None,
 ) -> StoreAppMetadataDraft:
     app = scoped_app(session, account_id, app_id)
     if app is None:
         raise ApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
-    normalized_title = title.strip()
     normalized_description = description.strip()
-    if not normalized_title:
-        raise ApiError("invalid_metadata", "应用标题不能为空", status_code=422)
     if not normalized_description:
         raise ApiError("invalid_metadata", "应用描述不能为空", status_code=422)
     normalized_content_set_id = _normalize_content_set_id(content_set_id)
@@ -483,14 +475,14 @@ def save_app_metadata_draft(
     values = {
         "content_set_id": normalized_content_set_id,
         "content_set_name": normalized_content_set_name,
-        "title": normalized_title,
-        "subtitle": subtitle.strip(),
+        "title": app.name,
+        "subtitle": "",
         "keywords": keywords.strip(),
         "promotional_text": promotional_text.strip(),
         "description": normalized_description,
-        "privacy_policy_url": privacy_policy_url.strip(),
-        "support_url": support_url.strip(),
-        "marketing_url": marketing_url.strip(),
+        "privacy_policy_url": "",
+        "support_url": "",
+        "marketing_url": "",
         "store_images_json": _normalize_store_images(store_images),
     }
     if draft is None:
@@ -709,14 +701,9 @@ def sync_app_metadata(
     locale: str,
     content_set_id: str = DEFAULT_CONTENT_SET_ID,
     content_set_name: str = DEFAULT_CONTENT_SET_NAME,
-    title: str,
-    subtitle: str,
     keywords: str,
     promotional_text: str,
     description: str,
-    privacy_policy_url: str,
-    support_url: str,
-    marketing_url: str,
     actor: str,
     store_images: dict[str, object] | None = None,
     client: StoreConnectorClient | None = None,
@@ -735,14 +722,9 @@ def sync_app_metadata(
         locale=locale,
         content_set_id=content_set_id,
         content_set_name=content_set_name,
-        title=title,
-        subtitle=subtitle,
         keywords=keywords,
         promotional_text=promotional_text,
         description=description,
-        privacy_policy_url=privacy_policy_url,
-        support_url=support_url,
-        marketing_url=marketing_url,
         store_images=store_images,
     )
     preflight = get_or_refresh_preflight(
@@ -912,25 +894,18 @@ def _metadata_payload(draft: StoreAppMetadataDraft) -> dict[str, object]:
             "id": draft.content_set_id,
             "name": draft.content_set_name,
         },
-        "title": draft.title,
-        "subtitle": draft.subtitle,
         "keywords": draft.keywords,
         "promotionalText": draft.promotional_text,
         "description": draft.description,
-        "privacyPolicyUrl": draft.privacy_policy_url,
-        "supportUrl": draft.support_url,
-        "marketingUrl": draft.marketing_url,
         "storeImages": draft.store_images_json,
     }
 
 
 def _normalize_store_images(raw_images: dict[str, object] | None) -> dict[str, object]:
     return {
-        "app_icon_url": _normalize_store_image_slot(raw_images, "app_icon_url"),
         "feature_graphic_url": _normalize_store_image_slot(raw_images, "feature_graphic_url"),
         "phone_screenshots": _normalize_store_image_slot(raw_images, "phone_screenshots"),
         "tablet_screenshots": _normalize_store_image_slot(raw_images, "tablet_screenshots"),
-        "note": str((raw_images or {}).get("note") or "").strip(),
     }
 
 

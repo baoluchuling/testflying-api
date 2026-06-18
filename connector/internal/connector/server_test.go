@@ -154,31 +154,13 @@ func TestConnectorMetadataSyncRunSucceeds(t *testing.T) {
 			"id":   "summer-launch",
 			"name": "暑期活动投放",
 		},
-		"title":            "Aurora Mobile",
-		"subtitle":         "内部测试分发",
-		"keywords":         "internal,test",
-		"promotionalText":  "更稳定的测试体验。",
-		"description":      "用于内部测试包分发和回归验证。",
-		"privacyPolicyUrl": "https://example.test/privacy",
-		"supportUrl":       "https://example.test/support",
-		"marketingUrl":     "",
+		"keywords":        "internal,test",
+		"promotionalText": "更稳定的测试体验。",
+		"description":     "用于内部测试包分发和回归验证。",
 		"storeImages": map[string]any{
-			"app_icon_url": map[string]any{
-				"urls": []string{},
-				"assets": []map[string]any{
-					{
-						"fileName":    "icon.png",
-						"contentType": "image/png",
-						"sizeBytes":   1234,
-						"storageKey":  "store-assets/account/app/default/icon.png",
-						"downloadUrl": "https://dist.example.test/icon.png",
-					},
-				},
-			},
 			"feature_graphic_url": map[string]any{"urls": []string{}, "assets": []any{}},
 			"phone_screenshots":   map[string]any{"urls": []string{}, "assets": []any{}},
 			"tablet_screenshots":  map[string]any{"urls": []string{}, "assets": []any{}},
-			"note":                "",
 		},
 	}
 

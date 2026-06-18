@@ -376,7 +376,6 @@
 
       function detectStoreImageSlot(path, fallbackSlot) {
         const value = normalizeStoreImageToken(path);
-        if (/(app-icon|appicon|icon|logo|图标)/.test(value)) return 'app_icon_url';
         if (/(feature|promo|banner|marketing|hero|宣传|横图)/.test(value)) return 'feature_graphic_url';
         if (/(tablet|ipad|平板)/.test(value)) return 'tablet_screenshots';
         if (/(phone|screenshot|screen|iphone|android|截图|手机)/.test(value)) return 'phone_screenshots';

@@ -325,14 +325,9 @@ def _store_metadata_defaults(
     draft: object | None,
 ) -> dict[str, str]:
     return {
-        "title": draft.title if draft else (app.name if app else ""),
-        "subtitle": draft.subtitle if draft else "",
         "keywords": draft.keywords if draft else "",
         "promotional_text": draft.promotional_text if draft else "",
         "description": draft.description if draft else (latest_build.note if latest_build else ""),
-        "privacy_policy_url": draft.privacy_policy_url if draft else "",
-        "support_url": draft.support_url if draft else "",
-        "marketing_url": draft.marketing_url if draft else "",
     }
 
 
@@ -351,18 +346,11 @@ def _localized_metadata(
             {
                 "locale": locale,
                 "is_source": locale == source_locale,
-                "title": draft.title if draft else defaults["title"],
-                "subtitle": draft.subtitle if draft else defaults["subtitle"],
                 "keywords": draft.keywords if draft else defaults["keywords"],
                 "promotional_text": (
                     draft.promotional_text if draft else defaults["promotional_text"]
                 ),
                 "description": draft.description if draft else defaults["description"],
-                "privacy_policy_url": (
-                    draft.privacy_policy_url if draft else defaults["privacy_policy_url"]
-                ),
-                "support_url": draft.support_url if draft else defaults["support_url"],
-                "marketing_url": draft.marketing_url if draft else defaults["marketing_url"],
                 "store_images": _store_images(draft),
             }
         )
@@ -371,14 +359,9 @@ def _localized_metadata(
 
 def _empty_metadata() -> dict[str, str]:
     return {
-        "title": "",
-        "subtitle": "",
         "keywords": "",
         "promotional_text": "",
         "description": "",
-        "privacy_policy_url": "",
-        "support_url": "",
-        "marketing_url": "",
     }
 
 
@@ -387,19 +370,16 @@ def _store_images(draft: object | None) -> dict[str, str]:
     if not isinstance(raw_images, dict):
         return _empty_store_images()
     images = _empty_store_images()
-    for key in ("app_icon_url", "feature_graphic_url", "phone_screenshots", "tablet_screenshots"):
+    for key in ("feature_graphic_url", "phone_screenshots", "tablet_screenshots"):
         images[key] = _store_image_slot(raw_images.get(key))
-    images["note"] = str(raw_images.get("note") or "").strip()
     return images
 
 
 def _empty_store_images() -> dict[str, object]:
     return {
-        "app_icon_url": _store_image_slot(None),
         "feature_graphic_url": _store_image_slot(None),
         "phone_screenshots": _store_image_slot(None),
         "tablet_screenshots": _store_image_slot(None),
-        "note": "",
     }
 
 
@@ -469,22 +449,6 @@ def _source_locale(supported_locales: list[str]) -> str:
 def _metadata_fields() -> list[dict[str, object]]:
     return [
         {
-            "key": "title",
-            "name": "title",
-            "label": "标题",
-            "type": "input",
-            "required": True,
-            "placeholder": "App name",
-        },
-        {
-            "key": "subtitle",
-            "name": "subtitle",
-            "label": "副标题",
-            "type": "input",
-            "required": False,
-            "placeholder": "Short subtitle",
-        },
-        {
             "key": "keywords",
             "name": "keywords",
             "label": "关键词",
@@ -510,30 +474,6 @@ def _metadata_fields() -> list[dict[str, object]]:
             "required": True,
             "placeholder": "App description",
         },
-        {
-            "key": "privacy_policy_url",
-            "name": "privacyPolicyUrl",
-            "label": "隐私政策 URL",
-            "type": "input",
-            "required": False,
-            "placeholder": "https://example.com/privacy",
-        },
-        {
-            "key": "support_url",
-            "name": "supportUrl",
-            "label": "支持 URL",
-            "type": "input",
-            "required": False,
-            "placeholder": "https://example.com/support",
-        },
-        {
-            "key": "marketing_url",
-            "name": "marketingUrl",
-            "label": "营销 URL",
-            "type": "input",
-            "required": False,
-            "placeholder": "https://example.com",
-        },
     ]
 
 
@@ -544,15 +484,6 @@ def _store_image_slots(platform: str) -> list[dict[str, object]]:
         feature_label = "Feature Graphic"
         feature_placeholder = "https://example.com/google-play/feature-graphic.png"
     return [
-        {
-            "key": "app_icon_url",
-            "name": "appIconUrl",
-            "label": "App 图标",
-            "type": "input",
-            "rows": 1,
-            "placeholder": "https://example.com/store/icon.png",
-            "multiple": False,
-        },
         {
             "key": "feature_graphic_url",
             "name": "featureGraphicUrl",
@@ -579,14 +510,6 @@ def _store_image_slots(platform: str) -> list[dict[str, object]]:
             "rows": 3,
             "placeholder": "一行一个图片 URL",
             "multiple": True,
-        },
-        {
-            "key": "note",
-            "name": "storeImageNote",
-            "label": "素材备注",
-            "type": "textarea",
-            "rows": 2,
-            "placeholder": "尺寸、状态、待替换说明",
         },
     ]
 

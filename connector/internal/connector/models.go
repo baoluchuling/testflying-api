@@ -29,16 +29,11 @@ type SupportedLocalesResponse struct {
 }
 
 type StoreMetadata struct {
-	ContentSet       *ContentSet  `json:"contentSet"`
-	Title            string       `json:"title"`
-	Subtitle         string       `json:"subtitle"`
-	Keywords         string       `json:"keywords"`
-	PromotionalText  string       `json:"promotionalText"`
-	Description      string       `json:"description"`
-	PrivacyPolicyURL string       `json:"privacyPolicyUrl"`
-	SupportURL       string       `json:"supportUrl"`
-	MarketingURL     string       `json:"marketingUrl"`
-	StoreImages      *StoreImages `json:"storeImages"`
+	ContentSet      *ContentSet  `json:"contentSet"`
+	Keywords        string       `json:"keywords"`
+	PromotionalText string       `json:"promotionalText"`
+	Description     string       `json:"description"`
+	StoreImages     *StoreImages `json:"storeImages"`
 }
 
 type ContentSet struct {
@@ -47,11 +42,9 @@ type ContentSet struct {
 }
 
 type StoreImages struct {
-	AppIconURL        StoreImageSlot `json:"app_icon_url"`
 	FeatureGraphicURL StoreImageSlot `json:"feature_graphic_url"`
 	PhoneScreenshots  StoreImageSlot `json:"phone_screenshots"`
 	TabletScreenshots StoreImageSlot `json:"tablet_screenshots"`
-	Note              string         `json:"note"`
 }
 
 type StoreImageSlot struct {

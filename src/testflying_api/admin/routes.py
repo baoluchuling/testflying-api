@@ -736,19 +736,12 @@ async def save_store_metadata_page(
         metadata_rows = _metadata_rows_from_form(
             current_locale=locale,
             locales=_form_values(form, "locales"),
-            title=_form_values(form, "title"),
-            subtitle=_form_values(form, "subtitle"),
             keywords=_form_values(form, "keywords"),
             promotional_text=_form_values(form, "promotionalText"),
             description=_form_values(form, "description"),
-            privacy_policy_url=_form_values(form, "privacyPolicyUrl"),
-            support_url=_form_values(form, "supportUrl"),
-            marketing_url=_form_values(form, "marketingUrl"),
-            app_icon_url=_form_values(form, "appIconUrl"),
             feature_graphic_url=_form_values(form, "featureGraphicUrl"),
             phone_screenshots=_form_values(form, "phoneScreenshots"),
             tablet_screenshots=_form_values(form, "tabletScreenshots"),
-            store_image_note=_form_values(form, "storeImageNote"),
             store_image_assets_by_locale=store_image_assets,
         )
         for row in metadata_rows:
@@ -760,14 +753,9 @@ async def save_store_metadata_page(
                 locale=row["locale"],
                 content_set_id=content_set_id,
                 content_set_name=content_set_name,
-                title=row["title"],
-                subtitle=row["subtitle"],
                 keywords=row["keywords"],
                 promotional_text=row["promotional_text"],
                 description=row["description"],
-                privacy_policy_url=row["privacy_policy_url"],
-                support_url=row["support_url"],
-                marketing_url=row["marketing_url"],
                 store_images=row["store_images"],
             )
         session.commit()
@@ -836,19 +824,12 @@ async def sync_store_metadata_page(
         metadata_rows = _metadata_rows_from_form(
             current_locale=locale,
             locales=_form_values(form, "locales"),
-            title=_form_values(form, "title"),
-            subtitle=_form_values(form, "subtitle"),
             keywords=_form_values(form, "keywords"),
             promotional_text=_form_values(form, "promotionalText"),
             description=_form_values(form, "description"),
-            privacy_policy_url=_form_values(form, "privacyPolicyUrl"),
-            support_url=_form_values(form, "supportUrl"),
-            marketing_url=_form_values(form, "marketingUrl"),
-            app_icon_url=_form_values(form, "appIconUrl"),
             feature_graphic_url=_form_values(form, "featureGraphicUrl"),
             phone_screenshots=_form_values(form, "phoneScreenshots"),
             tablet_screenshots=_form_values(form, "tabletScreenshots"),
-            store_image_note=_form_values(form, "storeImageNote"),
             store_image_assets_by_locale=store_image_assets,
         )
         sync_runs = []
@@ -862,14 +843,9 @@ async def sync_store_metadata_page(
                     locale=row["locale"],
                     content_set_id=content_set_id,
                     content_set_name=content_set_name,
-                    title=row["title"],
-                    subtitle=row["subtitle"],
                     keywords=row["keywords"],
                     promotional_text=row["promotional_text"],
                     description=row["description"],
-                    privacy_policy_url=row["privacy_policy_url"],
-                    support_url=row["support_url"],
-                    marketing_url=row["marketing_url"],
                     actor="admin",
                     store_images=row["store_images"],
                 )
@@ -1091,7 +1067,6 @@ def _safe_storage_part(value: str) -> str:
 
 def _store_image_file_slot_keys() -> set[str]:
     return {
-        "app_icon_url",
         "feature_graphic_url",
         "phone_screenshots",
         "tablet_screenshots",
@@ -1102,41 +1077,22 @@ def _metadata_rows_from_form(
     *,
     current_locale: str,
     locales: list[str] | None,
-    title: list[str] | None,
-    subtitle: list[str] | None,
     keywords: list[str] | None,
     promotional_text: list[str] | None,
     description: list[str] | None,
-    privacy_policy_url: list[str] | None,
-    support_url: list[str] | None,
-    marketing_url: list[str] | None,
-    app_icon_url: list[str] | None,
     feature_graphic_url: list[str] | None,
     phone_screenshots: list[str] | None,
     tablet_screenshots: list[str] | None,
-    store_image_note: list[str] | None,
     store_image_assets_by_locale: dict[str, dict[str, list[dict[str, object]]]] | None = None,
 ) -> list[dict[str, object]]:
     normalized_locales = _unique_non_empty(locales) or [current_locale.strip() or DEFAULT_LOCALE]
     rows = [
         {
             "locale": locale,
-            "title": _form_list_value(title, index),
-            "subtitle": _form_list_value(subtitle, index),
             "keywords": _form_list_value(keywords, index),
             "promotional_text": _form_list_value(promotional_text, index),
             "description": _form_list_value(description, index),
-            "privacy_policy_url": _form_list_value(privacy_policy_url, index),
-            "support_url": _form_list_value(support_url, index),
-            "marketing_url": _form_list_value(marketing_url, index),
             "store_images": {
-                "app_icon_url": _store_image_form_value(
-                    app_icon_url,
-                    index,
-                    locale,
-                    "app_icon_url",
-                    store_image_assets_by_locale,
-                ),
                 "feature_graphic_url": _store_image_form_value(
                     feature_graphic_url,
                     index,
@@ -1158,7 +1114,6 @@ def _metadata_rows_from_form(
                     "tablet_screenshots",
                     store_image_assets_by_locale,
                 ),
-                "note": _form_list_value(store_image_note, index),
             },
         }
         for index, locale in enumerate(normalized_locales)
@@ -1168,14 +1123,9 @@ def _metadata_rows_from_form(
         rows[0],
     )
     for row in rows:
-        row["title"] = row["title"] or base_row["title"]
-        row["subtitle"] = row["subtitle"] or base_row["subtitle"]
         row["keywords"] = row["keywords"] or base_row["keywords"]
         row["promotional_text"] = row["promotional_text"] or base_row["promotional_text"]
         row["description"] = row["description"] or base_row["description"]
-        row["privacy_policy_url"] = row["privacy_policy_url"] or base_row["privacy_policy_url"]
-        row["support_url"] = row["support_url"] or base_row["support_url"]
-        row["marketing_url"] = row["marketing_url"] or base_row["marketing_url"]
         row["store_images"] = _merge_store_images(row["store_images"], base_row["store_images"])
     return rows
 
@@ -1189,7 +1139,6 @@ def _merge_store_images(
         current = store_images.get(key)
         base = base_store_images.get(key)
         merged[key] = current if _has_store_image_value(current) else base
-    merged["note"] = store_images.get("note") or base_store_images.get("note", "")
     return merged
 
 

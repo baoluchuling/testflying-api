@@ -630,8 +630,6 @@ def test_admin_store_metadata_save_and_sync_creates_records(
         data={
             "version": "2.4.0",
             "locale": "zh-Hans",
-            "title": "Aurora Mobile",
-            "subtitle": "内部测试分发",
             "locales": ["zh-Hans", "en-US", "ja", "ko"],
             "keywords": ["internal,test", "", "internal,ja", "internal,ko"],
             "promotionalText": [
@@ -646,10 +644,6 @@ def test_admin_store_metadata_save_and_sync_creates_records(
                 "内部テスト配布と回帰検証に使います。",
                 "내부 테스트 배포와 회귀 검증에 사용합니다.",
             ],
-            "privacyPolicyUrl": "https://example.test/privacy",
-            "supportUrl": "https://example.test/support",
-            "marketingUrl": "",
-            "appIconUrl": ["https://cdn.example.test/icon.png", "", "", ""],
             "featureGraphicUrl": ["https://cdn.example.test/feature.png", "", "", ""],
             "phoneScreenshots": [
                 "https://cdn.example.test/phone-1.png\nhttps://cdn.example.test/phone-2.png",
@@ -658,7 +652,6 @@ def test_admin_store_metadata_save_and_sync_creates_records(
                 "",
             ],
             "tabletScreenshots": ["https://cdn.example.test/tablet.png", "", "", ""],
-            "storeImageNote": ["第一版素材", "", "日语截图已替换", ""],
         },
     )
 
@@ -670,15 +663,14 @@ def test_admin_store_metadata_save_and_sync_creates_records(
     zh_hans_draft = next(draft for draft in drafts if draft.locale == "zh-Hans")
     en_us_draft = next(draft for draft in drafts if draft.locale == "en-US")
     assert zh_hans_draft.title == "Aurora Mobile"
+    assert zh_hans_draft.subtitle == ""
     assert zh_hans_draft.description == "用于内部测试包分发和回归验证。"
     assert en_us_draft.keywords == "internal,test"
     assert en_us_draft.promotional_text == "更稳定的测试体验。"
     assert en_us_draft.description == "用于内部测试包分发和回归验证。"
     assert zh_hans_draft.content_set_id == "default"
     assert zh_hans_draft.content_set_name == "默认上架内容"
-    assert zh_hans_draft.store_images_json["app_icon_url"]["urls"] == [
-        "https://cdn.example.test/icon.png"
-    ]
+    assert "app_icon_url" not in zh_hans_draft.store_images_json
     assert zh_hans_draft.store_images_json["phone_screenshots"]["urls"] == [
         "https://cdn.example.test/phone-1.png",
         "https://cdn.example.test/phone-2.png",
@@ -686,7 +678,7 @@ def test_admin_store_metadata_save_and_sync_creates_records(
     assert en_us_draft.store_images_json["feature_graphic_url"]["urls"] == [
         "https://cdn.example.test/feature.png"
     ]
-    assert en_us_draft.store_images_json["note"] == "第一版素材"
+    assert "note" not in en_us_draft.store_images_json
     assert [run.operation for run in runs[-4:]] == ["update_app_metadata"] * 4
     assert {run.locale for run in runs[-4:]} == {"zh-Hans", "en-US", "ja", "ko"}
     assert {run.status for run in runs[-4:]} == {"succeeded"}
@@ -711,25 +703,14 @@ def test_admin_store_metadata_uploads_store_images_into_content_set(
             "contentSetId": "summer-launch",
             "contentSetName": "暑期活动投放",
             "locales": ["en-US"],
-            "title": ["Aurora Mobile"],
-            "subtitle": [""],
             "keywords": ["internal,test"],
             "promotionalText": [""],
             "description": ["Internal app distribution testing."],
-            "privacyPolicyUrl": [""],
-            "supportUrl": [""],
-            "marketingUrl": [""],
-            "appIconUrl": [""],
             "featureGraphicUrl": [""],
             "phoneScreenshots": [""],
             "tabletScreenshots": [""],
-            "storeImageNote": ["上传图片素材"],
         },
         files=[
-            (
-                "storeImageFiles__app_icon_url__en-US",
-                ("icon.png", b"fake-icon", "image/png"),
-            ),
             (
                 "storeImageFiles__phone_screenshots__en-US",
                 ("phone-1.png", b"fake-phone-1", "image/png"),
@@ -742,18 +723,13 @@ def test_admin_store_metadata_uploads_store_images_into_content_set(
     )
 
     draft = db_session.query(StoreAppMetadataDraft).one()
-    icon_asset = draft.store_images_json["app_icon_url"]["assets"][0]
     phone_assets = draft.store_images_json["phone_screenshots"]["assets"]
     assert response.status_code == 200
     assert "商店元数据草稿已保存 1 个语言" in response.text
     assert "暑期活动投放" in response.text
     assert draft.content_set_id == "summer-launch"
     assert draft.content_set_name == "暑期活动投放"
-    assert icon_asset["fileName"] == "icon.png"
-    assert icon_asset["downloadUrl"].endswith(
-        "/store-assets/account-apple-enterprise/app-aurora-ios/"
-        "summer-launch/2.4.0/en-US/app_icon_url/icon.png"
-    )
+    assert "app_icon_url" not in draft.store_images_json
     assert [asset["fileName"] for asset in phone_assets] == ["phone-1.png", "phone-2.png"]
 
     page = client.get(
@@ -762,7 +738,6 @@ def test_admin_store_metadata_uploads_store_images_into_content_set(
     )
     assert page.status_code == 200
     assert "暑期活动投放" in page.text
-    assert "icon.png" in page.text
     assert "phone-1.png" in page.text
 
 
@@ -793,7 +768,13 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "新建套件" in response.text
     assert "复制当前套" in response.text
     assert "商店图素材" in response.text
-    assert "App 图标" in response.text
+    assert "标题" not in response.text
+    assert "副标题" not in response.text
+    assert "隐私政策 URL" not in response.text
+    assert "支持 URL" not in response.text
+    assert "营销 URL" not in response.text
+    assert "App 图标" not in response.text
+    assert "素材备注" not in response.text
     assert "手机截图" in response.text
     assert "data-store-image-input" in response.text
     assert "data-store-image-zone" in response.text

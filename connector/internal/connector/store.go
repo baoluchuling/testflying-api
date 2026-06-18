@@ -56,8 +56,8 @@ func (g MockStoreGateway) SupportedLocales(_ context.Context, _ string, _ string
 
 func (g MockStoreGateway) SyncRun(_ context.Context, payload SyncRunRequest) (SyncRunResponse, error) {
 	if payload.Operation == "update_app_metadata" {
-		if payload.Metadata == nil || strings.TrimSpace(payload.Metadata.Title) == "" {
-			return failedSync("empty_metadata_title", "商店元数据标题不能为空。"), nil
+		if payload.Metadata == nil {
+			return failedSync("empty_metadata", "商店元数据不能为空。"), nil
 		}
 		if strings.TrimSpace(payload.Metadata.Description) == "" {
 			return failedSync("empty_metadata_description", "商店元数据描述不能为空。"), nil
@@ -219,23 +219,8 @@ func (g *LiveStoreGateway) appleSyncRun(ctx context.Context, payload SyncRunRequ
 			"description":     payload.Metadata.Description,
 			"keywords":        payload.Metadata.Keywords,
 			"promotionalText": payload.Metadata.PromotionalText,
-			"supportUrl":      payload.Metadata.SupportURL,
-			"marketingUrl":    payload.Metadata.MarketingURL,
 		}); err != nil {
 			return SyncRunResponse{}, err
-		}
-		infoLocalization, err := g.appleFindInfoLocalization(ctx, payload.App.StoreAppID, payload.Locale)
-		if err != nil {
-			return SyncRunResponse{}, err
-		}
-		if infoLocalization != nil {
-			if err := g.applePatchInfoLocalization(ctx, infoLocalization.ID, map[string]string{
-				"name":             payload.Metadata.Title,
-				"subtitle":         payload.Metadata.Subtitle,
-				"privacyPolicyUrl": payload.Metadata.PrivacyPolicyURL,
-			}); err != nil {
-				return SyncRunResponse{}, err
-			}
 		}
 		return SyncRunResponse{Status: "succeeded", Message: "商店元数据已同步。"}, nil
 	}
@@ -418,14 +403,10 @@ func (g *LiveStoreGateway) googleSyncRun(ctx context.Context, payload SyncRunReq
 	if err != nil {
 		return SyncRunResponse{}, err
 	}
-	body := map[string]string{
-		"title":            payload.Metadata.Title,
-		"shortDescription": payload.Metadata.Subtitle,
-		"fullDescription":  payload.Metadata.Description,
-	}
+	body := map[string]string{"fullDescription": payload.Metadata.Description}
 	path := "/androidpublisher/v3/applications/" + url.PathEscape(packageName) +
 		"/edits/" + url.PathEscape(editID) + "/listings/" + url.PathEscape(payload.Locale)
-	if err := g.googleRequest(ctx, http.MethodPut, path, body, nil); err != nil {
+	if err := g.googleRequest(ctx, http.MethodPatch, path, body, nil); err != nil {
 		return SyncRunResponse{}, err
 	}
 	if err := g.googleRequest(ctx, http.MethodPost, "/androidpublisher/v3/applications/"+url.PathEscape(packageName)+"/edits/"+url.PathEscape(editID)+":commit", nil, nil); err != nil {

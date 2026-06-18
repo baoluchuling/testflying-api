@@ -1,7 +1,6 @@
 {% extends "admin/base.html" %}
 {% block heading %}开发者账号{% endblock %}
 {% block content %}
-  {% set first_app = apps[0] if apps else none %}
   {% set connector_state = connector.status if connector else "missing" %}
   {% set status_tone = "success" if account.status == "ok" else "danger" if account.status in ["expired", "disabled"] else "warning" %}
   {% set connector_tone = "success" if connector_state == "ok" else "danger" %}
@@ -47,11 +46,6 @@
         <dd>{{ apps|length }} 个 App</dd>
       </dl>
 
-      {% if first_app and first_app.latest_build %}
-        <a class="primary-button account-wide-action" href="/admin/developer-accounts/{{ account.id }}/apps/{{ first_app.app.id }}/store-metadata">同步商店信息</a>
-      {% else %}
-        <button class="primary-button account-wide-action" type="button" disabled>同步商店信息</button>
-      {% endif %}
       <a class="ghost-button account-wide-action" href="/admin/developer-accounts/{{ account.id }}/edit">编辑账号</a>
 
       <nav class="account-mini-nav" aria-label="账号详情导航">
@@ -84,11 +78,14 @@
             <h2>Connector 配置</h2>
             <span>一个开发者账号只能配置一个 connector</span>
           </div>
-          {% if connector %}
-            <form action="/admin/developer-accounts/{{ account.id }}/connector/check" method="post">
-              <button class="ghost-button" type="submit">检查连接</button>
-            </form>
-          {% endif %}
+          <div class="connector-panel-actions">
+            {% if connector %}
+              <button class="ghost-button" type="button" data-connector-edit>编辑配置</button>
+              <form action="/admin/developer-accounts/{{ account.id }}/connector/check" method="post">
+                <button class="ghost-button" type="submit">检查连接</button>
+              </form>
+            {% endif %}
+          </div>
         </div>
 
         {% if connector %}
@@ -107,7 +104,13 @@
           </div>
         {% endif %}
 
-        <form class="form compact-form" action="/admin/developer-accounts/{{ account.id }}/connector" method="post">
+        <form
+          class="form compact-form connector-config-form"
+          data-connector-form
+          action="/admin/developer-accounts/{{ account.id }}/connector"
+          method="post"
+          {{ "hidden" if connector else "" }}
+        >
           <div class="form-grid">
             <label>
               名称
@@ -180,7 +183,7 @@
               </form>
               <div class="app-actions">
                 {% if item.latest_build %}
-                  <a class="ghost-link" href="/admin/developer-accounts/{{ account.id }}/apps/{{ item.app.id }}/store-metadata">商店元数据</a>
+                  <a class="primary-button app-sync-action" href="/admin/developer-accounts/{{ account.id }}/apps/{{ item.app.id }}/store-metadata">同步商店信息</a>
                   <a class="ghost-link" href="/admin/developer-accounts/{{ account.id }}/apps/{{ item.app.id }}/release-notes">管理版本说明</a>
                 {% else %}
                   <span class="empty">暂无构建</span>

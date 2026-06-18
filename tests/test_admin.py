@@ -168,8 +168,16 @@ def test_admin_developer_account_detail_renders_store_sync_entry(
     assert "Internal Store Connector" in response.text
     assert "检查连接" in response.text
     assert "Aurora Mobile" in response.text
-    assert "商店元数据" in response.text
+    assert "同步商店信息" in response.text
+    assert "app-sync-action" in response.text
+    account_level_sync_href = (
+        'account-wide-action" href="/admin/developer-accounts/account-apple-enterprise/apps/'
+    )
+    assert account_level_sync_href not in response.text
     assert "管理版本说明" in response.text
+    assert "data-connector-edit" in response.text
+    assert "data-connector-form" in response.text
+    assert "hidden" in response.text
 
 
 def test_admin_can_create_and_edit_developer_account(

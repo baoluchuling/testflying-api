@@ -296,6 +296,18 @@
       });
 
       document.addEventListener('click', (event) => {
+        const connectorEdit = event.target.closest('[data-connector-edit]');
+        if (connectorEdit) {
+          const panel = connectorEdit.closest('[data-admin-main]');
+          const form = panel?.querySelector('[data-connector-form]');
+          if (form) {
+            form.hidden = false;
+            connectorEdit.hidden = true;
+            form.querySelector('input, select, textarea')?.focus();
+          }
+          return;
+        }
+
         const selector = event.target.closest('[data-account-select]');
         if (selector) {
           selectAccountPreview(selector.dataset.accountSelect);

@@ -1178,6 +1178,21 @@ a.ghost-button {
   word-break: break-word;
 }
 
+.connector-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.connector-panel-actions form {
+  display: contents;
+}
+
+.connector-config-form[hidden] {
+  display: none;
+}
+
 .account-app-list {
   display: grid;
   border: 1px solid var(--line);
@@ -1264,6 +1279,12 @@ a.ghost-button {
   gap: 8px;
   align-items: end;
   justify-content: flex-end;
+}
+
+.app-sync-action {
+  padding: 8px 11px;
+  font-size: 13px;
+  white-space: nowrap;
 }
 
 .account-bind-form [data-store-field][hidden] {

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated
@@ -40,6 +41,8 @@ from testflying_api.errors import ApiError
 from testflying_api.models import UploadResponse
 from testflying_api.schema import App, DeveloperAccount
 from testflying_api.store_sync import (
+    DEFAULT_CONTENT_SET_ID,
+    DEFAULT_CONTENT_SET_NAME,
     DEFAULT_LOCALE,
     account_connector,
     check_connector_health,
@@ -685,6 +688,7 @@ def store_metadata_page(
     _: AdminDep,
     version: str | None = None,
     locale: str = DEFAULT_LOCALE,
+    content_set_id: str = DEFAULT_CONTENT_SET_ID,
 ) -> HTMLResponse:
     context = store_metadata_context(
         session,
@@ -692,6 +696,7 @@ def store_metadata_page(
         app_id=app_id,
         version=version,
         locale=locale,
+        content_set_id=content_set_id,
     )
     if context["account"] is None or context["app"] is None:
         raise ApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
@@ -707,46 +712,44 @@ def store_metadata_page(
     "/developer-accounts/{account_id}/apps/{app_id}/store-metadata",
     response_class=HTMLResponse,
 )
-def save_store_metadata_page(
+async def save_store_metadata_page(
     account_id: str,
     app_id: str,
     request: Request,
     session: SessionDep,
     _: AdminDep,
-    version: Annotated[str, Form()],
-    locale: Annotated[str, Form()] = DEFAULT_LOCALE,
-    locales: Annotated[list[str] | None, Form()] = None,
-    title: Annotated[list[str] | None, Form()] = None,
-    subtitle: Annotated[list[str] | None, Form()] = None,
-    keywords: Annotated[list[str] | None, Form()] = None,
-    promotional_text: Annotated[list[str] | None, Form(alias="promotionalText")] = None,
-    description: Annotated[list[str] | None, Form()] = None,
-    privacy_policy_url: Annotated[list[str] | None, Form(alias="privacyPolicyUrl")] = None,
-    support_url: Annotated[list[str] | None, Form(alias="supportUrl")] = None,
-    marketing_url: Annotated[list[str] | None, Form(alias="marketingUrl")] = None,
-    app_icon_url: Annotated[list[str] | None, Form(alias="appIconUrl")] = None,
-    feature_graphic_url: Annotated[list[str] | None, Form(alias="featureGraphicUrl")] = None,
-    phone_screenshots: Annotated[list[str] | None, Form(alias="phoneScreenshots")] = None,
-    tablet_screenshots: Annotated[list[str] | None, Form(alias="tabletScreenshots")] = None,
-    store_image_note: Annotated[list[str] | None, Form(alias="storeImageNote")] = None,
 ) -> HTMLResponse:
+    form = await request.form()
+    version = _form_value(form, "version")
+    locale = _form_value(form, "locale", DEFAULT_LOCALE)
+    content_set_id = _form_value(form, "contentSetId", DEFAULT_CONTENT_SET_ID)
+    content_set_name = _form_value(form, "contentSetName", DEFAULT_CONTENT_SET_NAME)
     try:
+        store_image_assets = await _store_image_assets_from_form(
+            form,
+            storage=request.app.state.artifact_storage,
+            account_id=account_id,
+            app_id=app_id,
+            version=version,
+            content_set_id=content_set_id,
+        )
         metadata_rows = _metadata_rows_from_form(
             current_locale=locale,
-            locales=locales,
-            title=title,
-            subtitle=subtitle,
-            keywords=keywords,
-            promotional_text=promotional_text,
-            description=description,
-            privacy_policy_url=privacy_policy_url,
-            support_url=support_url,
-            marketing_url=marketing_url,
-            app_icon_url=app_icon_url,
-            feature_graphic_url=feature_graphic_url,
-            phone_screenshots=phone_screenshots,
-            tablet_screenshots=tablet_screenshots,
-            store_image_note=store_image_note,
+            locales=_form_values(form, "locales"),
+            title=_form_values(form, "title"),
+            subtitle=_form_values(form, "subtitle"),
+            keywords=_form_values(form, "keywords"),
+            promotional_text=_form_values(form, "promotionalText"),
+            description=_form_values(form, "description"),
+            privacy_policy_url=_form_values(form, "privacyPolicyUrl"),
+            support_url=_form_values(form, "supportUrl"),
+            marketing_url=_form_values(form, "marketingUrl"),
+            app_icon_url=_form_values(form, "appIconUrl"),
+            feature_graphic_url=_form_values(form, "featureGraphicUrl"),
+            phone_screenshots=_form_values(form, "phoneScreenshots"),
+            tablet_screenshots=_form_values(form, "tabletScreenshots"),
+            store_image_note=_form_values(form, "storeImageNote"),
+            store_image_assets_by_locale=store_image_assets,
         )
         for row in metadata_rows:
             save_app_metadata_draft(
@@ -755,6 +758,8 @@ def save_store_metadata_page(
                 app_id=app_id,
                 version=version,
                 locale=row["locale"],
+                content_set_id=content_set_id,
+                content_set_name=content_set_name,
                 title=row["title"],
                 subtitle=row["subtitle"],
                 keywords=row["keywords"],
@@ -772,6 +777,7 @@ def save_store_metadata_page(
             app_id=app_id,
             version=version,
             locale=locale,
+            content_set_id=content_set_id,
         )
         session.commit()
         return templates.TemplateResponse(
@@ -792,6 +798,7 @@ def save_store_metadata_page(
             app_id=app_id,
             version=version,
             locale=locale,
+            content_set_id=content_set_id,
         )
         return templates.TemplateResponse(
             request,
@@ -805,46 +812,44 @@ def save_store_metadata_page(
     "/developer-accounts/{account_id}/apps/{app_id}/store-metadata/sync",
     response_class=HTMLResponse,
 )
-def sync_store_metadata_page(
+async def sync_store_metadata_page(
     account_id: str,
     app_id: str,
     request: Request,
     session: SessionDep,
     _: AdminDep,
-    version: Annotated[str, Form()],
-    locale: Annotated[str, Form()] = DEFAULT_LOCALE,
-    locales: Annotated[list[str] | None, Form()] = None,
-    title: Annotated[list[str] | None, Form()] = None,
-    subtitle: Annotated[list[str] | None, Form()] = None,
-    keywords: Annotated[list[str] | None, Form()] = None,
-    promotional_text: Annotated[list[str] | None, Form(alias="promotionalText")] = None,
-    description: Annotated[list[str] | None, Form()] = None,
-    privacy_policy_url: Annotated[list[str] | None, Form(alias="privacyPolicyUrl")] = None,
-    support_url: Annotated[list[str] | None, Form(alias="supportUrl")] = None,
-    marketing_url: Annotated[list[str] | None, Form(alias="marketingUrl")] = None,
-    app_icon_url: Annotated[list[str] | None, Form(alias="appIconUrl")] = None,
-    feature_graphic_url: Annotated[list[str] | None, Form(alias="featureGraphicUrl")] = None,
-    phone_screenshots: Annotated[list[str] | None, Form(alias="phoneScreenshots")] = None,
-    tablet_screenshots: Annotated[list[str] | None, Form(alias="tabletScreenshots")] = None,
-    store_image_note: Annotated[list[str] | None, Form(alias="storeImageNote")] = None,
 ) -> HTMLResponse:
+    form = await request.form()
+    version = _form_value(form, "version")
+    locale = _form_value(form, "locale", DEFAULT_LOCALE)
+    content_set_id = _form_value(form, "contentSetId", DEFAULT_CONTENT_SET_ID)
+    content_set_name = _form_value(form, "contentSetName", DEFAULT_CONTENT_SET_NAME)
     try:
+        store_image_assets = await _store_image_assets_from_form(
+            form,
+            storage=request.app.state.artifact_storage,
+            account_id=account_id,
+            app_id=app_id,
+            version=version,
+            content_set_id=content_set_id,
+        )
         metadata_rows = _metadata_rows_from_form(
             current_locale=locale,
-            locales=locales,
-            title=title,
-            subtitle=subtitle,
-            keywords=keywords,
-            promotional_text=promotional_text,
-            description=description,
-            privacy_policy_url=privacy_policy_url,
-            support_url=support_url,
-            marketing_url=marketing_url,
-            app_icon_url=app_icon_url,
-            feature_graphic_url=feature_graphic_url,
-            phone_screenshots=phone_screenshots,
-            tablet_screenshots=tablet_screenshots,
-            store_image_note=store_image_note,
+            locales=_form_values(form, "locales"),
+            title=_form_values(form, "title"),
+            subtitle=_form_values(form, "subtitle"),
+            keywords=_form_values(form, "keywords"),
+            promotional_text=_form_values(form, "promotionalText"),
+            description=_form_values(form, "description"),
+            privacy_policy_url=_form_values(form, "privacyPolicyUrl"),
+            support_url=_form_values(form, "supportUrl"),
+            marketing_url=_form_values(form, "marketingUrl"),
+            app_icon_url=_form_values(form, "appIconUrl"),
+            feature_graphic_url=_form_values(form, "featureGraphicUrl"),
+            phone_screenshots=_form_values(form, "phoneScreenshots"),
+            tablet_screenshots=_form_values(form, "tabletScreenshots"),
+            store_image_note=_form_values(form, "storeImageNote"),
+            store_image_assets_by_locale=store_image_assets,
         )
         sync_runs = []
         for row in metadata_rows:
@@ -855,6 +860,8 @@ def sync_store_metadata_page(
                     app_id=app_id,
                     version=version,
                     locale=row["locale"],
+                    content_set_id=content_set_id,
+                    content_set_name=content_set_name,
                     title=row["title"],
                     subtitle=row["subtitle"],
                     keywords=row["keywords"],
@@ -874,6 +881,7 @@ def sync_store_metadata_page(
             app_id=app_id,
             version=version,
             locale=locale,
+            content_set_id=content_set_id,
         )
         session.commit()
         success_count = sum(1 for run in sync_runs if run.status == "succeeded")
@@ -895,6 +903,7 @@ def sync_store_metadata_page(
             app_id=app_id,
             version=version,
             locale=locale,
+            content_set_id=content_set_id,
         )
         session.commit()
         return templates.TemplateResponse(
@@ -917,6 +926,7 @@ def refresh_store_metadata_preflight_page(
     _: AdminDep,
     version: Annotated[str, Form()],
     locale: Annotated[str, Form()] = DEFAULT_LOCALE,
+    content_set_id: Annotated[str, Form(alias="contentSetId")] = DEFAULT_CONTENT_SET_ID,
 ) -> HTMLResponse:
     context = store_metadata_context(
         session,
@@ -924,6 +934,7 @@ def refresh_store_metadata_preflight_page(
         app_id=app_id,
         version=version,
         locale=locale,
+        content_set_id=content_set_id,
         force_preflight_refresh=True,
     )
     if context["account"] is None or context["app"] is None:
@@ -983,6 +994,110 @@ def _recently_checked(value: datetime | None) -> bool:
     return datetime.now(UTC) - checked_at.astimezone(UTC) < CONNECTOR_AUTO_CHECK_TTL
 
 
+def _form_value(form: object, name: str, default: str = "") -> str:
+    value = form.get(name) if hasattr(form, "get") else None
+    return value.strip() if isinstance(value, str) and value.strip() else default
+
+
+def _form_values(form: object, name: str) -> list[str] | None:
+    if not hasattr(form, "getlist"):
+        return None
+    values = [value for value in form.getlist(name) if isinstance(value, str)]
+    return values or None
+
+
+async def _store_image_assets_from_form(
+    form: object,
+    *,
+    storage: object,
+    account_id: str,
+    app_id: str,
+    version: str,
+    content_set_id: str,
+) -> dict[str, dict[str, list[dict[str, object]]]]:
+    assets_by_locale: dict[str, dict[str, list[dict[str, object]]]] = {}
+    if not hasattr(form, "multi_items"):
+        return assets_by_locale
+
+    for field_name, value in form.multi_items():
+        if not isinstance(field_name, str) or not field_name.startswith("storeImageFiles__"):
+            continue
+        parts = field_name.split("__", 2)
+        if len(parts) != 3:
+            continue
+        slot_key, locale = parts[1], parts[2]
+        if slot_key not in _store_image_file_slot_keys():
+            continue
+        filename = str(getattr(value, "filename", "") or "").strip()
+        if not filename or not hasattr(value, "read"):
+            continue
+        content = await value.read()
+        if not content:
+            continue
+        stored = storage.save(
+            _store_image_storage_folder(
+                account_id=account_id,
+                app_id=app_id,
+                version=version,
+                content_set_id=content_set_id,
+                locale=locale,
+                slot_key=slot_key,
+            ),
+            filename,
+            content,
+            content_type=str(getattr(value, "content_type", "") or "application/octet-stream"),
+        )
+        assets_by_locale.setdefault(locale, {}).setdefault(slot_key, []).append(
+            {
+                "fileName": Path(filename).name,
+                "contentType": str(
+                    getattr(value, "content_type", "") or "application/octet-stream"
+                ),
+                "sizeBytes": len(content),
+                "storageKey": stored.storage_key,
+                "downloadUrl": stored.download_url,
+            }
+        )
+
+    return assets_by_locale
+
+
+def _store_image_storage_folder(
+    *,
+    account_id: str,
+    app_id: str,
+    version: str,
+    content_set_id: str,
+    locale: str,
+    slot_key: str,
+) -> str:
+    return "/".join(
+        [
+            "store-assets",
+            _safe_storage_part(account_id),
+            _safe_storage_part(app_id),
+            _safe_storage_part(content_set_id),
+            _safe_storage_part(version),
+            _safe_storage_part(locale),
+            _safe_storage_part(slot_key),
+        ]
+    )
+
+
+def _safe_storage_part(value: str) -> str:
+    normalized = re.sub(r"[^A-Za-z0-9._-]+", "-", value.strip())
+    return normalized.strip("-") or "default"
+
+
+def _store_image_file_slot_keys() -> set[str]:
+    return {
+        "app_icon_url",
+        "feature_graphic_url",
+        "phone_screenshots",
+        "tablet_screenshots",
+    }
+
+
 def _metadata_rows_from_form(
     *,
     current_locale: str,
@@ -1000,6 +1115,7 @@ def _metadata_rows_from_form(
     phone_screenshots: list[str] | None,
     tablet_screenshots: list[str] | None,
     store_image_note: list[str] | None,
+    store_image_assets_by_locale: dict[str, dict[str, list[dict[str, object]]]] | None = None,
 ) -> list[dict[str, object]]:
     normalized_locales = _unique_non_empty(locales) or [current_locale.strip() or DEFAULT_LOCALE]
     rows = [
@@ -1014,10 +1130,34 @@ def _metadata_rows_from_form(
             "support_url": _form_list_value(support_url, index),
             "marketing_url": _form_list_value(marketing_url, index),
             "store_images": {
-                "app_icon_url": _form_list_value(app_icon_url, index),
-                "feature_graphic_url": _form_list_value(feature_graphic_url, index),
-                "phone_screenshots": _form_list_value(phone_screenshots, index),
-                "tablet_screenshots": _form_list_value(tablet_screenshots, index),
+                "app_icon_url": _store_image_form_value(
+                    app_icon_url,
+                    index,
+                    locale,
+                    "app_icon_url",
+                    store_image_assets_by_locale,
+                ),
+                "feature_graphic_url": _store_image_form_value(
+                    feature_graphic_url,
+                    index,
+                    locale,
+                    "feature_graphic_url",
+                    store_image_assets_by_locale,
+                ),
+                "phone_screenshots": _store_image_form_value(
+                    phone_screenshots,
+                    index,
+                    locale,
+                    "phone_screenshots",
+                    store_image_assets_by_locale,
+                ),
+                "tablet_screenshots": _store_image_form_value(
+                    tablet_screenshots,
+                    index,
+                    locale,
+                    "tablet_screenshots",
+                    store_image_assets_by_locale,
+                ),
                 "note": _form_list_value(store_image_note, index),
             },
         }
@@ -1041,13 +1181,40 @@ def _metadata_rows_from_form(
 
 
 def _merge_store_images(
-    store_images: dict[str, str],
-    base_store_images: dict[str, str],
-) -> dict[str, str]:
+    store_images: dict[str, object],
+    base_store_images: dict[str, object],
+) -> dict[str, object]:
+    merged: dict[str, object] = {}
+    for key in _store_image_file_slot_keys():
+        current = store_images.get(key)
+        base = base_store_images.get(key)
+        merged[key] = current if _has_store_image_value(current) else base
+    merged["note"] = store_images.get("note") or base_store_images.get("note", "")
+    return merged
+
+
+def _store_image_form_value(
+    values: list[str] | None,
+    index: int,
+    locale: str,
+    slot_key: str,
+    assets_by_locale: dict[str, dict[str, list[dict[str, object]]]] | None,
+) -> dict[str, object]:
+    assets = (assets_by_locale or {}).get(locale, {}).get(slot_key, [])
     return {
-        key: value or base_store_images.get(key, "")
-        for key, value in store_images.items()
+        "urls": _split_lines(_form_list_value(values, index)),
+        "assets": assets,
     }
+
+
+def _has_store_image_value(value: object) -> bool:
+    if not isinstance(value, dict):
+        return bool(value)
+    return bool(value.get("urls") or value.get("assets"))
+
+
+def _split_lines(value: str) -> list[str]:
+    return [item.strip() for item in value.splitlines() if item.strip()]
 
 
 def _unique_non_empty(values: list[str] | None) -> list[str]:

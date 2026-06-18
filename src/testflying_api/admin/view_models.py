@@ -17,6 +17,8 @@ from testflying_api.schema import (
     StoreSyncRun,
 )
 from testflying_api.store_sync import (
+    DEFAULT_CONTENT_SET_ID,
+    DEFAULT_CONTENT_SET_NAME,
     DEFAULT_LOCALE,
     UPDATE_APP_METADATA,
     account_apps,
@@ -24,6 +26,7 @@ from testflying_api.store_sync import (
     draft_for_scope,
     get_or_refresh_preflight,
     latest_build_for_app,
+    metadata_content_sets_for_scope,
     metadata_draft_for_scope,
     metadata_drafts_for_scope,
     recent_sync_runs,
@@ -207,6 +210,7 @@ def store_metadata_context(
     app_id: str,
     version: str | None = None,
     locale: str = DEFAULT_LOCALE,
+    content_set_id: str = DEFAULT_CONTENT_SET_ID,
     force_preflight_refresh: bool = False,
 ) -> dict[str, object]:
     account = session.get(DeveloperAccount, account_id)
@@ -220,9 +224,28 @@ def store_metadata_context(
             app_id=app_id,
             platform=app.platform,
             version=target_version,
+            content_set_id=content_set_id,
         )
         if app and target_version
         else {}
+    )
+    content_sets = (
+        metadata_content_sets_for_scope(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            platform=app.platform,
+            version=target_version,
+        )
+        if app and target_version
+        else [{"id": DEFAULT_CONTENT_SET_ID, "name": DEFAULT_CONTENT_SET_NAME}]
+    )
+    active_content_set = next(
+        (item for item in content_sets if item["id"] == content_set_id),
+        {
+            "id": content_set_id or DEFAULT_CONTENT_SET_ID,
+            "name": content_set_id or DEFAULT_CONTENT_SET_NAME,
+        },
     )
     supported_locales = (
         supported_locales_for_app(
@@ -245,6 +268,7 @@ def store_metadata_context(
             platform=app.platform,
             version=target_version,
             locale=source_locale,
+            content_set_id=content_set_id,
         )
         if app and target_version
         else None
@@ -274,6 +298,9 @@ def store_metadata_context(
         "version": target_version,
         "locale": active_locale,
         "source_locale": source_locale,
+        "content_set_id": active_content_set["id"],
+        "content_set_name": active_content_set["name"],
+        "content_sets": content_sets,
         "draft": draft,
         "metadata": base_metadata,
         "metadata_fields": _metadata_fields(),
@@ -360,19 +387,75 @@ def _store_images(draft: object | None) -> dict[str, str]:
     if not isinstance(raw_images, dict):
         return _empty_store_images()
     images = _empty_store_images()
-    for key in images:
-        images[key] = str(raw_images.get(key) or "").strip()
+    for key in ("app_icon_url", "feature_graphic_url", "phone_screenshots", "tablet_screenshots"):
+        images[key] = _store_image_slot(raw_images.get(key))
+    images["note"] = str(raw_images.get("note") or "").strip()
     return images
 
 
-def _empty_store_images() -> dict[str, str]:
+def _empty_store_images() -> dict[str, object]:
     return {
-        "app_icon_url": "",
-        "feature_graphic_url": "",
-        "phone_screenshots": "",
-        "tablet_screenshots": "",
+        "app_icon_url": _store_image_slot(None),
+        "feature_graphic_url": _store_image_slot(None),
+        "phone_screenshots": _store_image_slot(None),
+        "tablet_screenshots": _store_image_slot(None),
         "note": "",
     }
+
+
+def _store_image_slot(raw_value: object) -> dict[str, object]:
+    if isinstance(raw_value, dict):
+        urls = _string_list(raw_value.get("urls"))
+        assets = _asset_list(raw_value.get("assets"))
+    else:
+        urls = _string_list(raw_value)
+        assets = []
+    preview_urls = [
+        *[asset["downloadUrl"] for asset in assets if asset.get("downloadUrl")],
+        *urls,
+    ]
+    file_names = [
+        *[asset["fileName"] for asset in assets if asset.get("fileName")],
+        *[url.rsplit("/", 1)[-1] for url in urls],
+    ]
+    return {
+        "urls": urls,
+        "assets": assets,
+        "value": "\n".join(urls),
+        "preview_urls": preview_urls,
+        "file_names": file_names,
+        "count": len(preview_urls),
+    }
+
+
+def _string_list(value: object) -> list[str]:
+    if isinstance(value, list | tuple):
+        candidates = [str(item or "") for item in value]
+    else:
+        candidates = str(value or "").splitlines()
+    return [candidate.strip() for candidate in candidates if candidate.strip()]
+
+
+def _asset_list(value: object) -> list[dict[str, object]]:
+    if not isinstance(value, list | tuple):
+        return []
+    assets: list[dict[str, object]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        download_url = str(item.get("downloadUrl") or "").strip()
+        if not download_url:
+            continue
+        assets.append(
+            {
+                "fileName": str(item.get("fileName") or "").strip(),
+                "contentType": str(item.get("contentType") or "").strip(),
+                "sizeBytes": int(item.get("sizeBytes") or 0),
+                "storageKey": str(item.get("storageKey") or "").strip(),
+                "downloadUrl": download_url,
+            }
+        )
+    return assets
 
 
 def _source_locale(supported_locales: list[str]) -> str:
@@ -468,6 +551,7 @@ def _store_image_slots(platform: str) -> list[dict[str, object]]:
             "type": "input",
             "rows": 1,
             "placeholder": "https://example.com/store/icon.png",
+            "multiple": False,
         },
         {
             "key": "feature_graphic_url",
@@ -476,6 +560,7 @@ def _store_image_slots(platform: str) -> list[dict[str, object]]:
             "type": "input",
             "rows": 1,
             "placeholder": feature_placeholder,
+            "multiple": False,
         },
         {
             "key": "phone_screenshots",
@@ -484,6 +569,7 @@ def _store_image_slots(platform: str) -> list[dict[str, object]]:
             "type": "textarea",
             "rows": 3,
             "placeholder": "一行一个图片 URL",
+            "multiple": True,
         },
         {
             "key": "tablet_screenshots",
@@ -492,6 +578,7 @@ def _store_image_slots(platform: str) -> list[dict[str, object]]:
             "type": "textarea",
             "rows": 3,
             "placeholder": "一行一个图片 URL",
+            "multiple": True,
         },
         {
             "key": "note",

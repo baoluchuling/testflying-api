@@ -29,14 +29,42 @@ type SupportedLocalesResponse struct {
 }
 
 type StoreMetadata struct {
-	Title            string `json:"title"`
-	Subtitle         string `json:"subtitle"`
-	Keywords         string `json:"keywords"`
-	PromotionalText  string `json:"promotionalText"`
-	Description      string `json:"description"`
-	PrivacyPolicyURL string `json:"privacyPolicyUrl"`
-	SupportURL       string `json:"supportUrl"`
-	MarketingURL     string `json:"marketingUrl"`
+	ContentSet       *ContentSet  `json:"contentSet"`
+	Title            string       `json:"title"`
+	Subtitle         string       `json:"subtitle"`
+	Keywords         string       `json:"keywords"`
+	PromotionalText  string       `json:"promotionalText"`
+	Description      string       `json:"description"`
+	PrivacyPolicyURL string       `json:"privacyPolicyUrl"`
+	SupportURL       string       `json:"supportUrl"`
+	MarketingURL     string       `json:"marketingUrl"`
+	StoreImages      *StoreImages `json:"storeImages"`
+}
+
+type ContentSet struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type StoreImages struct {
+	AppIconURL        StoreImageSlot `json:"app_icon_url"`
+	FeatureGraphicURL StoreImageSlot `json:"feature_graphic_url"`
+	PhoneScreenshots  StoreImageSlot `json:"phone_screenshots"`
+	TabletScreenshots StoreImageSlot `json:"tablet_screenshots"`
+	Note              string         `json:"note"`
+}
+
+type StoreImageSlot struct {
+	URLs   []string          `json:"urls"`
+	Assets []StoreImageAsset `json:"assets"`
+}
+
+type StoreImageAsset struct {
+	FileName    string `json:"fileName"`
+	ContentType string `json:"contentType"`
+	SizeBytes   int64  `json:"sizeBytes"`
+	StorageKey  string `json:"storageKey"`
+	DownloadURL string `json:"downloadUrl"`
 }
 
 type SyncRunRequest struct {

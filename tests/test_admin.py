@@ -674,18 +674,96 @@ def test_admin_store_metadata_save_and_sync_creates_records(
     assert en_us_draft.keywords == "internal,test"
     assert en_us_draft.promotional_text == "更稳定的测试体验。"
     assert en_us_draft.description == "用于内部测试包分发和回归验证。"
-    assert zh_hans_draft.store_images_json["app_icon_url"] == "https://cdn.example.test/icon.png"
-    assert zh_hans_draft.store_images_json["phone_screenshots"].splitlines() == [
+    assert zh_hans_draft.content_set_id == "default"
+    assert zh_hans_draft.content_set_name == "默认上架内容"
+    assert zh_hans_draft.store_images_json["app_icon_url"]["urls"] == [
+        "https://cdn.example.test/icon.png"
+    ]
+    assert zh_hans_draft.store_images_json["phone_screenshots"]["urls"] == [
         "https://cdn.example.test/phone-1.png",
         "https://cdn.example.test/phone-2.png",
     ]
-    assert en_us_draft.store_images_json["feature_graphic_url"] == (
+    assert en_us_draft.store_images_json["feature_graphic_url"]["urls"] == [
         "https://cdn.example.test/feature.png"
-    )
+    ]
     assert en_us_draft.store_images_json["note"] == "第一版素材"
     assert [run.operation for run in runs[-4:]] == ["update_app_metadata"] * 4
     assert {run.locale for run in runs[-4:]} == {"zh-Hans", "en-US", "ja", "ko"}
     assert {run.status for run in runs[-4:]} == {"succeeded"}
+
+
+def test_admin_store_metadata_uploads_store_images_into_content_set(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+
+    path = (
+        "/admin/developer-accounts/account-apple-enterprise"
+        "/apps/app-aurora-ios/store-metadata"
+    )
+    response = client.post(
+        path,
+        headers=_admin_headers(),
+        data={
+            "version": "2.4.0",
+            "locale": "en-US",
+            "contentSetId": "summer-launch",
+            "contentSetName": "暑期活动投放",
+            "locales": ["en-US"],
+            "title": ["Aurora Mobile"],
+            "subtitle": [""],
+            "keywords": ["internal,test"],
+            "promotionalText": [""],
+            "description": ["Internal app distribution testing."],
+            "privacyPolicyUrl": [""],
+            "supportUrl": [""],
+            "marketingUrl": [""],
+            "appIconUrl": [""],
+            "featureGraphicUrl": [""],
+            "phoneScreenshots": [""],
+            "tabletScreenshots": [""],
+            "storeImageNote": ["上传图片素材"],
+        },
+        files=[
+            (
+                "storeImageFiles__app_icon_url__en-US",
+                ("icon.png", b"fake-icon", "image/png"),
+            ),
+            (
+                "storeImageFiles__phone_screenshots__en-US",
+                ("phone-1.png", b"fake-phone-1", "image/png"),
+            ),
+            (
+                "storeImageFiles__phone_screenshots__en-US",
+                ("phone-2.png", b"fake-phone-2", "image/png"),
+            ),
+        ],
+    )
+
+    draft = db_session.query(StoreAppMetadataDraft).one()
+    icon_asset = draft.store_images_json["app_icon_url"]["assets"][0]
+    phone_assets = draft.store_images_json["phone_screenshots"]["assets"]
+    assert response.status_code == 200
+    assert "商店元数据草稿已保存 1 个语言" in response.text
+    assert "暑期活动投放" in response.text
+    assert draft.content_set_id == "summer-launch"
+    assert draft.content_set_name == "暑期活动投放"
+    assert icon_asset["fileName"] == "icon.png"
+    assert icon_asset["downloadUrl"].endswith(
+        "/store-assets/account-apple-enterprise/app-aurora-ios/"
+        "summer-launch/2.4.0/en-US/app_icon_url/icon.png"
+    )
+    assert [asset["fileName"] for asset in phone_assets] == ["phone-1.png", "phone-2.png"]
+
+    page = client.get(
+        path + "?content_set_id=summer-launch",
+        headers=_admin_headers(),
+    )
+    assert page.status_code == 200
+    assert "暑期活动投放" in page.text
+    assert "icon.png" in page.text
+    assert "phone-1.png" in page.text
 
 
 def test_admin_store_metadata_page_lists_supported_locales(
@@ -710,10 +788,15 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "全部语言对照" in response.text
     assert "单语言编辑" in response.text
     assert "从英文填充其他语言" in response.text
+    assert "商店内容套件" in response.text
+    assert "新建套件" in response.text
+    assert "复制当前套" in response.text
     assert "商店图素材" in response.text
     assert "App 图标" in response.text
     assert "手机截图" in response.text
     assert "data-store-image-input" in response.text
+    assert "data-store-image-zone" in response.text
+    assert "data-store-image-bulk-drop" in response.text
     assert "后台构建" in response.text
     assert "商店版本" in response.text
 

@@ -430,6 +430,33 @@ textarea {
   background: #f8fafc;
 }
 
+.content-set-switcher {
+  display: flex;
+  flex: 1 1 100%;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+}
+
+.content-set-picker {
+  flex: 1 1 280px;
+}
+
+.content-set-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: #f2f4f7;
+  color: #344054;
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .segmented-control {
   display: inline-flex;
   padding: 3px;
@@ -495,27 +522,137 @@ textarea {
   background: #fbfdff;
 }
 
+.store-image-bulk-drop {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px dashed #9fb9e8;
+  border-radius: 8px;
+  background: #f5f9ff;
+}
+
+.store-image-bulk-drop input[type="file"],
+.store-image-upload input[type="file"] {
+  display: none;
+}
+
+.store-image-bulk-drop strong,
+.store-image-upload strong {
+  display: block;
+  color: var(--text);
+}
+
+.store-image-bulk-drop span,
+.store-image-bulk-drop small,
+.store-image-upload small,
+.store-image-file-list {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 760;
+  line-height: 1.45;
+}
+
+.store-image-bulk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.store-image-upload {
+  display: grid;
+  gap: 7px;
+  min-height: 96px;
+  padding: 12px;
+  border: 1px dashed #9fb9e8;
+  border-radius: 8px;
+  background: #f8fbff;
+  cursor: pointer;
+}
+
+.store-image-upload.has-files {
+  border-style: solid;
+  border-color: #93c5fd;
+  background: white;
+}
+
+.store-image-upload.is-dragover,
+.store-image-bulk-drop.is-dragover {
+  border-color: var(--blue);
+  background: #eef5ff;
+  box-shadow: 0 0 0 3px rgb(36 120 255 / 12%);
+}
+
+.store-image-previews {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(76px, 1fr));
+  gap: 8px;
+}
+
+.store-image-previews img {
+  width: 100%;
+  aspect-ratio: 1;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #eef2f7;
+  object-fit: cover;
+}
+
+.store-image-previews.screenshots {
+  grid-template-columns: repeat(4, minmax(70px, 1fr));
+}
+
+.store-image-previews.screenshots img {
+  aspect-ratio: 9 / 16;
+}
+
+.language-store-image-field {
+  display: grid;
+  gap: 8px;
+}
+
 .metadata-locale-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: 1fr;
+  gap: 10px;
 }
 
 .metadata-locale-input {
+  display: grid;
+  grid-template-columns: 118px minmax(0, 1fr) minmax(132px, 220px);
+  gap: 10px;
+  align-items: start;
   min-width: 0;
+  padding: 10px;
+  border: 1px solid #dbe3ef;
+  border-radius: 8px;
+  background: white;
 }
 
 .metadata-locale-input span {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 8px;
+  min-height: 40px;
 }
 
 .metadata-locale-input small {
   color: var(--blue);
   font-size: 11px;
   font-weight: 900;
+}
+
+.metadata-locale-input > input,
+.metadata-locale-input > textarea {
+  grid-column: 2 / -1;
+}
+
+.metadata-locale-input .store-image-upload {
+  grid-column: 2;
+}
+
+.metadata-locale-input .store-image-previews {
+  grid-column: 3;
 }
 
 .primary-button, button {
@@ -1622,6 +1759,14 @@ a.ghost-button {
     grid-template-columns: 1fr;
   }
 
+  .metadata-locale-input {
+    grid-template-columns: 118px minmax(0, 1fr);
+  }
+
+  .metadata-locale-input .store-image-previews {
+    grid-column: 2;
+  }
+
   .account-matrix-toolbar,
   .account-matrix-layout,
   .account-workspace {
@@ -1698,6 +1843,18 @@ a.ghost-button {
   .account-metric-band,
   .connector-readout {
     grid-template-columns: 1fr;
+  }
+
+  .content-set-switcher,
+  .metadata-locale-input {
+    grid-template-columns: 1fr;
+  }
+
+  .metadata-locale-input > input,
+  .metadata-locale-input > textarea,
+  .metadata-locale-input .store-image-upload,
+  .metadata-locale-input .store-image-previews {
+    grid-column: 1;
   }
 
   .account-summary-strip div + div,

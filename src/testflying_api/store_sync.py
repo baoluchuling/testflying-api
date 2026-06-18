@@ -32,6 +32,8 @@ PREFLIGHT_FORCE_REFRESH_COOLDOWN = timedelta(minutes=1)
 UPDATE_RELEASE_NOTES = "update_release_notes"
 UPDATE_APP_METADATA = "update_app_metadata"
 DEFAULT_LOCALE = "zh-Hans"
+DEFAULT_CONTENT_SET_ID = "default"
+DEFAULT_CONTENT_SET_NAME = "默认上架内容"
 
 
 @dataclass(frozen=True)
@@ -295,6 +297,7 @@ def metadata_draft_for_scope(
     platform: str,
     version: str,
     locale: str,
+    content_set_id: str = DEFAULT_CONTENT_SET_ID,
 ) -> StoreAppMetadataDraft | None:
     return session.scalar(
         select(StoreAppMetadataDraft).where(
@@ -303,6 +306,7 @@ def metadata_draft_for_scope(
             StoreAppMetadataDraft.platform == platform,
             StoreAppMetadataDraft.version == version,
             StoreAppMetadataDraft.locale == locale,
+            StoreAppMetadataDraft.content_set_id == _normalize_content_set_id(content_set_id),
         )
     )
 
@@ -314,6 +318,7 @@ def metadata_drafts_for_scope(
     app_id: str,
     platform: str,
     version: str,
+    content_set_id: str = DEFAULT_CONTENT_SET_ID,
 ) -> dict[str, StoreAppMetadataDraft]:
     drafts = session.scalars(
         select(StoreAppMetadataDraft).where(
@@ -321,9 +326,49 @@ def metadata_drafts_for_scope(
             StoreAppMetadataDraft.app_id == app_id,
             StoreAppMetadataDraft.platform == platform,
             StoreAppMetadataDraft.version == version,
+            StoreAppMetadataDraft.content_set_id == _normalize_content_set_id(content_set_id),
         )
     )
     return {draft.locale: draft for draft in drafts}
+
+
+def metadata_content_sets_for_scope(
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    platform: str,
+    version: str,
+) -> list[dict[str, str]]:
+    rows = session.execute(
+        select(
+            StoreAppMetadataDraft.content_set_id,
+            StoreAppMetadataDraft.content_set_name,
+        )
+        .where(
+            StoreAppMetadataDraft.developer_account_id == account_id,
+            StoreAppMetadataDraft.app_id == app_id,
+            StoreAppMetadataDraft.platform == platform,
+            StoreAppMetadataDraft.version == version,
+        )
+        .order_by(StoreAppMetadataDraft.content_set_name.asc())
+    )
+    sets = [
+        {"id": DEFAULT_CONTENT_SET_ID, "name": DEFAULT_CONTENT_SET_NAME},
+    ]
+    seen = {DEFAULT_CONTENT_SET_ID}
+    for content_set_id, content_set_name in rows:
+        normalized_id = _normalize_content_set_id(content_set_id)
+        if normalized_id in seen:
+            continue
+        sets.append(
+            {
+                "id": normalized_id,
+                "name": _normalize_content_set_name(content_set_name, normalized_id),
+            }
+        )
+        seen.add(normalized_id)
+    return sets
 
 
 def save_release_note_draft(
@@ -399,6 +444,8 @@ def save_app_metadata_draft(
     app_id: str,
     version: str,
     locale: str,
+    content_set_id: str = DEFAULT_CONTENT_SET_ID,
+    content_set_name: str = DEFAULT_CONTENT_SET_NAME,
     title: str,
     subtitle: str,
     keywords: str,
@@ -418,6 +465,11 @@ def save_app_metadata_draft(
         raise ApiError("invalid_metadata", "应用标题不能为空", status_code=422)
     if not normalized_description:
         raise ApiError("invalid_metadata", "应用描述不能为空", status_code=422)
+    normalized_content_set_id = _normalize_content_set_id(content_set_id)
+    normalized_content_set_name = _normalize_content_set_name(
+        content_set_name,
+        normalized_content_set_id,
+    )
 
     draft = metadata_draft_for_scope(
         session,
@@ -426,8 +478,11 @@ def save_app_metadata_draft(
         platform=app.platform,
         version=version,
         locale=locale,
+        content_set_id=normalized_content_set_id,
     )
     values = {
+        "content_set_id": normalized_content_set_id,
+        "content_set_name": normalized_content_set_name,
         "title": normalized_title,
         "subtitle": subtitle.strip(),
         "keywords": keywords.strip(),
@@ -652,6 +707,8 @@ def sync_app_metadata(
     app_id: str,
     version: str,
     locale: str,
+    content_set_id: str = DEFAULT_CONTENT_SET_ID,
+    content_set_name: str = DEFAULT_CONTENT_SET_NAME,
     title: str,
     subtitle: str,
     keywords: str,
@@ -676,6 +733,8 @@ def sync_app_metadata(
         app_id=app.id,
         version=version,
         locale=locale,
+        content_set_id=content_set_id,
+        content_set_name=content_set_name,
         title=title,
         subtitle=subtitle,
         keywords=keywords,
@@ -849,6 +908,10 @@ def _app_payload(app: App) -> dict[str, object]:
 
 def _metadata_payload(draft: StoreAppMetadataDraft) -> dict[str, object]:
     return {
+        "contentSet": {
+            "id": draft.content_set_id,
+            "name": draft.content_set_name,
+        },
         "title": draft.title,
         "subtitle": draft.subtitle,
         "keywords": draft.keywords,
@@ -857,20 +920,82 @@ def _metadata_payload(draft: StoreAppMetadataDraft) -> dict[str, object]:
         "privacyPolicyUrl": draft.privacy_policy_url,
         "supportUrl": draft.support_url,
         "marketingUrl": draft.marketing_url,
+        "storeImages": draft.store_images_json,
     }
 
 
-def _normalize_store_images(raw_images: dict[str, object] | None) -> dict[str, str]:
-    images = {
-        "app_icon_url": "",
-        "feature_graphic_url": "",
-        "phone_screenshots": "",
-        "tablet_screenshots": "",
-        "note": "",
+def _normalize_store_images(raw_images: dict[str, object] | None) -> dict[str, object]:
+    return {
+        "app_icon_url": _normalize_store_image_slot(raw_images, "app_icon_url"),
+        "feature_graphic_url": _normalize_store_image_slot(raw_images, "feature_graphic_url"),
+        "phone_screenshots": _normalize_store_image_slot(raw_images, "phone_screenshots"),
+        "tablet_screenshots": _normalize_store_image_slot(raw_images, "tablet_screenshots"),
+        "note": str((raw_images or {}).get("note") or "").strip(),
     }
-    for key in images:
-        images[key] = str((raw_images or {}).get(key) or "").strip()
-    return images
+
+
+def _normalize_store_image_slot(
+    raw_images: dict[str, object] | None,
+    key: str,
+) -> dict[str, object]:
+    raw_value = (raw_images or {}).get(key)
+    if isinstance(raw_value, dict):
+        urls = raw_value.get("urls")
+        assets = raw_value.get("assets")
+        return {
+            "urls": _string_list(urls),
+            "assets": _asset_list(assets),
+        }
+    return {
+        "urls": _string_list(raw_value),
+        "assets": [],
+    }
+
+
+def _string_list(value: object) -> list[str]:
+    if isinstance(value, list | tuple):
+        raw_values = [str(item or "") for item in value]
+    else:
+        raw_values = str(value or "").splitlines()
+    return [item.strip() for item in raw_values if item.strip()]
+
+
+def _asset_list(value: object) -> list[dict[str, object]]:
+    if not isinstance(value, list | tuple):
+        return []
+    assets: list[dict[str, object]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        download_url = str(item.get("downloadUrl") or item.get("download_url") or "").strip()
+        if not download_url:
+            continue
+        assets.append(
+            {
+                "fileName": str(item.get("fileName") or item.get("file_name") or "").strip(),
+                "contentType": str(
+                    item.get("contentType") or item.get("content_type") or ""
+                ).strip(),
+                "sizeBytes": int(item.get("sizeBytes") or item.get("size_bytes") or 0),
+                "storageKey": str(
+                    item.get("storageKey") or item.get("storage_key") or ""
+                ).strip(),
+                "downloadUrl": download_url,
+            }
+        )
+    return assets
+
+
+def _normalize_content_set_id(content_set_id: str | None) -> str:
+    value = str(content_set_id or "").strip()
+    return value or DEFAULT_CONTENT_SET_ID
+
+
+def _normalize_content_set_name(content_set_name: str | None, content_set_id: str) -> str:
+    value = str(content_set_name or "").strip()
+    if value:
+        return value
+    return DEFAULT_CONTENT_SET_NAME if content_set_id == DEFAULT_CONTENT_SET_ID else content_set_id
 
 
 def _post_json(

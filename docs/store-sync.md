@@ -24,8 +24,9 @@
 - 页面进入时自动发起预检查。
 - 商店元数据页进入时通过 connector 拉取商店 App 实际支持语言；后台不再把本地默认语言混入商店返回结果。
 - 商店元数据页默认优先使用 `en-US` 作为源文案语言，标题、副标题、关键词、宣传文本、描述、隐私政策 URL、支持 URL 和营销 URL 都按 `locale` 独立保存。
+- 商店元数据页支持多套商店内容草稿；同一个账号、App、平台、版本和语言下，可以按 `content_set_id` 保存多套文案、链接和商店图。
 - 商店元数据页支持“全部语言对照”和“单语言编辑”两种视图，并提供“从英文填充其他语言”按钮；第一版未接入翻译服务时只把英文源文案填充到空白语言。
-- 商店元数据页支持商店图素材设置草稿，包括 App 图标、宣传图、手机截图、平板截图和素材备注；素材设置跟随同一套语言视图，单语言编辑时只看当前语言，全部语言对照时按内容项展开所有语言。
+- 商店元数据页支持商店图素材上传草稿，包括 App 图标、宣传图、手机截图、平板截图和素材备注。图片可以直接拖拽上传，也可以拖入按语言命名的文件夹，后台会按语言和素材类型归类并上传到对象存储。
 - 相同账号、App、平台、版本、语言和操作的预检查结果缓存 5 分钟。
 - 商店元数据页提供“实时查询”按钮，可以绕过 5 分钟缓存重新查询商店状态；同一账号、App、版本、语言和操作 1 分钟内只能触发一次手动实时查询。
 - 只有预检查通过时才允许同步。
@@ -34,8 +35,7 @@
 
 暂不做：
 
-- 截图上传。
-- 商店截图尺寸校验和商店侧截图同步；当前先保存按语言分组的素材 URL 草稿。
+- 商店截图尺寸校验和商店侧截图同步的完整适配；当前中心后台已保存图片文件并在同步 payload 中提供图片 URL，connector 后续按商店平台要求消费这些 URL。
 - 自动提审。
 - 定时同步。
 - 跨账号批量同步。
@@ -47,7 +47,7 @@
 - `apps.store_app_id` / `apps.store_package_name`：商店侧 App 标识。
 - `store_connectors`：账号对应 connector 地址和调用 token。
 - `store_release_note_drafts`：版本说明草稿。
-- `store_app_metadata_drafts`：文字类商店元数据草稿，包括标题、副标题、关键词、宣传文本、描述、隐私政策 URL、支持 URL、营销 URL 和商店图素材设置。所有字段都按 `locale` 分别保存。
+- `store_app_metadata_drafts`：商店元数据草稿，包括标题、副标题、关键词、宣传文本、描述、隐私政策 URL、支持 URL、营销 URL、商店图素材和内容套件信息。唯一范围是账号、App、平台、版本、语言和 `content_set_id`。
 - `store_preflight_checks`：5 分钟预检查缓存。
 - `store_sync_runs`：同步执行记录。
 - `audit_logs`：后台操作审计。
@@ -140,6 +140,10 @@ GET /v1/apps/app-aurora-ios/supported-locales?developerAccountId=account-apple-e
     "packageName": "com.internal.aurora"
   },
   "metadata": {
+    "contentSet": {
+      "id": "default",
+      "name": "默认上架内容"
+    },
     "title": "Aurora Mobile",
     "subtitle": "内部测试分发",
     "keywords": "internal,test",
@@ -147,7 +151,34 @@ GET /v1/apps/app-aurora-ios/supported-locales?developerAccountId=account-apple-e
     "description": "用于内部测试包分发和回归验证。",
     "privacyPolicyUrl": "https://example.test/privacy",
     "supportUrl": "https://example.test/support",
-    "marketingUrl": ""
+    "marketingUrl": "",
+    "storeImages": {
+      "app_icon_url": {
+        "urls": [],
+        "assets": [
+          {
+            "fileName": "icon.png",
+            "contentType": "image/png",
+            "sizeBytes": 12345,
+            "storageKey": "store-assets/account-apple-enterprise/app-aurora-ios/default/2.4.0/zh-Hans/app_icon_url/icon.png",
+            "downloadUrl": "https://dist.example.test/artifacts/store-assets/account-apple-enterprise/app-aurora-ios/default/2.4.0/zh-Hans/app_icon_url/icon.png"
+          }
+        ]
+      },
+      "phone_screenshots": {
+        "urls": [],
+        "assets": []
+      },
+      "tablet_screenshots": {
+        "urls": [],
+        "assets": []
+      },
+      "feature_graphic_url": {
+        "urls": [],
+        "assets": []
+      },
+      "note": ""
+    }
   }
 }
 ```

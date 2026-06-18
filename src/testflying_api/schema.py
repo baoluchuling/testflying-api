@@ -226,7 +226,15 @@ class StoreReleaseNoteDraft(Base):
 class StoreAppMetadataDraft(Base):
     __tablename__ = "store_app_metadata_drafts"
     __table_args__ = (
-        UniqueConstraint("developer_account_id", "app_id", "platform", "version", "locale"),
+        UniqueConstraint(
+            "developer_account_id",
+            "app_id",
+            "platform",
+            "version",
+            "locale",
+            "content_set_id",
+            name="uq_store_app_metadata_drafts_scope",
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(80), primary_key=True)
@@ -238,6 +246,12 @@ class StoreAppMetadataDraft(Base):
     platform: Mapped[str] = mapped_column(String(20), nullable=False)
     version: Mapped[str] = mapped_column(String(60), nullable=False)
     locale: Mapped[str] = mapped_column(String(40), nullable=False)
+    content_set_id: Mapped[str] = mapped_column(String(80), nullable=False, default="default")
+    content_set_name: Mapped[str] = mapped_column(
+        String(120),
+        nullable=False,
+        default="默认上架内容",
+    )
     title: Mapped[str] = mapped_column(String(120), nullable=False, default="")
     subtitle: Mapped[str] = mapped_column(String(160), nullable=False, default="")
     keywords: Mapped[str] = mapped_column(String(240), nullable=False, default="")

@@ -24,7 +24,7 @@
   <div class="split-grid">
     <section class="panel store-metadata-panel">
       <div class="panel-header"><h2>元数据草稿</h2><a href="/admin/developer-accounts/{{ account.id }}">返回账号</a></div>
-      <form class="form" action="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata" method="post" data-metadata-form data-source-locale="{{ source_locale }}">
+      <form class="form" action="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata" method="post" enctype="multipart/form-data" data-metadata-form data-source-locale="{{ source_locale }}">
         <div class="form-grid">
           <label>
             目标版本
@@ -37,6 +37,25 @@
         </div>
 
         <div class="metadata-toolbar">
+          <div class="content-set-switcher">
+            <label class="language-picker content-set-picker">
+              商店内容套件
+              <select name="contentSetId" data-content-set-picker>
+                {% for content_set in content_sets %}
+                  <option
+                    value="{{ content_set.id }}"
+                    data-name="{{ content_set.name }}"
+                    data-existing="true"
+                    {% if content_set.id == content_set_id %}selected{% endif %}
+                  >{{ content_set.name }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <input type="hidden" name="contentSetName" value="{{ content_set_name }}" data-content-set-name>
+            <button class="ghost-button" type="button" data-create-content-set>新建套件</button>
+            <button class="ghost-button" type="button" data-duplicate-content-set>复制当前套</button>
+            <span class="content-set-status" data-content-set-status>已打开：{{ content_set_name }}</span>
+          </div>
           <div class="segmented-control" role="group" aria-label="商店内容编辑视图">
             <button type="button" class="is-active" data-metadata-mode="field">全部语言对照</button>
             <button type="button" data-metadata-mode="language">单语言编辑</button>
@@ -55,6 +74,20 @@
         <div class="metadata-source-note">
           <strong>{{ source_locale }}</strong>
           <span>作为源文案；未接入翻译服务前，翻译按钮会把源文案填充到空白语言，避免同步时缺字段。</span>
+        </div>
+
+        <div class="store-image-bulk-drop" data-store-image-bulk-drop>
+          <input type="file" accept="image/*" multiple data-store-image-bulk-files>
+          <input type="file" multiple webkitdirectory directory data-store-image-folder>
+          <div>
+            <strong>批量导入商店图</strong>
+            <span>拖入图片或语言文件夹。路径包含语言名时会自动归类，例如 en-US/icon.png、zh-Hant/phone/01.png。</span>
+          </div>
+          <div class="store-image-bulk-actions">
+            <button class="ghost-button compact" type="button" data-store-image-folder-button>选择文件夹</button>
+            <button class="ghost-button compact" type="button" data-store-image-files-button>选择图片</button>
+          </div>
+          <small data-store-image-bulk-status>还没有导入本地图片</small>
         </div>
 
         <div class="metadata-editor" data-metadata-editor data-mode="field">
@@ -114,14 +147,14 @@
                 </div>
                 <div class="metadata-locale-grid">
                   {% for item in localized_metadata %}
-                    <label class="metadata-locale-input" data-locale="{{ item.locale }}">
+                    <div class="metadata-locale-input" data-locale="{{ item.locale }}">
                       <span>
                         {{ item.locale }}
                         {% if item.is_source %}
                           <small>源文案</small>
                         {% endif %}
                       </span>
-                      {% if slot.type == "textarea" %}
+                      {% if slot.key == "note" %}
                         <textarea
                           name="{{ slot.name }}"
                           rows="{{ slot.rows }}"
@@ -131,16 +164,42 @@
                           data-slot="{{ slot.key }}"
                         >{{ item.store_images[slot.key] }}</textarea>
                       {% else %}
+                        {% set image_slot = item.store_images[slot.key] %}
                         <input
+                          type="hidden"
                           name="{{ slot.name }}"
-                          value="{{ item.store_images[slot.key] }}"
-                          placeholder="{{ slot.placeholder }}"
+                          value="{{ image_slot.value }}"
                           data-store-image-input
                           data-locale="{{ item.locale }}"
                           data-slot="{{ slot.key }}"
                         >
+                        <div class="store-image-upload" data-store-image-zone data-slot="{{ slot.key }}" data-locale="{{ item.locale }}" data-multiple="{{ 'true' if slot.multiple else 'false' }}">
+                          <input
+                            type="file"
+                            name="storeImageFiles__{{ slot.key }}__{{ item.locale }}"
+                            accept="image/*"
+                            data-store-image-file
+                            data-slot="{{ slot.key }}"
+                            data-locale="{{ item.locale }}"
+                            {% if slot.multiple %}multiple{% endif %}
+                          >
+                          <strong>拖入{{ item.locale }} {{ slot.label }}</strong>
+                          <small>{{ "支持多张，按文件名排序" if slot.multiple else "支持单张图片" }}</small>
+                          <div class="store-image-file-list" data-store-image-file-list>
+                            {% if image_slot.file_names %}
+                              {{ image_slot.file_names|join(", ") }}
+                            {% else %}
+                              暂无本地图片，可拖拽图片或语言文件夹
+                            {% endif %}
+                          </div>
+                        </div>
+                        <div class="store-image-previews {{ 'screenshots' if slot.multiple else '' }}" data-store-image-preview>
+                          {% for preview_url in image_slot.preview_urls %}
+                            <img alt="{{ item.locale }} {{ slot.label }}预览" src="{{ preview_url }}">
+                          {% endfor %}
+                        </div>
                       {% endif %}
-                    </label>
+                    </div>
                   {% endfor %}
                 </div>
               </section>
@@ -188,9 +247,9 @@
                   {% endfor %}
                   <div class="subsection-title">商店图素材</div>
                   {% for slot in store_image_slots %}
-                    <label>
-                      {{ slot.label }}
-                      {% if slot.type == "textarea" %}
+                    <div class="language-store-image-field">
+                      <strong>{{ slot.label }}</strong>
+                      {% if slot.key == "note" %}
                         <textarea
                           name="{{ slot.name }}"
                           rows="{{ slot.rows }}"
@@ -201,17 +260,44 @@
                           disabled
                         >{{ item.store_images[slot.key] }}</textarea>
                       {% else %}
+                        {% set image_slot = item.store_images[slot.key] %}
                         <input
+                          type="hidden"
                           name="{{ slot.name }}"
-                          value="{{ item.store_images[slot.key] }}"
-                          placeholder="{{ slot.placeholder }}"
+                          value="{{ image_slot.value }}"
                           data-store-image-input
                           data-locale="{{ item.locale }}"
                           data-slot="{{ slot.key }}"
                           disabled
                         >
+                        <div class="store-image-upload" data-store-image-zone data-slot="{{ slot.key }}" data-locale="{{ item.locale }}" data-multiple="{{ 'true' if slot.multiple else 'false' }}">
+                          <input
+                            type="file"
+                            name="storeImageFiles__{{ slot.key }}__{{ item.locale }}"
+                            accept="image/*"
+                            data-store-image-file
+                            data-slot="{{ slot.key }}"
+                            data-locale="{{ item.locale }}"
+                            disabled
+                            {% if slot.multiple %}multiple{% endif %}
+                          >
+                          <strong>拖入{{ item.locale }} {{ slot.label }}</strong>
+                          <small>{{ "支持多张，按文件名排序" if slot.multiple else "支持单张图片" }}</small>
+                          <div class="store-image-file-list" data-store-image-file-list>
+                            {% if image_slot.file_names %}
+                              {{ image_slot.file_names|join(", ") }}
+                            {% else %}
+                              暂无本地图片，可拖拽图片或语言文件夹
+                            {% endif %}
+                          </div>
+                        </div>
+                        <div class="store-image-previews {{ 'screenshots' if slot.multiple else '' }}" data-store-image-preview>
+                          {% for preview_url in image_slot.preview_urls %}
+                            <img alt="{{ item.locale }} {{ slot.label }}预览" src="{{ preview_url }}">
+                          {% endfor %}
+                        </div>
                       {% endif %}
-                    </label>
+                    </div>
                   {% endfor %}
                 </section>
               {% endfor %}
@@ -237,6 +323,7 @@
         <form action="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata/preflight" method="post">
           <input type="hidden" name="version" value="{{ version }}">
           <input type="hidden" name="locale" value="{{ source_locale }}">
+          <input type="hidden" name="contentSetId" value="{{ content_set_id }}">
           <button class="ghost-button compact" type="submit">实时查询</button>
         </form>
       </div>
@@ -284,6 +371,15 @@
           <dd>{{ connector.status }}</dd>
         </dl>
       {% endif %}
+      <div class="subsection-title">内容套件</div>
+      <dl class="detail-list">
+        <dt>当前打开</dt>
+        <dd>{{ content_set_name }}</dd>
+        <dt>内容范围</dt>
+        <dd>文案、链接、商店图</dd>
+        <dt>同步目标</dt>
+        <dd>当前套件</dd>
+      </dl>
     </aside>
   </div>
 

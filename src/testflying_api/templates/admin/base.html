@@ -306,6 +306,187 @@
         });
       }
 
+      function syncContentSetControls(form) {
+        const picker = form?.querySelector('[data-content-set-picker]');
+        const nameInput = form?.querySelector('[data-content-set-name]');
+        const status = form?.querySelector('[data-content-set-status]');
+        const selected = picker?.selectedOptions?.[0];
+        if (!picker || !nameInput || !selected) return;
+        const name = selected.dataset.name || selected.textContent.trim() || selected.value;
+        nameInput.value = name;
+        if (status) status.textContent = `已打开：${name}`;
+      }
+
+      function addContentSetOption(form, name, copyCurrent) {
+        const picker = form?.querySelector('[data-content-set-picker]');
+        if (!picker || !name) return;
+        const id = `set-${Date.now()}`;
+        const option = new Option(name, id, true, true);
+        option.dataset.name = name;
+        option.dataset.existing = 'false';
+        picker.add(option);
+        picker.value = id;
+        syncContentSetControls(form);
+        const status = form.querySelector('[data-content-set-status]');
+        if (status) {
+          status.textContent = `${copyCurrent ? '已复制为' : '新建'}：${name}，保存后生效`;
+        }
+      }
+
+      function storeImageLocales(form) {
+        return Array.from(new Set(
+          Array.from(form.querySelectorAll('[name="locales"]'))
+            .map((input) => input.value)
+            .filter(Boolean)
+        ));
+      }
+
+      function normalizeStoreImageToken(value) {
+        return String(value || '').toLowerCase().replace(/\s+/g, '').replace(/_/g, '-');
+      }
+
+      function detectStoreImageLocale(form, path, fallbackLocale) {
+        const parts = path.split(/[\\/]/).map(normalizeStoreImageToken);
+        const aliases = new Map([
+          ['en', 'en-US'],
+          ['en-us', 'en-US'],
+          ['enus', 'en-US'],
+          ['zh-hant', 'zh-Hant'],
+          ['zhhant', 'zh-Hant'],
+          ['zh-tw', 'zh-Hant'],
+          ['zhtw', 'zh-Hant'],
+          ['zh-hans', 'zh-Hans'],
+          ['zhhans', 'zh-Hans'],
+          ['zh-cn', 'zh-Hans'],
+          ['zhcn', 'zh-Hans'],
+          ['ja', 'ja'],
+          ['jp', 'ja'],
+          ['ko', 'ko'],
+          ['fr', 'fr-FR'],
+          ['fr-fr', 'fr-FR'],
+          ['frfr', 'fr-FR'],
+        ]);
+        const supported = new Set(storeImageLocales(form));
+        for (const part of parts) {
+          const locale = aliases.get(part) || part;
+          if (supported.has(locale)) return locale;
+        }
+        return fallbackLocale || form.dataset.sourceLocale;
+      }
+
+      function detectStoreImageSlot(path, fallbackSlot) {
+        const value = normalizeStoreImageToken(path);
+        if (/(app-icon|appicon|icon|logo|图标)/.test(value)) return 'app_icon_url';
+        if (/(feature|promo|banner|marketing|hero|宣传|横图)/.test(value)) return 'feature_graphic_url';
+        if (/(tablet|ipad|平板)/.test(value)) return 'tablet_screenshots';
+        if (/(phone|screenshot|screen|iphone|android|截图|手机)/.test(value)) return 'phone_screenshots';
+        return fallbackSlot || '';
+      }
+
+      function storeImageFileRecords(files) {
+        return Array.from(files || []).map((file) => ({
+          file,
+          path: file.webkitRelativePath || file.name,
+        }));
+      }
+
+      async function storeImageRecordsFromDrop(dataTransfer) {
+        const entries = Array.from(dataTransfer.items || [])
+          .map((item) => item.webkitGetAsEntry ? item.webkitGetAsEntry() : null)
+          .filter(Boolean);
+        if (!entries.length) return storeImageFileRecords(dataTransfer.files);
+        const nested = await Promise.all(entries.map((entry) => readStoreImageEntry(entry, '')));
+        return nested.flat();
+      }
+
+      function readStoreImageEntry(entry, parentPath) {
+        const path = parentPath ? `${parentPath}/${entry.name}` : entry.name;
+        if (entry.isFile) {
+          return new Promise((resolve) => {
+            entry.file((file) => resolve([{ file, path }]));
+          });
+        }
+        if (!entry.isDirectory) return Promise.resolve([]);
+        const reader = entry.createReader();
+        const records = [];
+        return new Promise((resolve) => {
+          const readBatch = () => {
+            reader.readEntries(async (entries) => {
+              if (!entries.length) {
+                resolve(records);
+                return;
+              }
+              const nested = await Promise.all(entries.map((child) => readStoreImageEntry(child, path)));
+              records.push(...nested.flat());
+              readBatch();
+            });
+          };
+          readBatch();
+        });
+      }
+
+      function isStoreImageFile(file) {
+        return file?.type?.startsWith('image/') || /\.(png|jpe?g|webp)$/i.test(file?.name || '');
+      }
+
+      function applyStoreImageRecords(form, records, fallbackSlot, fallbackLocale) {
+        const groups = new Map();
+        let skipped = 0;
+        records.forEach((record) => {
+          if (!isStoreImageFile(record.file)) {
+            skipped += 1;
+            return;
+          }
+          const locale = detectStoreImageLocale(form, record.path, fallbackLocale);
+          const slot = detectStoreImageSlot(record.path, fallbackSlot);
+          if (!locale || !slot) {
+            skipped += 1;
+            return;
+          }
+          const key = `${slot}__${locale}`;
+          if (!groups.has(key)) groups.set(key, { slot, locale, files: [] });
+          groups.get(key).files.push(record.file);
+        });
+        groups.forEach(({ slot, locale, files }) => {
+          const input = form.querySelector(`[data-store-image-file][data-slot="${slot}"][data-locale="${locale}"]:not(:disabled)`);
+          if (!input) return;
+          const zone = input.closest('[data-store-image-zone]');
+          const multiple = zone?.dataset.multiple === 'true';
+          const sorted = files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+          setStoreImageFiles(input, multiple ? sorted : sorted.slice(-1));
+          renderStoreImagePreview(input);
+        });
+        const status = form.querySelector('[data-store-image-bulk-status]');
+        if (status) {
+          const count = Array.from(groups.values()).reduce((sum, group) => sum + group.files.length, 0);
+          status.textContent = `已归类 ${count} 张图片${skipped ? `，${skipped} 个文件未识别` : ''}`;
+        }
+      }
+
+      function setStoreImageFiles(input, files) {
+        const transfer = new DataTransfer();
+        files.forEach((file) => transfer.items.add(file));
+        input.files = transfer.files;
+      }
+
+      function renderStoreImagePreview(input) {
+        const zone = input.closest('[data-store-image-zone]');
+        const wrapper = zone?.parentElement;
+        const preview = wrapper?.querySelector('[data-store-image-preview]');
+        const fileList = zone?.querySelector('[data-store-image-file-list]');
+        const files = Array.from(input.files || []);
+        zone?.classList.toggle('has-files', files.length > 0);
+        if (fileList) {
+          fileList.textContent = files.length
+            ? files.map((file) => file.name).join(', ')
+            : '暂无本地图片，可拖拽图片或语言文件夹';
+        }
+        if (!preview || !files.length) return;
+        preview.innerHTML = files.map((file) => (
+          `<img alt="${file.name}" src="${URL.createObjectURL(file)}">`
+        )).join('');
+      }
+
       function syncMetadataEditor(root = document) {
         root.querySelectorAll('[data-metadata-form]').forEach((form) => {
           const fieldView = form.querySelector('[data-field-view]');
@@ -328,6 +509,7 @@
               input.disabled = activeMode !== 'language' || !isActiveBlock;
             });
           });
+          syncContentSetControls(form);
         });
       }
 
@@ -426,6 +608,31 @@
         if (event.target.closest('[data-language-picker]')) {
           syncMetadataEditor();
         }
+        const contentSetPicker = event.target.closest('[data-content-set-picker]');
+        if (contentSetPicker) {
+          const form = contentSetPicker.closest('[data-metadata-form]');
+          syncContentSetControls(form);
+          const selected = contentSetPicker.selectedOptions?.[0];
+          if (selected?.dataset.existing === 'true') {
+            const url = new URL(window.location.href);
+            url.searchParams.set('content_set_id', contentSetPicker.value);
+            const version = form?.querySelector('[name="version"]')?.value;
+            const locale = form?.querySelector('[name="locale"]')?.value;
+            if (version) url.searchParams.set('version', version);
+            if (locale) url.searchParams.set('locale', locale);
+            window.location.href = url.toString();
+          }
+        }
+        const storeImageFile = event.target.closest('[data-store-image-file]');
+        if (storeImageFile) {
+          renderStoreImagePreview(storeImageFile);
+        }
+        const bulkFiles = event.target.closest('[data-store-image-bulk-files], [data-store-image-folder]');
+        if (bulkFiles) {
+          const form = bulkFiles.closest('[data-metadata-form]');
+          applyStoreImageRecords(form, storeImageFileRecords(bulkFiles.files), '', '');
+          bulkFiles.value = '';
+        }
       });
 
       document.addEventListener('click', (event) => {
@@ -500,9 +707,79 @@
           return;
         }
 
+        const createSet = event.target.closest('[data-create-content-set]');
+        if (createSet) {
+          const form = createSet.closest('[data-metadata-form]');
+          const name = window.prompt('新套件名称', '新的商店内容套件');
+          addContentSetOption(form, name?.trim(), false);
+          return;
+        }
+
+        const duplicateSet = event.target.closest('[data-duplicate-content-set]');
+        if (duplicateSet) {
+          const form = duplicateSet.closest('[data-metadata-form]');
+          const currentName = form?.querySelector('[data-content-set-name]')?.value || '当前套件';
+          const name = window.prompt('复制后的套件名称', `${currentName} 副本`);
+          addContentSetOption(form, name?.trim(), true);
+          return;
+        }
+
+        const folderButton = event.target.closest('[data-store-image-folder-button]');
+        if (folderButton) {
+          folderButton.closest('[data-store-image-bulk-drop]')?.querySelector('[data-store-image-folder]')?.click();
+          return;
+        }
+
+        const filesButton = event.target.closest('[data-store-image-files-button]');
+        if (filesButton) {
+          filesButton.closest('[data-store-image-bulk-drop]')?.querySelector('[data-store-image-bulk-files]')?.click();
+          return;
+        }
+
+        const imageZone = event.target.closest('[data-store-image-zone]');
+        if (imageZone && !event.target.closest('input')) {
+          imageZone.querySelector('[data-store-image-file]')?.click();
+          return;
+        }
+
         const row = event.target.closest('[data-account-row]');
         if (!row || event.target.closest('a, button, form, input, select, textarea')) return;
         selectAccountPreview(row.dataset.accountId);
+      });
+
+      document.addEventListener('dragenter', (event) => {
+        const target = event.target.closest('[data-store-image-zone], [data-store-image-bulk-drop]');
+        if (!target) return;
+        event.preventDefault();
+        target.classList.add('is-dragover');
+      });
+
+      document.addEventListener('dragover', (event) => {
+        const target = event.target.closest('[data-store-image-zone], [data-store-image-bulk-drop]');
+        if (!target) return;
+        event.preventDefault();
+        target.classList.add('is-dragover');
+      });
+
+      document.addEventListener('dragleave', (event) => {
+        const target = event.target.closest('[data-store-image-zone], [data-store-image-bulk-drop]');
+        if (!target) return;
+        target.classList.remove('is-dragover');
+      });
+
+      document.addEventListener('drop', async (event) => {
+        const target = event.target.closest('[data-store-image-zone], [data-store-image-bulk-drop]');
+        if (!target) return;
+        event.preventDefault();
+        target.classList.remove('is-dragover');
+        const form = target.closest('[data-metadata-form]');
+        const records = await storeImageRecordsFromDrop(event.dataTransfer);
+        applyStoreImageRecords(
+          form,
+          records,
+          target.dataset.slot || '',
+          target.dataset.locale || ''
+        );
       });
 
       document.addEventListener('click', async (event) => {

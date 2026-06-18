@@ -144,6 +144,79 @@
           </label>
           <button class="primary-button" type="submit">{{ "保存修改" if connector else "保存 Connector" }}</button>
         </form>
+
+        <details class="connector-deploy-guide">
+          <summary>
+            <span>Connector 部署说明</span>
+            <small>推荐直接使用 GitHub Actions 构建产物</small>
+          </summary>
+          <div class="connector-deploy-body">
+            <div class="deploy-step">
+              <h3>1. 下载并加载构建产物</h3>
+              <pre><code>RUN_ID=&lt;GitHub Actions run id&gt;
+SHA=&lt;commit sha&gt;
+
+mkdir -p /opt/testflying/artifacts
+cd /opt/testflying/artifacts
+
+gh run download "$RUN_ID" \
+  -R baoluchuling/testflying-api \
+  -D .
+
+gunzip -c "testflying-build-$SHA/images/testflying-connector-$SHA.tar.gz" | docker load
+docker tag "testflying-connector:$SHA" testflying-connector:local</code></pre>
+            </div>
+            <div class="deploy-step">
+              <h3>2. 先用 mock 模式验证</h3>
+              <pre><code>docker rm -f testflying-connector || true
+
+docker run -d --name testflying-connector \
+  -p 8100:8100 \
+  --memory=64m \
+  -e TESTFLYING_CONNECTOR_DEVELOPER_ACCOUNT_ID={{ account.id }} \
+  -e TESTFLYING_CONNECTOR_TOKEN=&lt;random-token&gt; \
+  testflying-connector:local
+
+curl http://127.0.0.1:8100/health</code></pre>
+            </div>
+            <div class="deploy-step">
+              <h3>3. Apple 账号 live 模式</h3>
+              <pre><code>docker rm -f testflying-connector || true
+
+docker run -d --name testflying-connector \
+  -p 8100:8100 \
+  --memory=64m \
+  -v /opt/testflying/secrets/apple-a:/run/secrets/apple:ro \
+  -e TESTFLYING_CONNECTOR_STORE_MODE=live \
+  -e TESTFLYING_CONNECTOR_DEVELOPER_ACCOUNT_ID={{ account.id }} \
+  -e TESTFLYING_CONNECTOR_TOKEN=&lt;random-token&gt; \
+  -e TESTFLYING_CONNECTOR_APPLE_ISSUER_ID=&lt;issuer-id&gt; \
+  -e TESTFLYING_CONNECTOR_APPLE_KEY_ID=&lt;key-id&gt; \
+  -e TESTFLYING_CONNECTOR_APPLE_PRIVATE_KEY_PATH=/run/secrets/apple/AuthKey_XXXX.p8 \
+  testflying-connector:local</code></pre>
+            </div>
+            <div class="deploy-step">
+              <h3>4. Google 账号 live 模式</h3>
+              <pre><code>docker rm -f testflying-connector || true
+
+docker run -d --name testflying-connector \
+  -p 8100:8100 \
+  --memory=64m \
+  -v /opt/testflying/secrets/google-a:/run/secrets/google:ro \
+  -e TESTFLYING_CONNECTOR_STORE_MODE=live \
+  -e TESTFLYING_CONNECTOR_DEVELOPER_ACCOUNT_ID={{ account.id }} \
+  -e TESTFLYING_CONNECTOR_TOKEN=&lt;random-token&gt; \
+  -e TESTFLYING_CONNECTOR_GOOGLE_SERVICE_ACCOUNT_JSON_PATH=/run/secrets/google/service-account.json \
+  testflying-connector:local</code></pre>
+            </div>
+            <div class="deploy-note">
+              Connector 地址填这台机器对中心后台可访问的地址，例如
+              <code>http://&lt;connector-host&gt;:8100</code>。调用 Token 必须和
+              <code>TESTFLYING_CONNECTOR_TOKEN</code> 一致；账号 ID 必须保持为
+              <code>{{ account.id }}</code>，否则检查连接会返回 403。
+            </div>
+          </div>
+        </details>
       </section>
 
       <section id="account-apps" class="panel">

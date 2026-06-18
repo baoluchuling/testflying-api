@@ -186,6 +186,11 @@ def test_admin_developer_account_detail_renders_store_sync_entry(
     assert "data-connector-form" in response.text
     assert "data-connector-check-result" in response.text
     assert "connector-inline-status" in response.text
+    assert "Connector 部署说明" in response.text
+    assert "gh run download" in response.text
+    assert "testflying-connector:local" in response.text
+    assert "TESTFLYING_CONNECTOR_DEVELOPER_ACCOUNT_ID=account-apple-enterprise" in response.text
+    assert "TESTFLYING_CONNECTOR_STORE_MODE=live" in response.text
     assert "hidden" in response.text
 
 

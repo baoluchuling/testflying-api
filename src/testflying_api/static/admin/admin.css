@@ -1288,6 +1288,74 @@ a.ghost-button {
   display: none;
 }
 
+.connector-deploy-guide {
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.connector-deploy-guide summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  cursor: pointer;
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.connector-deploy-guide summary small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.connector-deploy-body {
+  display: grid;
+  gap: 14px;
+  padding: 0 16px 16px;
+}
+
+.deploy-step {
+  display: grid;
+  gap: 8px;
+}
+
+.deploy-step h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.deploy-step pre {
+  overflow-x: auto;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid #dbe4ef;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.deploy-step code {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+.deploy-note {
+  padding: 12px;
+  border: 1px solid #f59e0b;
+  border-radius: 8px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.6;
+}
+
 .account-app-list {
   display: grid;
   border: 1px solid var(--line);
@@ -1532,6 +1600,11 @@ a.ghost-button {
 
   .connector-inline-status {
     max-width: 100%;
+  }
+
+  .connector-deploy-guide summary {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .account-filters,

@@ -40,6 +40,7 @@ from testflying_api.models import UploadResponse
 from testflying_api.schema import App, DeveloperAccount
 from testflying_api.store_sync import (
     DEFAULT_LOCALE,
+    resolve_connector_base_url,
     save_app_metadata_draft,
     save_connector,
     save_release_note_draft,
@@ -206,7 +207,7 @@ def create_developer_account_page(
             renewal_action_label=renewal_action_label,
         )
         session.commit()
-        context = account_detail_context(session, account.id)
+        context = _account_detail_context(request, session, account.id)
         return templates.TemplateResponse(
             request,
             "admin/account_detail.html",
@@ -242,7 +243,7 @@ def developer_account_detail_page(
     session: SessionDep,
     _: AdminDep,
 ) -> HTMLResponse:
-    context = account_detail_context(session, account_id)
+    context = _account_detail_context(request, session, account_id)
     if context["account"] is None:
         raise ApiError("account_not_found", "开发者账号不存在", status_code=404)
     return templates.TemplateResponse(
@@ -261,7 +262,7 @@ def edit_developer_account_page(
 ) -> HTMLResponse:
     account = session.get(DeveloperAccount, account_id)
     if account is None:
-        context = account_detail_context(session, account_id)
+        context = _account_detail_context(request, session, account_id)
         if context["account"] is None:
             raise ApiError("account_not_found", "开发者账号不存在", status_code=404)
         account = context["account"]
@@ -301,7 +302,7 @@ def update_developer_account_page(
             renewal_action_label=renewal_action_label,
         )
         session.commit()
-        context = account_detail_context(session, account.id)
+        context = _account_detail_context(request, session, account.id)
         return templates.TemplateResponse(
             request,
             "admin/account_detail.html",
@@ -338,7 +339,7 @@ def save_connector_page(
     session: SessionDep,
     _: AdminDep,
     name: Annotated[str, Form()],
-    base_url: Annotated[str, Form(alias="baseUrl")],
+    base_url: Annotated[str, Form(alias="baseUrl")] = "",
     auth_token: Annotated[str, Form(alias="authToken")] = "",
 ) -> HTMLResponse:
     try:
@@ -348,9 +349,10 @@ def save_connector_page(
             name=name,
             base_url=base_url,
             auth_token=auth_token,
+            base_url_template=request.app.state.settings.connector_base_url_template,
         )
         session.commit()
-        context = account_detail_context(session, account_id)
+        context = _account_detail_context(request, session, account_id)
         return templates.TemplateResponse(
             request,
             "admin/account_detail.html",
@@ -358,7 +360,7 @@ def save_connector_page(
         )
     except ApiError as error:
         session.rollback()
-        context = account_detail_context(session, account_id)
+        context = _account_detail_context(request, session, account_id)
         return templates.TemplateResponse(
             request,
             "admin/account_detail.html",
@@ -386,7 +388,7 @@ def bind_account_app_page(
             store_package_name=store_package_name,
         )
         session.commit()
-        context = account_detail_context(session, account_id)
+        context = _account_detail_context(request, session, account_id)
         return templates.TemplateResponse(
             request,
             "admin/account_detail.html",
@@ -394,7 +396,7 @@ def bind_account_app_page(
         )
     except ApiError as error:
         session.rollback()
-        context = account_detail_context(session, account_id)
+        context = _account_detail_context(request, session, account_id)
         return templates.TemplateResponse(
             request,
             "admin/account_detail.html",
@@ -422,7 +424,7 @@ def update_account_app_settings_page(
             store_package_name=store_package_name,
         )
         session.commit()
-        context = account_detail_context(session, account_id)
+        context = _account_detail_context(request, session, account_id)
         return templates.TemplateResponse(
             request,
             "admin/account_detail.html",
@@ -430,7 +432,7 @@ def update_account_app_settings_page(
         )
     except ApiError as error:
         session.rollback()
-        context = account_detail_context(session, account_id)
+        context = _account_detail_context(request, session, account_id)
         return templates.TemplateResponse(
             request,
             "admin/account_detail.html",
@@ -450,7 +452,7 @@ def unbind_account_app_page(
     try:
         unbind_app_from_account(session, account_id=account_id, app_id=app_id)
         session.commit()
-        context = account_detail_context(session, account_id)
+        context = _account_detail_context(request, session, account_id)
         return templates.TemplateResponse(
             request,
             "admin/account_detail.html",
@@ -458,7 +460,7 @@ def unbind_account_app_page(
         )
     except ApiError as error:
         session.rollback()
-        context = account_detail_context(session, account_id)
+        context = _account_detail_context(request, session, account_id)
         return templates.TemplateResponse(
             request,
             "admin/account_detail.html",
@@ -789,6 +791,20 @@ def notifications_page(request: Request, session: SessionDep, _: AdminDep) -> HT
         "admin/notifications.html",
         _context(request, active="notifications", notifications=list_notifications(session)),
     )
+
+
+def _account_detail_context(
+    request: Request,
+    session: Session,
+    account_id: str,
+) -> dict[str, object]:
+    context = account_detail_context(session, account_id)
+    context["default_connector_base_url"] = resolve_connector_base_url(
+        account_id=account_id,
+        base_url="",
+        base_url_template=request.app.state.settings.connector_base_url_template,
+    )
+    return context
 
 
 def _context(request: Request, *, active: str, **values: object) -> dict[str, object]:

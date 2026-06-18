@@ -54,6 +54,7 @@ def test_settings(tmp_path: Path) -> Settings:
             "http://127.0.0.1:8080",
         ),
         admin_username="admin",
+        connector_base_url_template=None,
     )
 
 

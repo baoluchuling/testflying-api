@@ -124,10 +124,15 @@ def save_connector(
     name: str,
     base_url: str,
     auth_token: str,
+    base_url_template: str | None = None,
 ) -> StoreConnector:
     account_or_404(session, account_id)
     normalized_name = name.strip() or "Store Connector"
-    normalized_base_url = base_url.strip().rstrip("/")
+    normalized_base_url = resolve_connector_base_url(
+        account_id=account_id,
+        base_url=base_url,
+        base_url_template=base_url_template,
+    )
     normalized_token = auth_token.strip()
     if not normalized_base_url:
         raise ApiError("invalid_connector", "connector 地址不能为空", status_code=422)
@@ -156,6 +161,27 @@ def save_connector(
         connector.status = connector.status or "unknown"
     session.flush()
     return connector
+
+
+def resolve_connector_base_url(
+    *,
+    account_id: str,
+    base_url: str = "",
+    base_url_template: str | None = None,
+) -> str:
+    normalized_base_url = base_url.strip().rstrip("/")
+    if normalized_base_url:
+        return normalized_base_url
+    if base_url_template is None or not base_url_template.strip():
+        return ""
+    try:
+        return base_url_template.strip().format(account_id=account_id).rstrip("/")
+    except (IndexError, KeyError, ValueError) as exc:
+        raise ApiError(
+            "invalid_connector_template",
+            "connector 地址模板无效，只支持 {account_id} 占位符",
+            status_code=422,
+        ) from exc
 
 
 def latest_build_for_app(session: Session, app_id: str) -> Build | None:

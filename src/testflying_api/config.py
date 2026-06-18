@@ -24,6 +24,7 @@ class Settings:
     s3_secret_access_key: str | None
     cors_allowed_origins: tuple[str, ...]
     admin_username: str
+    connector_base_url_template: str | None
 
     @classmethod
     def from_environment(cls) -> Settings:
@@ -50,6 +51,9 @@ class Settings:
                 os.getenv("TESTFLYING_CORS_ALLOWED_ORIGINS"),
             ),
             admin_username=os.getenv("TESTFLYING_ADMIN_USERNAME", "admin"),
+            connector_base_url_template=_normalize_optional(
+                os.getenv("TESTFLYING_CONNECTOR_BASE_URL_TEMPLATE"),
+            ),
         )
 
 
@@ -57,3 +61,10 @@ def _split_origins(raw_value: str | None) -> tuple[str, ...]:
     if raw_value is None or not raw_value.strip():
         return DEFAULT_CORS_ALLOWED_ORIGINS
     return tuple(origin.strip() for origin in raw_value.split(",") if origin.strip())
+
+
+def _normalize_optional(raw_value: str | None) -> str | None:
+    if raw_value is None:
+        return None
+    value = raw_value.strip()
+    return value or None

@@ -44,7 +44,11 @@
         </label>
         <label>
           Connector 地址
-          <input name="baseUrl" value="{{ connector.base_url if connector else '' }}" placeholder="http://connector:8100" required>
+          <input
+            name="baseUrl"
+            value="{{ connector.base_url if connector else default_connector_base_url }}"
+            placeholder="{{ '留空则按账号 ID 自动生成' if default_connector_base_url else 'http://connector:8100' }}"
+          >
         </label>
       </div>
       <label>

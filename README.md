@@ -139,6 +139,7 @@ password: dev-token
 - `TESTFLYING_STATIC_TOKEN`：默认 `dev-token`
 - `TESTFLYING_ADMIN_USERNAME`：默认 `admin`
 - `TESTFLYING_CORS_ALLOWED_ORIGINS`：默认允许 `http://localhost:8080,http://127.0.0.1:8080`，用于 Flutter Web 本地联调。
+- `TESTFLYING_CONNECTOR_BASE_URL_TEMPLATE`：按开发者账号 ID 自动生成 connector 地址的模板。支持 `{account_id}` 占位符，例如 `http://connector-{account_id}:8100`。账号详情页手填地址时优先使用手填值；留空时使用该模板。
 - `TESTFLYING_CONNECTOR_DEVELOPER_ACCOUNT_ID`：connector 绑定的开发者账号 ID。
 - `TESTFLYING_CONNECTOR_TOKEN`：中心后台调用 connector 的 Bearer token。
 
@@ -191,7 +192,7 @@ open http://localhost:8000/admin
 
 1. 进入 `开发者账号`。
 2. 新增或编辑开发者账号。
-3. 打开某个账号详情，配置该账号的 connector 地址和调用 token。
+3. 打开某个账号详情，配置该账号的 connector 地址和调用 token。若已配置 `TESTFLYING_CONNECTOR_BASE_URL_TEMPLATE`，connector 地址可以留空，由后台按账号 ID 自动生成。
 4. 上传新构建时直接选择账号，或者在账号详情里绑定已有 App。
 5. 在账号下维护 App 的 `store_app_id` / `store_package_name`。
 6. 进入 `商店元数据` 或 `管理版本说明`。

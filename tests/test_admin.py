@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from base64 import b64encode
+from dataclasses import replace
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -9,6 +10,7 @@ from testflying_api.schema import (
     App,
     DeveloperAccount,
     StoreAppMetadataDraft,
+    StoreConnector,
     StorePreflightCheck,
     StoreReleaseNoteDraft,
     StoreSyncRun,
@@ -345,6 +347,43 @@ def test_admin_can_update_connector_settings(
     assert "Connector 已保存" in response.text
     assert "Account A Connector" in response.text
     assert "http://connector-a:8100" in response.text
+
+
+def test_admin_can_generate_connector_url_from_account_template(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+    db_session.query(StoreConnector).delete()
+    db_session.commit()
+    client.app.state.settings = replace(
+        client.app.state.settings,
+        connector_base_url_template="http://connector-{account_id}:8100",
+    )
+
+    detail_response = client.get(
+        "/admin/developer-accounts/account-apple-enterprise",
+        headers=_admin_headers(),
+    )
+    response = client.post(
+        "/admin/developer-accounts/account-apple-enterprise/connector",
+        headers=_admin_headers(),
+        data={
+            "name": "Generated Connector",
+            "baseUrl": "",
+            "authToken": "new-token",
+        },
+    )
+
+    db_session.expire_all()
+    connector = db_session.query(StoreConnector).one()
+    expected_base_url = "http://connector-account-apple-enterprise:8100"
+    assert detail_response.status_code == 200
+    assert expected_base_url in detail_response.text
+    assert response.status_code == 200
+    assert "Connector 已保存" in response.text
+    assert connector.base_url == expected_base_url
+    assert expected_base_url in response.text
 
 
 def test_admin_release_notes_page_runs_cached_preflight(

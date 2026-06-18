@@ -6,6 +6,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: write
+
 jobs:
   backend:
     runs-on: ubuntu-latest
@@ -95,3 +98,26 @@ jobs:
             dist/wheels/*.whl
             dist/images/*.tar.gz
           if-no-files-found: error
+
+      - name: Publish GitHub release assets
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="build-${GITHUB_SHA}"
+          title="testflying build ${GITHUB_SHA}"
+          notes="自动构建产物。Connector 部署只需要下载 testflying-connector-${GITHUB_SHA}.tar.gz。"
+          assets=(
+            "dist/images/testflying-connector-${GITHUB_SHA}.tar.gz"
+            "dist/images/testflying-server-${GITHUB_SHA}.tar.gz"
+            "dist/wheels/testflying_server-0.1.0-py3-none-any.whl"
+          )
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "${assets[@]}" --clobber
+          else
+            gh release create "$tag" "${assets[@]}" \
+              --target "$GITHUB_SHA" \
+              --title "$title" \
+              --notes "$notes" \
+              --latest
+          fi

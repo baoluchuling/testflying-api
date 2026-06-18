@@ -1323,12 +1323,31 @@ a.ghost-button {
   gap: 8px;
 }
 
+.deploy-artifact-list {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+}
+
+.deploy-artifact-list h3,
 .deploy-step h3 {
   margin: 0;
   color: var(--ink);
   font-size: 13px;
 }
 
+.deploy-artifact-list p {
+  margin: 0;
+  color: #1e3a8a;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.55;
+}
+
+.deploy-artifact-list pre,
 .deploy-step pre {
   overflow-x: auto;
   margin: 0;
@@ -1341,6 +1360,7 @@ a.ghost-button {
   line-height: 1.55;
 }
 
+.deploy-artifact-list code,
 .deploy-step code {
   color: inherit;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;

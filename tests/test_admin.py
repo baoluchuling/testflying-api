@@ -198,7 +198,17 @@ def test_admin_developer_account_detail_renders_store_sync_entry(
     assert "data-connector-check-result" in response.text
     assert "connector-inline-status" in response.text
     assert "Connector 部署说明" in response.text
+    assert "构建产物清单" in response.text
+    assert "GitHub Release: build-&lt;SHA&gt;" in response.text
+    assert "build-&lt;SHA&gt;" in response.text
+    assert "testflying-build-&lt;SHA&gt;" in response.text
+    assert "testflying-connector-&lt;SHA&gt;.tar.gz" in response.text
+    assert "Connector 机器只需要这个" in response.text
+    assert "testflying-server-&lt;SHA&gt;.tar.gz" in response.text
+    assert "testflying_server-0.1.0-py3-none-any.whl" in response.text
+    assert "gh release download" in response.text
     assert "gh run download" in response.text
+    assert '-p "testflying-connector-$SHA.tar.gz"' in response.text
     assert "testflying-connector:local" in response.text
     assert "TESTFLYING_CONNECTOR_DEVELOPER_ACCOUNT_ID=account-apple-enterprise" in response.text
     assert "TESTFLYING_CONNECTOR_STORE_MODE=live" in response.text

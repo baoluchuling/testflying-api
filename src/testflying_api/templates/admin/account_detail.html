@@ -148,21 +148,46 @@
         <details class="connector-deploy-guide">
           <summary>
             <span>Connector 部署说明</span>
-            <small>推荐直接使用 GitHub Actions 构建产物</small>
+            <small>推荐直接从 GitHub Release 下载构建产物</small>
           </summary>
           <div class="connector-deploy-body">
+            <div class="deploy-artifact-list">
+              <h3>构建产物清单</h3>
+              <p>每次 main 分支构建成功后会创建一个 GitHub Release，tag 是 <code>build-&lt;SHA&gt;</code>。Connector 机器只需要下载 connector 镜像包。</p>
+              <pre><code>GitHub Release: build-&lt;SHA&gt;
+  testflying-connector-&lt;SHA&gt;.tar.gz          # Connector 机器只需要这个
+  testflying-server-&lt;SHA&gt;.tar.gz             # 中心后台 API 镜像
+  testflying_server-0.1.0-py3-none-any.whl   # 后端 wheel
+
+Actions artifact 备用入口:
+  testflying-build-&lt;SHA&gt;/
+    images/testflying-connector-&lt;SHA&gt;.tar.gz</code></pre>
+            </div>
             <div class="deploy-step">
-              <h3>1. 下载并加载构建产物</h3>
-              <pre><code>RUN_ID=&lt;GitHub Actions run id&gt;
-SHA=&lt;commit sha&gt;
+              <h3>1. 从 GitHub Release 下载并加载 Connector 镜像</h3>
+              <pre><code>SHA=&lt;commit sha&gt;
 
 mkdir -p /opt/testflying/artifacts
 cd /opt/testflying/artifacts
+
+gh release download "build-$SHA" \
+  -R baoluchuling/testflying-api \
+  -p "testflying-connector-$SHA.tar.gz" \
+  -D .
+
+gunzip -c "testflying-connector-$SHA.tar.gz" | docker load
+docker tag "testflying-connector:$SHA" testflying-connector:local</code></pre>
+            </div>
+            <div class="deploy-step">
+              <h3>备用：从 GitHub Actions artifact 下载</h3>
+              <pre><code>RUN_ID=&lt;GitHub Actions run id&gt;
+SHA=&lt;commit sha&gt;
 
 gh run download "$RUN_ID" \
   -R baoluchuling/testflying-api \
   -D .
 
+ls -R "testflying-build-$SHA"
 gunzip -c "testflying-build-$SHA/images/testflying-connector-$SHA.tar.gz" | docker load
 docker tag "testflying-connector:$SHA" testflying-connector:local</code></pre>
             </div>

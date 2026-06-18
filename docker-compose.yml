@@ -33,8 +33,12 @@ services:
     ports:
       - "8100:8100"
     environment:
-      TESTFLYING_CONNECTOR_DEVELOPER_ACCOUNT_ID: account-apple-enterprise
+      TESTFLYING_CONNECTOR_DEVELOPER_ACCOUNT_ID: ${TESTFLYING_CONNECTOR_DEVELOPER_ACCOUNT_ID:-account-apple-enterprise}
       TESTFLYING_CONNECTOR_TOKEN: dev-connector-token
+    networks:
+      default:
+        aliases:
+          - connector-${TESTFLYING_CONNECTOR_DEVELOPER_ACCOUNT_ID:-account-apple-enterprise}
     restart: unless-stopped
 
   postgres:

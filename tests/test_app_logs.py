@@ -111,7 +111,18 @@ def test_admin_app_logs_page_and_qr_render(client: TestClient) -> None:
     assert "App 日志" in page.text
     assert "ws://" in page.text
     assert "/push?token=&lt;设备ID&gt;" in page.text
-    assert "applog://connect" in page.text
+    assert "/app-logs/connect" in page.text
+    assert "anystories:///connect" in page.text
     assert "data-app-log-list" in page.text
     assert qr.status_code == 200
     assert qr.headers["content-type"].startswith("image/svg+xml")
+
+
+def test_app_log_mobile_connect_page_is_public_and_opens_app_scheme(client: TestClient) -> None:
+    page = client.get("/app-logs/connect?host=192.168.1.23&port=18080&name=Mac")
+
+    assert page.status_code == 200
+    assert "AnyStories" in page.text
+    assert "打开 AnyStories 并连接" in page.text
+    assert "192.168.1.23:18080" in page.text
+    assert "anystories:///connect?host=192.168.1.23&amp;port=18080&amp;name=Mac" in page.text

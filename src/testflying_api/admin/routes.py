@@ -5,7 +5,6 @@ from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
 from typing import Annotated, Any
-from urllib.parse import urlencode
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
@@ -39,6 +38,7 @@ from testflying_api.admin.view_models import (
     store_metadata_context,
     upload_context,
 )
+from testflying_api.app_logs import build_app_log_connect_context
 from testflying_api.database import get_db_session
 from testflying_api.errors import ApiError
 from testflying_api.models import UploadResponse
@@ -110,7 +110,7 @@ def apps_page(request: Request, session: SessionDep, _: AdminDep) -> HTMLRespons
 
 @router.get("/app-logs", response_class=HTMLResponse)
 def app_logs_page(request: Request, _: AdminDep) -> HTMLResponse:
-    context = _app_log_connect_context(request)
+    context = build_app_log_connect_context(request)
     snapshot = request.app.state.app_log_hub.snapshot(limit=200)
     return templates.TemplateResponse(
         request,
@@ -157,7 +157,7 @@ def app_logs_qr(
     import qrcode
     import qrcode.image.svg
 
-    context = _app_log_connect_context(request, host=host, port=port, name=name)
+    context = build_app_log_connect_context(request, host=host, port=port, name=name)
     image = qrcode.make(context["connect_url"], image_factory=qrcode.image.svg.SvgPathImage)
     stream = BytesIO()
     image.save(stream)
@@ -1337,36 +1337,6 @@ def _form_list_value(values: list[str] | None, index: int) -> str:
     if values is None or index >= len(values):
         return ""
     return values[index].strip()
-
-
-def _app_log_connect_context(
-    request: Request,
-    *,
-    host: str = "",
-    port: str = "",
-    name: str = "Mac",
-) -> dict[str, str]:
-    normalized_host = (host or request.url.hostname or "127.0.0.1").strip()
-    normalized_port = (port or str(request.url.port or _default_port(request))).strip()
-    normalized_name = (name or "Mac").strip()
-    query = urlencode(
-        {
-            "host": normalized_host,
-            "port": normalized_port,
-            "name": normalized_name,
-        }
-    )
-    return {
-        "host": normalized_host,
-        "port": normalized_port,
-        "name": normalized_name,
-        "connect_url": f"applog://connect?{query}",
-        "websocket_url": f"ws://{normalized_host}:{normalized_port}/push?token=<设备ID>",
-    }
-
-
-def _default_port(request: Request) -> int:
-    return 443 if request.url.scheme == "https" else 80
 
 
 def _context(request: Request, *, active: str, **values: object) -> dict[str, object]:

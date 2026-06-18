@@ -718,12 +718,15 @@
       function updateAppLogConnectPreview() {
         const { host, port, name } = appLogConnectValues();
         const params = new URLSearchParams({ host, port, name });
-        const connectUrl = `applog://connect?${params.toString()}`;
+        const connectUrl = `${window.location.origin}/app-logs/connect?${params.toString()}`;
+        const schemeUrl = `anystories:///connect?${params.toString()}`;
         const websocketUrl = `ws://${host}:${port}/push?token=<设备ID>`;
         const connectLabel = document.querySelector('[data-app-log-connect-url]');
+        const schemeLabel = document.querySelector('[data-app-log-scheme-url]');
         const websocketLabel = document.querySelector('[data-app-log-websocket-url]');
         const qr = document.querySelector('[data-app-log-qr]');
         if (connectLabel) connectLabel.textContent = connectUrl;
+        if (schemeLabel) schemeLabel.textContent = schemeUrl;
         if (websocketLabel) websocketLabel.textContent = websocketUrl;
         if (qr) qr.src = `/admin/app-logs/qr.svg?${params.toString()}`;
       }

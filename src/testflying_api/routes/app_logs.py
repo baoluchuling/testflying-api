@@ -1,12 +1,38 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
 
-from testflying_api.app_logs import AppLogHub
+from testflying_api.app_logs import AppLogHub, build_app_log_connect_context
 
 router = APIRouter(tags=["app-logs"])
+templates = Jinja2Templates(directory=str(Path(__file__).parents[1] / "templates"))
+
+
+@router.get("/app-logs/connect", response_class=HTMLResponse, name="app_log_connect_page")
+def app_log_connect_page(
+    request: Request,
+    host: str = "",
+    port: str = "",
+    name: str = "Mac",
+) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request,
+        "app_log_connect.html",
+        {
+            "request": request,
+            "connect": build_app_log_connect_context(
+                request,
+                host=host,
+                port=port,
+                name=name,
+            ),
+        },
+    )
 
 
 @router.websocket("/push")

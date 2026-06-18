@@ -6,7 +6,10 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from threading import RLock
+from urllib.parse import urlencode
 from uuid import uuid4
+
+from fastapi import Request
 
 LEVELS = ("跟踪", "调试", "信息", "警告", "错误", "致命")
 UNKNOWN_TOKEN = "unknown"
@@ -15,6 +18,44 @@ LOG_TIMESTAMP_RE = re.compile(
 )
 KEY_RE = re.compile(r"[\w\u4e00-\u9fff.-]+=")
 CORE_FIELD_KEYS = {"级别", "标签", "事件", "消息"}
+APP_LOG_SCHEME = "anystories"
+APP_LOG_APP_NAME = "AnyStories"
+
+
+def build_app_log_connect_context(
+    request: Request,
+    *,
+    host: str = "",
+    port: str = "",
+    name: str = "Mac",
+) -> dict[str, str]:
+    normalized_host = (host or request.url.hostname or "127.0.0.1").strip()
+    normalized_port = (port or str(request.url.port or _default_port(request))).strip()
+    normalized_name = (name or "Mac").strip()
+    query = urlencode(
+        {
+            "host": normalized_host,
+            "port": normalized_port,
+            "name": normalized_name,
+        }
+    )
+    connect_page_base_url = str(request.url_for("app_log_connect_page"))
+    connect_page_url = f"{connect_page_base_url}?{query}"
+    return {
+        "host": normalized_host,
+        "port": normalized_port,
+        "name": normalized_name,
+        "app_scheme": APP_LOG_SCHEME,
+        "app_name": APP_LOG_APP_NAME,
+        "connect_url": connect_page_url,
+        "connect_page_url": connect_page_url,
+        "scheme_url": f"{APP_LOG_SCHEME}:///connect?{query}",
+        "websocket_url": f"ws://{normalized_host}:{normalized_port}/push?token=<设备ID>",
+    }
+
+
+def _default_port(request: Request) -> int:
+    return 443 if request.url.scheme == "https" else 80
 
 
 @dataclass

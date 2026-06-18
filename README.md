@@ -165,7 +165,14 @@ password: dev-token
 电脑端打开管理后台 `App 日志` 页面后，会显示二维码和连接参数。二维码内容格式为：
 
 ```text
-applog://connect?host=<电脑IP>&port=<端口>&name=Mac
+http://<电脑IP>:<端口>/app-logs/connect?host=<电脑IP>&port=<端口>&name=Mac
+```
+
+手机扫码后会先打开一个 H5 连接页，页面按钮再用应用 scheme 打开 App。当前第一版先写死
+AnyStories：
+
+```text
+anystories:///connect?host=<电脑IP>&port=<端口>&name=Mac
 ```
 
 手机端扫码后主动连接：

@@ -30,13 +30,15 @@
           </label>
         </div>
         <dl class="detail-list compact">
-          <dt>二维码内容</dt>
+          <dt>扫码页面</dt>
           <dd><code data-app-log-connect-url>{{ connect.connect_url }}</code></dd>
+          <dt>App Scheme</dt>
+          <dd><code data-app-log-scheme-url>{{ connect.scheme_url }}</code></dd>
           <dt>手机连接</dt>
           <dd><code data-app-log-websocket-url>{{ connect.websocket_url }}</code></dd>
         </dl>
         <div class="form-actions compact-actions">
-          <button class="ghost-button compact" type="button" data-copy-app-log-url>复制二维码内容</button>
+          <button class="ghost-button compact" type="button" data-copy-app-log-url>复制扫码页面</button>
           <button class="ghost-button compact" type="button" data-clear-app-log-view>清空当前视图</button>
         </div>
       </div>

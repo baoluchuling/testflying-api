@@ -69,8 +69,8 @@ def preflight_summary_label(preflight: object | None) -> str:
     return _preflight_copy(preflight)["summary"]
 
 
-def preflight_action_label(preflight: object | None) -> str:
-    return _preflight_copy(preflight)["action"]
+def preflight_action_label(preflight: object | None, platform: str = "") -> str:
+    return _preflight_copy(preflight, platform=platform)["action"]
 
 
 templates = Jinja2Templates(directory=str(Path(__file__).parents[1] / "templates"))
@@ -1224,10 +1224,10 @@ def _store_identifier_label(app: App | None) -> str:
         return "-"
     if app.platform == "android":
         return app.store_package_name or app.bundle_identifier
-    return app.store_app_id or "需手动填写 Apple App ID"
+    return app.store_app_id or "需手动填写 App Store Connect App ID"
 
 
-def _preflight_copy(preflight: object | None) -> dict[str, str]:
+def _preflight_copy(preflight: object | None, *, platform: str = "") -> dict[str, str]:
     if preflight is None:
         return {
             "title": "等待检查",
@@ -1246,7 +1246,7 @@ def _preflight_copy(preflight: object | None) -> dict[str, str]:
         "store_version_missing": {
             "title": "商店版本还没有创建",
             "summary": "testflying 后台构建可以存在，但商店后台还没有对应版本，所以暂时不能同步。",
-            "action": "请先在 App Store Connect 或 Google Play 创建这个商店版本，再回到这里同步。",
+            "action": f"请先在{_store_console_name(platform)}创建这个商店版本，再回到这里同步。",
         },
         "connector_missing": {
             "title": "Connector 还未配置",
@@ -1272,3 +1272,11 @@ def _preflight_copy(preflight: object | None) -> dict[str, str]:
             "action": "请确认商店版本状态、账号配置和 Connector 状态后重试。",
         },
     )
+
+
+def _store_console_name(platform: str) -> str:
+    if platform == "ios":
+        return " App Store Connect "
+    if platform == "android":
+        return " Google Play Console "
+    return "对应商店后台"

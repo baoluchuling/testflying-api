@@ -131,6 +131,7 @@
           history.pushState({ adminPath: path }, '', path);
         }
         syncUploadViews();
+        syncUploadStoreFields();
         syncHealthView();
         syncAccountViews();
         syncMetadataEditor();
@@ -197,6 +198,18 @@
           submit.toggleAttribute('aria-busy', isUploading);
           submit.textContent = isUploading ? '上传中' : '上传构建';
         }
+      }
+
+      function syncUploadStoreFields(root = document) {
+        root.querySelectorAll('[data-upload-form]').forEach((form) => {
+          const platform = form.querySelector('[data-upload-platform-select]')?.value || 'ios';
+          form.querySelectorAll('[data-upload-store-field]').forEach((field) => {
+            const active = field.dataset.uploadStoreField === platform;
+            field.hidden = !active;
+            const input = field.querySelector('input');
+            if (input && !active) input.value = '';
+          });
+        });
       }
 
       function syncAccountStoreFields(root = document) {
@@ -620,6 +633,9 @@
         if (event.target.closest('[data-account-app-bind-form] select[name="appId"]')) {
           syncAccountStoreFields();
         }
+        if (event.target.closest('[data-upload-platform-select]')) {
+          syncUploadStoreFields();
+        }
         if (event.target.closest('[data-language-picker]')) {
           syncMetadataEditor();
         }
@@ -873,6 +889,7 @@
       });
 
       syncHealthView();
+      syncUploadStoreFields();
       syncAccountViews();
       syncMetadataEditor();
     </script>

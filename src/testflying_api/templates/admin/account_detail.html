@@ -174,7 +174,13 @@ Actions artifact 备用入口:
 $Root = "C:\testflying-connector"
 $TaskName = "testflying-connector-{{ account.id }}"
 
-New-Item -ItemType Directory -Force $Root, "$Root\secrets\apple", "$Root\secrets\google" | Out-Null
+{% if account_store_platform == "ios" %}
+New-Item -ItemType Directory -Force $Root, "$Root\secrets\appstoreconnect" | Out-Null
+{% elif account_store_platform == "android" %}
+New-Item -ItemType Directory -Force $Root, "$Root\secrets\googleplay" | Out-Null
+{% else %}
+New-Item -ItemType Directory -Force $Root, "$Root\secrets\appstoreconnect", "$Root\secrets\googleplay" | Out-Null
+{% endif %}
 
 gh release download "build-$Sha" `
   -R baoluchuling/testflying-api `
@@ -189,14 +195,16 @@ Move-Item -Force "$Root\testflying-connector-windows-amd64-$Sha.exe" "$Root\test
 `$env:TESTFLYING_CONNECTOR_STORE_MODE = "live"
 `$env:TESTFLYING_CONNECTOR_DEVELOPER_ACCOUNT_ID = "{{ account.id }}"
 `$env:TESTFLYING_CONNECTOR_TOKEN = "&lt;random-token&gt;"
-
-# Apple 账号填写这三项，并把 .p8 放到 $Root\secrets\apple
+{% if account_store_platform in ["ios", "mixed"] %}
+# App Store Connect API Key，把 .p8 放到 $Root\secrets\appstoreconnect
 `$env:TESTFLYING_CONNECTOR_APPLE_ISSUER_ID = "&lt;issuer-id&gt;"
 `$env:TESTFLYING_CONNECTOR_APPLE_KEY_ID = "&lt;key-id&gt;"
-`$env:TESTFLYING_CONNECTOR_APPLE_PRIVATE_KEY_PATH = "$Root\secrets\apple\AuthKey_XXXX.p8"
-
-# Google 账号填写这一项，并把 JSON 放到 $Root\secrets\google
-# `$env:TESTFLYING_CONNECTOR_GOOGLE_SERVICE_ACCOUNT_JSON_PATH = "$Root\secrets\google\service-account.json"
+`$env:TESTFLYING_CONNECTOR_APPLE_PRIVATE_KEY_PATH = "$Root\secrets\appstoreconnect\AuthKey_XXXX.p8"
+{% endif %}
+{% if account_store_platform in ["android", "mixed"] %}
+# Google Play service account，把 JSON 放到 $Root\secrets\googleplay
+`$env:TESTFLYING_CONNECTOR_GOOGLE_SERVICE_ACCOUNT_JSON_PATH = "$Root\secrets\googleplay\service-account.json"
+{% endif %}
 
 & "$Root\testflying-connector.exe"
 "@ | Set-Content -Encoding UTF8 "$Root\run-connector.ps1"
@@ -246,36 +254,40 @@ docker run -d --name testflying-connector \
 
 curl http://127.0.0.1:8100/health</code></pre>
             </div>
+            {% if account_store_platform in ["ios", "mixed"] %}
             <div class="deploy-step">
-              <h3>3. Apple 账号 live 模式</h3>
+              <h3>App Store Connect live 模式</h3>
               <pre><code>docker rm -f testflying-connector || true
 
 docker run -d --name testflying-connector \
   -p 8100:8100 \
   --memory=64m \
-  -v /opt/testflying/secrets/apple-a:/run/secrets/apple:ro \
+  -v /opt/testflying/secrets/appstoreconnect:/run/secrets/appstoreconnect:ro \
   -e TESTFLYING_CONNECTOR_STORE_MODE=live \
   -e TESTFLYING_CONNECTOR_DEVELOPER_ACCOUNT_ID={{ account.id }} \
   -e TESTFLYING_CONNECTOR_TOKEN=&lt;random-token&gt; \
   -e TESTFLYING_CONNECTOR_APPLE_ISSUER_ID=&lt;issuer-id&gt; \
   -e TESTFLYING_CONNECTOR_APPLE_KEY_ID=&lt;key-id&gt; \
-  -e TESTFLYING_CONNECTOR_APPLE_PRIVATE_KEY_PATH=/run/secrets/apple/AuthKey_XXXX.p8 \
+  -e TESTFLYING_CONNECTOR_APPLE_PRIVATE_KEY_PATH=/run/secrets/appstoreconnect/AuthKey_XXXX.p8 \
   testflying-connector:local</code></pre>
             </div>
+            {% endif %}
+            {% if account_store_platform in ["android", "mixed"] %}
             <div class="deploy-step">
-              <h3>4. Google 账号 live 模式</h3>
+              <h3>Google Play live 模式</h3>
               <pre><code>docker rm -f testflying-connector || true
 
 docker run -d --name testflying-connector \
   -p 8100:8100 \
   --memory=64m \
-  -v /opt/testflying/secrets/google-a:/run/secrets/google:ro \
+  -v /opt/testflying/secrets/googleplay:/run/secrets/googleplay:ro \
   -e TESTFLYING_CONNECTOR_STORE_MODE=live \
   -e TESTFLYING_CONNECTOR_DEVELOPER_ACCOUNT_ID={{ account.id }} \
   -e TESTFLYING_CONNECTOR_TOKEN=&lt;random-token&gt; \
-  -e TESTFLYING_CONNECTOR_GOOGLE_SERVICE_ACCOUNT_JSON_PATH=/run/secrets/google/service-account.json \
+  -e TESTFLYING_CONNECTOR_GOOGLE_SERVICE_ACCOUNT_JSON_PATH=/run/secrets/googleplay/service-account.json \
   testflying-connector:local</code></pre>
             </div>
+            {% endif %}
             <div class="deploy-note">
               Connector 地址填这台机器对中心后台可访问的地址，例如
               <code>http://&lt;connector-host&gt;:8100</code>。调用 Token 必须和
@@ -290,7 +302,13 @@ docker run -d --name testflying-connector \
         <div class="panel-header">
           <div>
             <h2>账号下 App</h2>
-            <span>iOS 只维护 Apple App ID，Android 只维护 Google package</span>
+            {% if account_store_platform == "ios" %}
+              <span>维护 App Store Connect App ID</span>
+            {% elif account_store_platform == "android" %}
+              <span>维护 Google Play package name</span>
+            {% else %}
+              <span>iOS 维护 App Store Connect App ID，Android 维护 Google Play package name</span>
+            {% endif %}
           </div>
           <a href="/admin/uploads">上传新构建</a>
         </div>
@@ -321,15 +339,15 @@ docker run -d --name testflying-connector \
               <form class="store-id-form" action="/admin/developer-accounts/{{ account.id }}/apps/{{ item.app.id }}/settings" method="post">
                 {% if item.app.platform == "ios" %}
                   <label>
-                    Apple App ID
-                    <input name="storeAppId" value="{{ item.app.store_app_id or '' }}" placeholder="Apple App ID">
+                    App Store Connect App ID
+                    <input name="storeAppId" value="{{ item.app.store_app_id or '' }}" placeholder="App Store Connect App ID（数字 ID）">
                   </label>
                   <input name="storePackageName" value="" type="hidden">
                 {% else %}
                   <input name="storeAppId" value="" type="hidden">
                   <label>
-                    Google package
-                    <input name="storePackageName" value="{{ item.app.store_package_name or '' }}" placeholder="Google package">
+                    Google Play package name
+                    <input name="storePackageName" value="{{ item.app.store_package_name or '' }}" placeholder="Google Play package name">
                   </label>
                 {% endif %}
                 <button class="ghost-button" type="submit">保存</button>
@@ -360,6 +378,7 @@ docker run -d --name testflying-connector \
           </div>
         </div>
         {% if unassigned_apps %}
+          {% set default_bind_platform = unassigned_apps[0].platform %}
           <form class="form account-bind-form" data-account-app-bind-form action="/admin/developer-accounts/{{ account.id }}/apps" method="post">
             <div class="form-grid">
               <label>
@@ -370,14 +389,14 @@ docker run -d --name testflying-connector \
                   {% endfor %}
                 </select>
               </label>
-              <label data-store-field="ios">
-                Apple App ID
-                <input name="storeAppId" placeholder="iOS App Store Connect App ID">
+              <label data-store-field="ios" {% if default_bind_platform != "ios" %}hidden{% endif %}>
+                App Store Connect App ID
+                <input name="storeAppId" placeholder="App Store Connect App ID（数字 ID）">
               </label>
             </div>
-            <label data-store-field="android">
-              Google package
-              <input name="storePackageName" placeholder="Android Google Play package">
+            <label data-store-field="android" {% if default_bind_platform != "android" %}hidden{% endif %}>
+              Google Play package name
+              <input name="storePackageName" placeholder="Google Play package name">
             </label>
             <button class="primary-button" type="submit">绑定 App</button>
           </form>

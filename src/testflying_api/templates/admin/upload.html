@@ -76,7 +76,7 @@
       <div class="form-grid">
         <label>
           平台
-          <select name="platform">
+          <select name="platform" data-upload-platform-select>
             <option value="ios">iOS</option>
             <option value="android">Android</option>
           </select>
@@ -99,13 +99,13 @@
         </select>
       </label>
       <div class="form-grid">
-        <label>
-          Apple App ID
-          <input name="storeAppId" placeholder="iOS 需手动填写 App Store Connect 数字 ID">
+        <label data-upload-store-field="ios">
+          App Store Connect App ID
+          <input name="storeAppId" placeholder="App Store Connect App ID（数字 ID）">
         </label>
-        <label>
-          Google package
-          <input name="storePackageName" placeholder="Android 留空则使用 APK 包名">
+        <label data-upload-store-field="android" hidden>
+          Google Play package name
+          <input name="storePackageName" placeholder="留空则使用 APK package name">
         </label>
       </div>
       <label>

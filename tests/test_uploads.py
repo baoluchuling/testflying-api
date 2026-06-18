@@ -130,4 +130,7 @@ def test_upload_rejects_wrong_store_identifier_for_android(
     )
 
     assert response.status_code == 422
-    assert response.json()["message"] == "Android App 只能填写 package，不能填写 Apple App ID。"
+    assert (
+        response.json()["message"]
+        == "Android App 只能填写 Google Play package name，不能填写 App Store Connect App ID。"
+    )

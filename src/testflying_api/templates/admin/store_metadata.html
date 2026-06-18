@@ -3,7 +3,7 @@
 {% block content %}
   <section class="context-banner">
     <div>
-      <p class="eyebrow">账号内商店同步</p>
+      <p class="eyebrow">{{ store_label }} 同步</p>
       <h2>{{ account.team_name }} / {{ app.name }}</h2>
       <small>{{ app.bundle_identifier }}</small>
     </div>
@@ -251,7 +251,7 @@
             <span class="preflight-kicker">{{ "检查通过" if preflight.can_sync else "需要处理" }}</span>
             <strong>{{ preflight|preflight_title }}</strong>
             <span class="preflight-summary">{{ preflight|preflight_summary }}</span>
-            <span class="preflight-next-step">{{ preflight|preflight_action }}</span>
+            <span class="preflight-next-step">{{ preflight|preflight_action(app.platform) }}</span>
           </div>
         </div>
         <dl class="detail-list">
@@ -275,7 +275,7 @@
             <span class="preflight-kicker">等待检查</span>
             <strong>{{ none|preflight_title }}</strong>
             <span class="preflight-summary">{{ none|preflight_summary }}</span>
-            <span class="preflight-next-step">{{ none|preflight_action }}</span>
+            <span class="preflight-next-step">{{ none|preflight_action(app.platform) }}</span>
           </div>
         </div>
       {% endif %}

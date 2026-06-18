@@ -132,8 +132,11 @@ def test_admin_upload_page_uses_auto_metadata_and_progress(client: TestClient) -
     assert "name=\"developerAccountId\"" in response.text
     assert "name=\"storeAppId\"" in response.text
     assert "name=\"storePackageName\"" in response.text
-    assert "iOS 需手动填写 App Store Connect 数字 ID" in response.text
-    assert "Android 留空则使用 APK 包名" in response.text
+    assert "data-upload-platform-select" in response.text
+    assert "data-upload-store-field=\"ios\"" in response.text
+    assert "data-upload-store-field=\"android\" hidden" in response.text
+    assert "App Store Connect App ID（数字 ID）" in response.text
+    assert "留空则使用 APK package name" in response.text
     assert "name=\"buildNumber\"" not in response.text
 
 
@@ -220,6 +223,11 @@ def test_admin_developer_account_detail_renders_store_sync_entry(
     assert "testflying-connector:local" in response.text
     assert "TESTFLYING_CONNECTOR_DEVELOPER_ACCOUNT_ID=account-apple-enterprise" in response.text
     assert "TESTFLYING_CONNECTOR_STORE_MODE=live" in response.text
+    assert "App Store Connect live 模式" in response.text
+    assert "TESTFLYING_CONNECTOR_APPLE_ISSUER_ID" in response.text
+    assert "TESTFLYING_CONNECTOR_APPLE_PRIVATE_KEY_PATH" in response.text
+    assert "Google Play live 模式" not in response.text
+    assert "TESTFLYING_CONNECTOR_GOOGLE_SERVICE_ACCOUNT_JSON_PATH" not in response.text
     assert "hidden" in response.text
 
 
@@ -419,9 +427,9 @@ def test_admin_rejects_store_identifier_for_wrong_platform(
 
     assert android_upload.status_code == 200
     assert ios_response.status_code == 422
-    assert "iOS App 只能填写 Apple App ID" in ios_response.text
+    assert "iOS App 只能填写 App Store Connect App ID" in ios_response.text
     assert android_bind_response.status_code == 422
-    assert "Android App 只能填写 package" in android_bind_response.text
+    assert "Android App 只能填写 Google Play package name" in android_bind_response.text
 
 
 def test_admin_can_update_connector_settings(
@@ -588,7 +596,7 @@ def test_admin_preflight_uses_friendly_blocked_copy(
     assert response.status_code == 200
     assert "商店版本还没有创建" in response.text
     assert "testflying 后台构建可以存在，但商店后台还没有对应版本" in response.text
-    assert "请先在 App Store Connect 或 Google Play 创建这个商店版本" in response.text
+    assert "请先在 App Store Connect 创建这个商店版本" in response.text
     assert "store_version_missing" in response.text
     assert "商店中还没有创建 missing-2.4.0" not in response.text
 
@@ -775,6 +783,10 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "新建套件" in response.text
     assert "复制当前套" in response.text
     assert "商店图素材" in response.text
+    assert "App Store Connect 同步" in response.text
+    assert "Keywords（关键词）" in response.text
+    assert "Promotional Text（宣传文本）" in response.text
+    assert "Description（描述）" in response.text
     assert "标题" not in response.text
     assert "副标题" not in response.text
     assert "隐私政策 URL" not in response.text
@@ -782,9 +794,10 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "营销 URL" not in response.text
     assert "App 图标" not in response.text
     assert "素材备注" not in response.text
-    assert "商店横幅图" in response.text
-    assert "手机端商店截图" in response.text
-    assert "平板端商店截图" in response.text
+    assert "iPhone screenshots（iPhone 屏幕快照）" in response.text
+    assert "iPad screenshots（iPad 屏幕快照）" in response.text
+    assert "Feature graphic" not in response.text
+    assert "Google Play Console 同步" not in response.text
     assert "宣传图" not in response.text
     assert "data-store-image-input" in response.text
     assert "data-store-image-zone" in response.text
@@ -797,6 +810,35 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "商店版本" in response.text
     assert "文案、商店图" in response.text
     assert "文案、链接、商店图" not in response.text
+
+
+def test_admin_store_metadata_page_uses_google_play_terms_for_android(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+    android_app = db_session.query(App).filter_by(id="app-dataflow-android").one()
+    android_app.developer_account_id = "account-apple-enterprise"
+    android_app.store_package_name = android_app.bundle_identifier
+    db_session.commit()
+
+    response = client.get(
+        "/admin/developer-accounts/account-apple-enterprise"
+        "/apps/app-dataflow-android/store-metadata",
+        headers=_admin_headers(),
+    )
+
+    assert response.status_code == 200
+    assert "Google Play Console 同步" in response.text
+    assert "Full description（完整描述）" in response.text
+    assert "Feature graphic（功能宣传图）" in response.text
+    assert "Phone screenshots（手机截图）" in response.text
+    assert "Tablet screenshots（平板截图）" in response.text
+    assert "Keywords（关键词）" not in response.text
+    assert "Promotional Text（宣传文本）" not in response.text
+    assert "App Store Connect 同步" not in response.text
+    assert "iPhone screenshots" not in response.text
+    assert "iPad screenshots" not in response.text
 
 
 class _LocaleClient:

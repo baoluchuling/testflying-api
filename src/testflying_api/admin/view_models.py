@@ -137,6 +137,7 @@ def account_detail_context(session: Session, account_id: str) -> dict[str, objec
     account = session.get(DeveloperAccount, account_id)
     apps = account_apps(session, account_id)
     connector = account_connector(session, account_id)
+    account_store_platform = _single_store_platform(apps)
     return {
         "account": account,
         "remaining_days": remaining_days(account.expires_at) if account else 0,
@@ -148,6 +149,7 @@ def account_detail_context(session: Session, account_id: str) -> dict[str, objec
             for app in apps
         ],
         "connector": connector,
+        "account_store_platform": account_store_platform,
         "unassigned_apps": list_unassigned_apps(session),
         "sync_runs": recent_sync_runs(session, account_id=account_id),
     }
@@ -303,8 +305,9 @@ def store_metadata_context(
         "content_sets": content_sets,
         "draft": draft,
         "metadata": base_metadata,
-        "metadata_fields": _metadata_fields(),
+        "metadata_fields": _metadata_fields(app.platform if app else ""),
         "store_image_slots": _store_image_slots(app.platform if app else ""),
+        "store_label": _store_label(app.platform if app else ""),
         "supported_locales": supported_locales,
         "localized_metadata": _localized_metadata(
             supported_locales=supported_locales,
@@ -446,76 +449,120 @@ def _source_locale(supported_locales: list[str]) -> str:
     return supported_locales[0] if supported_locales else DEFAULT_LOCALE
 
 
-def _metadata_fields() -> list[dict[str, object]]:
+def _metadata_fields(platform: str) -> list[dict[str, object]]:
+    if platform == "android":
+        return [
+            {
+                "key": "description",
+                "name": "description",
+                "label": "Full description（完整描述）",
+                "type": "textarea",
+                "rows": 8,
+                "required": True,
+                "placeholder": "Google Play full description",
+            },
+        ]
     return [
         {
             "key": "keywords",
             "name": "keywords",
-            "label": "关键词",
+            "label": "Keywords（关键词）",
             "type": "input",
             "required": False,
-            "placeholder": "Comma separated keywords",
+            "placeholder": "App Store Connect keywords, separated by commas",
         },
         {
             "key": "promotional_text",
             "name": "promotionalText",
-            "label": "宣传文本",
+            "label": "Promotional Text（宣传文本）",
             "type": "textarea",
             "rows": 3,
             "required": False,
-            "placeholder": "Promotional text",
+            "placeholder": "App Store Connect promotional text",
         },
         {
             "key": "description",
             "name": "description",
-            "label": "描述",
+            "label": "Description（描述）",
             "type": "textarea",
             "rows": 8,
             "required": True,
-            "placeholder": "App description",
+            "placeholder": "App Store Connect description",
         },
     ]
 
 
 def _store_image_slots(platform: str) -> list[dict[str, object]]:
-    feature_label = "商店横幅图"
-    feature_hint = "横向商店展示素材；Android 对应 Google Play Feature Graphic，iOS 可先留空。"
-    feature_placeholder = "拖图上传后自动生成 URL，或粘贴一张横幅图 URL"
     if platform == "android":
-        feature_label = "商店横幅图（Feature Graphic）"
-        feature_placeholder = "https://example.com/google-play/feature-graphic.png"
+        return [
+            {
+                "key": "feature_graphic_url",
+                "name": "featureGraphicUrl",
+                "label": "Feature graphic（功能宣传图）",
+                "hint": "Google Play 的横向展示图，常用尺寸为 1024 x 500。",
+                "type": "input",
+                "rows": 1,
+                "placeholder": "Google Play feature graphic URL",
+                "multiple": False,
+            },
+            {
+                "key": "phone_screenshots",
+                "name": "phoneScreenshots",
+                "label": "Phone screenshots（手机截图）",
+                "hint": "Google Play 手机设备截图。",
+                "type": "textarea",
+                "rows": 3,
+                "placeholder": "一行一个 phone screenshot URL",
+                "multiple": True,
+            },
+            {
+                "key": "tablet_screenshots",
+                "name": "tabletScreenshots",
+                "label": "Tablet screenshots（平板截图）",
+                "hint": "Google Play 平板设备截图。",
+                "type": "textarea",
+                "rows": 3,
+                "placeholder": "一行一个 tablet screenshot URL",
+                "multiple": True,
+            },
+        ]
     return [
-        {
-            "key": "feature_graphic_url",
-            "name": "featureGraphicUrl",
-            "label": feature_label,
-            "hint": feature_hint,
-            "type": "input",
-            "rows": 1,
-            "placeholder": feature_placeholder,
-            "multiple": False,
-        },
         {
             "key": "phone_screenshots",
             "name": "phoneScreenshots",
-            "label": "手机端商店截图",
-            "hint": "上架页展示给手机设备的截图，例如 iPhone 或 Android phone 尺寸。",
+            "label": "iPhone screenshots（iPhone 屏幕快照）",
+            "hint": "App Store Connect 的 iPhone 屏幕快照。",
             "type": "textarea",
             "rows": 3,
-            "placeholder": "一行一个手机截图 URL",
+            "placeholder": "一行一个 iPhone screenshot URL",
             "multiple": True,
         },
         {
             "key": "tablet_screenshots",
             "name": "tabletScreenshots",
-            "label": "平板端商店截图",
-            "hint": "上架页展示给平板设备的截图，例如 iPad 或 Android tablet 尺寸。",
+            "label": "iPad screenshots（iPad 屏幕快照）",
+            "hint": "App Store Connect 的 iPad 屏幕快照。",
             "type": "textarea",
             "rows": 3,
-            "placeholder": "一行一个平板截图 URL",
+            "placeholder": "一行一个 iPad screenshot URL",
             "multiple": True,
         },
     ]
+
+
+def _single_store_platform(apps: list[App]) -> str:
+    platforms = {app.platform for app in apps if app.platform in {"ios", "android"}}
+    if len(platforms) == 1:
+        return next(iter(platforms))
+    return "mixed"
+
+
+def _store_label(platform: str) -> str:
+    if platform == "android":
+        return "Google Play Console"
+    if platform == "ios":
+        return "App Store Connect"
+    return "商店"
 
 
 def list_notifications(session: Session, *, limit: int | None = None) -> list[Notification]:

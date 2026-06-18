@@ -15,7 +15,7 @@ def normalize_store_identifiers(
         if normalized_package is not None:
             raise ApiError(
                 "invalid_store_identifier",
-                "iOS App 只能填写 Apple App ID，不能填写 package。",
+                "iOS App 只能填写 App Store Connect App ID，不能填写 Google Play package name。",
                 status_code=422,
             )
         return normalized_app_id, None
@@ -23,7 +23,10 @@ def normalize_store_identifiers(
         if normalized_app_id is not None:
             raise ApiError(
                 "invalid_store_identifier",
-                "Android App 只能填写 package，不能填写 Apple App ID。",
+                (
+                    "Android App 只能填写 Google Play package name，"
+                    "不能填写 App Store Connect App ID。"
+                ),
                 status_code=422,
             )
         return None, normalized_package

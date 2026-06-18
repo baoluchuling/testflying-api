@@ -195,7 +195,7 @@ uvicorn testflying_api.main:app --reload
 open http://localhost:8000/admin
 ```
 
-第一版后台支持上传 IPA/APK、查看应用/构建/设备/开发者账号/通知，以及复制 `installUrl`、`manifestUrl` 和 `downloadUrl`。上传页会显示上传进度；IPA/APK 的包名、应用名、版本号和构建号由服务端自动解析，必要时可以在后台覆盖应用名称。上传时可以选择开发者账号，并填写 Apple App ID 或 Google package 等商店标识。设备审批和构建删除会放到后续管理能力里。
+第一版后台支持上传 IPA/APK、查看应用/构建/设备/开发者账号/通知，以及复制 `installUrl`、`manifestUrl` 和 `downloadUrl`。上传页会显示上传进度；IPA/APK 的包名、应用名、版本号和构建号由服务端自动解析，必要时可以在后台覆盖应用名称。上传时可以选择开发者账号，并按平台填写 App Store Connect App ID 或 Google Play package name 等商店标识。设备审批和构建删除会放到后续管理能力里。
 
 商店同步第一版入口：
 
@@ -204,7 +204,7 @@ open http://localhost:8000/admin
 3. 打开某个账号详情，配置该账号的 connector 地址和调用 token。若已配置 `TESTFLYING_CONNECTOR_BASE_URL_TEMPLATE`，connector 地址可以留空，由后台按账号 ID 自动生成。
 4. 账号详情页会自动检查 connector，也可以手动点击 `检查连接`。
 5. 上传新构建时直接选择账号，或者在账号详情里绑定已有 App。
-6. 在账号下维护 App 的商店标识；iOS 只填 Apple App ID，Android 只填 package。
+6. 在账号下维护 App 的商店标识；iOS 只填 App Store Connect App ID，Android 只填 Google Play package name。
 7. 进入 `商店元数据` 或 `管理版本说明`。
 8. 页面进入时自动检查目标商店版本是否存在、是否可编辑。
 9. 商店元数据页会从 connector 拉取支持语言；没有翻译时默认用当前语言内容填充。

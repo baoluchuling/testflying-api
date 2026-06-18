@@ -22,9 +22,11 @@ WORKDIR /app
 COPY --from=builder /dist/*.whl /tmp/
 COPY alembic ./alembic
 COPY alembic.ini ./
+COPY docker/start-api.sh /usr/local/bin/testflying-start-api
 
 RUN pip install --no-cache-dir /tmp/*.whl \
     && rm -f /tmp/*.whl \
+    && chmod +x /usr/local/bin/testflying-start-api \
     && adduser --disabled-password --gecos "" appuser \
     && mkdir -p /app/data \
     && chown -R appuser:appuser /app
@@ -33,4 +35,4 @@ USER appuser
 
 EXPOSE 8000
 
-CMD ["uvicorn", "testflying_api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["testflying-start-api"]

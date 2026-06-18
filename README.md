@@ -36,7 +36,7 @@
 - `minio`：S3 兼容对象存储，保存 IPA/APK 和 iOS manifest。
 - `minio-init`：启动时自动创建 `testflying` bucket。
 
-运行镜像使用多阶段 Docker 构建：builder 阶段先生成 wheel 产物，runtime 阶段只安装 wheel，不以源码目录方式运行服务。中心后台镜像同时包含 `alembic/` 和 `alembic.ini`，可以直接在容器里执行数据库迁移。
+运行镜像使用多阶段 Docker 构建：builder 阶段先生成 wheel 产物，runtime 阶段只安装 wheel，不以源码目录方式运行服务。中心后台镜像同时包含 `alembic/` 和 `alembic.ini`。API 容器默认启动时会先执行 `alembic upgrade head`，迁移成功后再启动 FastAPI 服务。
 
 如果在服务器本机直接构建镜像：
 
@@ -45,11 +45,10 @@ git checkout main
 git pull --ff-only origin main
 docker compose build api connector
 docker compose up -d postgres minio minio-init
-docker compose run --rm api alembic upgrade head
 docker compose up -d api connector
 ```
 
-后续只更新镜像且没有数据库变更时，可以省略 `alembic upgrade head`。如果不确定有没有迁移，保留这一步也可以，Alembic 会自动判断当前版本。
+后续只更新镜像时直接重启 `api` 即可，容器会自动检查并执行未应用的 Alembic 迁移。单机 Docker Compose 默认开启自动迁移；如果以后改成多副本部署，可以设置 `TESTFLYING_AUTO_MIGRATE=0` 关闭容器启动迁移，改由单独迁移任务执行。
 
 ## GitHub Actions 产物部署
 
@@ -74,10 +73,9 @@ docker tag testflying-server:<commit> testflying-server:latest
 docker tag testflying-connector:<commit> testflying-connector:latest
 ```
 
-随后执行迁移并启动：
+随后启动服务，API 容器会自动执行迁移：
 
 ```bash
-docker compose run --rm api alembic upgrade head
 docker compose up -d api connector
 ```
 
@@ -152,10 +150,6 @@ docker compose -f docker-compose.local.yml up --build
 
 ```bash
 docker build -t testflying-server:latest .
-docker run --rm \
-  -e TESTFLYING_DATABASE_URL=sqlite:////app/data/testflying.db \
-  -v "$(pwd)/data:/app/data" \
-  testflying-server:latest alembic upgrade head
 docker run -d \
   --name testflying-server \
   -p 8000:8000 \

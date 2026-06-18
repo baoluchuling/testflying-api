@@ -46,6 +46,7 @@ jobs:
         run: |
           python -m compileall -q src tests
           (cd connector && go build ./cmd/testflying-connector)
+          (cd connector && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o /tmp/testflying-connector.exe ./cmd/testflying-connector)
 
       - name: Validate Docker Compose files
         run: |
@@ -90,6 +91,29 @@ jobs:
           docker save testflying-server:${{ github.sha }} | gzip > dist/images/testflying-server-${{ github.sha }}.tar.gz
           docker save testflying-connector:${{ github.sha }} | gzip > dist/images/testflying-connector-${{ github.sha }}.tar.gz
 
+      - name: Build connector binary artifacts
+        run: |
+          mkdir -p dist/connectors
+          (
+            cd connector
+            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o "../dist/connectors/testflying-connector-linux-amd64-${GITHUB_SHA}" ./cmd/testflying-connector
+            CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o "../dist/connectors/testflying-connector-darwin-arm64-${GITHUB_SHA}" ./cmd/testflying-connector
+            CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o "../dist/connectors/testflying-connector-darwin-amd64-${GITHUB_SHA}" ./cmd/testflying-connector
+            CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o "../dist/connectors/testflying-connector-windows-amd64-${GITHUB_SHA}.exe" ./cmd/testflying-connector
+          )
+          (
+            cd dist/connectors
+            tar -czf "testflying-connector-linux-amd64-${GITHUB_SHA}.tar.gz" "testflying-connector-linux-amd64-${GITHUB_SHA}"
+            tar -czf "testflying-connector-darwin-arm64-${GITHUB_SHA}.tar.gz" "testflying-connector-darwin-arm64-${GITHUB_SHA}"
+            tar -czf "testflying-connector-darwin-amd64-${GITHUB_SHA}.tar.gz" "testflying-connector-darwin-amd64-${GITHUB_SHA}"
+            python -m zipfile -c "testflying-connector-windows-amd64-${GITHUB_SHA}.zip" "testflying-connector-windows-amd64-${GITHUB_SHA}.exe"
+            rm \
+              "testflying-connector-linux-amd64-${GITHUB_SHA}" \
+              "testflying-connector-darwin-arm64-${GITHUB_SHA}" \
+              "testflying-connector-darwin-amd64-${GITHUB_SHA}" \
+              "testflying-connector-windows-amd64-${GITHUB_SHA}.exe"
+          )
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -97,6 +121,7 @@ jobs:
           path: |
             dist/wheels/*.whl
             dist/images/*.tar.gz
+            dist/connectors/*
           if-no-files-found: error
 
       - name: Publish GitHub release assets
@@ -106,8 +131,12 @@ jobs:
         run: |
           tag="build-${GITHUB_SHA}"
           title="testflying build ${GITHUB_SHA}"
-          notes="自动构建产物。Connector 部署只需要下载 testflying-connector-${GITHUB_SHA}.tar.gz。"
+          notes="自动构建产物。Windows Connector 下载 testflying-connector-windows-amd64-${GITHUB_SHA}.zip；Docker 部署下载 testflying-connector-${GITHUB_SHA}.tar.gz。"
           assets=(
+            "dist/connectors/testflying-connector-windows-amd64-${GITHUB_SHA}.zip"
+            "dist/connectors/testflying-connector-linux-amd64-${GITHUB_SHA}.tar.gz"
+            "dist/connectors/testflying-connector-darwin-arm64-${GITHUB_SHA}.tar.gz"
+            "dist/connectors/testflying-connector-darwin-amd64-${GITHUB_SHA}.tar.gz"
             "dist/images/testflying-connector-${GITHUB_SHA}.tar.gz"
             "dist/images/testflying-server-${GITHUB_SHA}.tar.gz"
             "dist/wheels/testflying_server-0.1.0-py3-none-any.whl"

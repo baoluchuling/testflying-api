@@ -153,18 +153,60 @@
           <div class="connector-deploy-body">
             <div class="deploy-artifact-list">
               <h3>构建产物清单</h3>
-              <p>每次 main 分支构建成功后会创建一个 GitHub Release，tag 是 <code>build-&lt;SHA&gt;</code>。Connector 机器只需要下载 connector 镜像包。</p>
+              <p>每次 main 分支构建成功后会创建一个 GitHub Release，tag 是 <code>build-&lt;SHA&gt;</code>。Connector 可以下载单二进制运行，也可以下载 Docker 镜像包运行。</p>
               <pre><code>GitHub Release: build-&lt;SHA&gt;
-  testflying-connector-&lt;SHA&gt;.tar.gz          # Connector 机器只需要这个
-  testflying-server-&lt;SHA&gt;.tar.gz             # 中心后台 API 镜像
-  testflying_server-0.1.0-py3-none-any.whl   # 后端 wheel
+  testflying-connector-windows-amd64-&lt;SHA&gt;.zip       # Windows 单二进制
+  testflying-connector-linux-amd64-&lt;SHA&gt;.tar.gz      # Linux 单二进制
+  testflying-connector-darwin-arm64-&lt;SHA&gt;.tar.gz     # macOS Apple Silicon 单二进制
+  testflying-connector-darwin-amd64-&lt;SHA&gt;.tar.gz     # macOS Intel 单二进制
+  testflying-connector-&lt;SHA&gt;.tar.gz                  # Connector Docker 镜像
+  testflying-server-&lt;SHA&gt;.tar.gz                     # 中心后台 API 镜像
+  testflying_server-0.1.0-py3-none-any.whl           # 后端 wheel
 
 Actions artifact 备用入口:
   testflying-build-&lt;SHA&gt;/
+    connectors/testflying-connector-windows-amd64-&lt;SHA&gt;.zip
     images/testflying-connector-&lt;SHA&gt;.tar.gz</code></pre>
             </div>
             <div class="deploy-step">
-              <h3>1. 从 GitHub Release 下载并加载 Connector 镜像</h3>
+              <h3>Windows：下载 exe 并创建长期运行任务</h3>
+              <pre><code>$Sha = "&lt;commit sha&gt;"
+$Root = "C:\testflying-connector"
+$TaskName = "testflying-connector-{{ account.id }}"
+
+New-Item -ItemType Directory -Force $Root, "$Root\secrets\apple", "$Root\secrets\google" | Out-Null
+
+gh release download "build-$Sha" `
+  -R baoluchuling/testflying-api `
+  -p "testflying-connector-windows-amd64-$Sha.zip" `
+  -D $Root
+
+Expand-Archive -Force "$Root\testflying-connector-windows-amd64-$Sha.zip" $Root
+Move-Item -Force "$Root\testflying-connector-windows-amd64-$Sha.exe" "$Root\testflying-connector.exe"
+
+@"
+`$env:TESTFLYING_CONNECTOR_LISTEN_ADDR = ":8100"
+`$env:TESTFLYING_CONNECTOR_STORE_MODE = "live"
+`$env:TESTFLYING_CONNECTOR_DEVELOPER_ACCOUNT_ID = "{{ account.id }}"
+`$env:TESTFLYING_CONNECTOR_TOKEN = "&lt;random-token&gt;"
+
+# Apple 账号填写这三项，并把 .p8 放到 $Root\secrets\apple
+`$env:TESTFLYING_CONNECTOR_APPLE_ISSUER_ID = "&lt;issuer-id&gt;"
+`$env:TESTFLYING_CONNECTOR_APPLE_KEY_ID = "&lt;key-id&gt;"
+`$env:TESTFLYING_CONNECTOR_APPLE_PRIVATE_KEY_PATH = "$Root\secrets\apple\AuthKey_XXXX.p8"
+
+# Google 账号填写这一项，并把 JSON 放到 $Root\secrets\google
+# `$env:TESTFLYING_CONNECTOR_GOOGLE_SERVICE_ACCOUNT_JSON_PATH = "$Root\secrets\google\service-account.json"
+
+& "$Root\testflying-connector.exe"
+"@ | Set-Content -Encoding UTF8 "$Root\run-connector.ps1"
+
+schtasks /Create /TN $TaskName /SC ONSTART /RL HIGHEST /RU SYSTEM /TR "powershell.exe -ExecutionPolicy Bypass -File $Root\run-connector.ps1" /F
+schtasks /Run /TN $TaskName
+Invoke-RestMethod http://127.0.0.1:8100/health</code></pre>
+            </div>
+            <div class="deploy-step">
+              <h3>Docker：从 GitHub Release 下载并加载 Connector 镜像</h3>
               <pre><code>SHA=&lt;commit sha&gt;
 
 mkdir -p /opt/testflying/artifacts

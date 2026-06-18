@@ -203,12 +203,19 @@ def test_admin_developer_account_detail_renders_store_sync_entry(
     assert "GitHub Release: build-&lt;SHA&gt;" in response.text
     assert "build-&lt;SHA&gt;" in response.text
     assert "testflying-build-&lt;SHA&gt;" in response.text
+    assert "testflying-connector-windows-amd64-&lt;SHA&gt;.zip" in response.text
+    assert "Windows 单二进制" in response.text
+    assert "testflying-connector-linux-amd64-&lt;SHA&gt;.tar.gz" in response.text
+    assert "testflying-connector-darwin-arm64-&lt;SHA&gt;.tar.gz" in response.text
     assert "testflying-connector-&lt;SHA&gt;.tar.gz" in response.text
-    assert "Connector 机器只需要这个" in response.text
+    assert "Connector Docker 镜像" in response.text
     assert "testflying-server-&lt;SHA&gt;.tar.gz" in response.text
     assert "testflying_server-0.1.0-py3-none-any.whl" in response.text
     assert "gh release download" in response.text
     assert "gh run download" in response.text
+    assert "Windows：下载 exe 并创建长期运行任务" in response.text
+    assert "schtasks /Create" in response.text
+    assert '-p "testflying-connector-windows-amd64-$Sha.zip"' in response.text
     assert '-p "testflying-connector-$SHA.tar.gz"' in response.text
     assert "testflying-connector:local" in response.text
     assert "TESTFLYING_CONNECTOR_DEVELOPER_ACCOUNT_ID=account-apple-enterprise" in response.text
@@ -775,7 +782,10 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "营销 URL" not in response.text
     assert "App 图标" not in response.text
     assert "素材备注" not in response.text
-    assert "手机截图" in response.text
+    assert "商店横幅图" in response.text
+    assert "手机端商店截图" in response.text
+    assert "平板端商店截图" in response.text
+    assert "宣传图" not in response.text
     assert "data-store-image-input" in response.text
     assert "data-store-image-zone" in response.text
     assert "data-store-image-bulk-drop" in response.text
@@ -785,6 +795,8 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert response.text.index("商店图素材") < response.text.index("data-store-image-bulk-drop")
     assert "后台构建" in response.text
     assert "商店版本" in response.text
+    assert "文案、商店图" in response.text
+    assert "文案、链接、商店图" not in response.text
 
 
 class _LocaleClient:

@@ -478,16 +478,18 @@ def _metadata_fields() -> list[dict[str, object]]:
 
 
 def _store_image_slots(platform: str) -> list[dict[str, object]]:
-    feature_label = "宣传图"
-    feature_placeholder = "https://example.com/store/feature.png"
+    feature_label = "商店横幅图"
+    feature_hint = "横向商店展示素材；Android 对应 Google Play Feature Graphic，iOS 可先留空。"
+    feature_placeholder = "拖图上传后自动生成 URL，或粘贴一张横幅图 URL"
     if platform == "android":
-        feature_label = "Feature Graphic"
+        feature_label = "商店横幅图（Feature Graphic）"
         feature_placeholder = "https://example.com/google-play/feature-graphic.png"
     return [
         {
             "key": "feature_graphic_url",
             "name": "featureGraphicUrl",
             "label": feature_label,
+            "hint": feature_hint,
             "type": "input",
             "rows": 1,
             "placeholder": feature_placeholder,
@@ -496,19 +498,21 @@ def _store_image_slots(platform: str) -> list[dict[str, object]]:
         {
             "key": "phone_screenshots",
             "name": "phoneScreenshots",
-            "label": "手机截图",
+            "label": "手机端商店截图",
+            "hint": "上架页展示给手机设备的截图，例如 iPhone 或 Android phone 尺寸。",
             "type": "textarea",
             "rows": 3,
-            "placeholder": "一行一个图片 URL",
+            "placeholder": "一行一个手机截图 URL",
             "multiple": True,
         },
         {
             "key": "tablet_screenshots",
             "name": "tabletScreenshots",
-            "label": "平板截图",
+            "label": "平板端商店截图",
+            "hint": "上架页展示给平板设备的截图，例如 iPad 或 Android tablet 尺寸。",
             "type": "textarea",
             "rows": 3,
-            "placeholder": "一行一个图片 URL",
+            "placeholder": "一行一个平板截图 URL",
             "multiple": True,
         },
     ]

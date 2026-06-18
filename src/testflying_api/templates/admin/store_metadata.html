@@ -151,6 +151,9 @@
                 <div class="locale-block-header">
                   <div class="metadata-field-title">
                     <strong>{{ slot.label }}</strong>
+                    {% if slot.hint %}
+                      <span>{{ slot.hint }}</span>
+                    {% endif %}
                     <span>当前语言：<b data-current-locale-label>{{ locale }}</b></span>
                   </div>
                   <button class="ghost-button compact subtle" type="button" data-locale-group-toggle>
@@ -290,7 +293,7 @@
         <dt>当前打开</dt>
         <dd>{{ content_set_name }}</dd>
         <dt>内容范围</dt>
-        <dd>文案、链接、商店图</dd>
+        <dd>文案、商店图</dd>
         <dt>同步目标</dt>
         <dd>当前套件</dd>
       </dl>

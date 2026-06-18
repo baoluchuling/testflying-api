@@ -27,6 +27,49 @@ go run ./cmd/testflying-connector
 
 默认监听 `:8100`，可用 `TESTFLYING_CONNECTOR_LISTEN_ADDR` 覆盖。
 
+## Windows 单机部署
+
+CI 会在 GitHub Release 里生成 Windows 单二进制压缩包：
+
+```text
+testflying-connector-windows-amd64-<SHA>.zip
+```
+
+下载后解压得到 `testflying-connector-windows-amd64-<SHA>.exe`。推荐固定放到 `C:\testflying-connector`，再用 Windows 任务计划程序开机自启：
+
+```powershell
+$Sha = "<commit sha>"
+$Root = "C:\testflying-connector"
+$TaskName = "testflying-connector-account-a"
+
+New-Item -ItemType Directory -Force $Root, "$Root\secrets\apple", "$Root\secrets\google" | Out-Null
+Expand-Archive -Force "$Root\testflying-connector-windows-amd64-$Sha.zip" $Root
+Move-Item -Force "$Root\testflying-connector-windows-amd64-$Sha.exe" "$Root\testflying-connector.exe"
+
+@"
+`$env:TESTFLYING_CONNECTOR_LISTEN_ADDR = ":8100"
+`$env:TESTFLYING_CONNECTOR_STORE_MODE = "live"
+`$env:TESTFLYING_CONNECTOR_DEVELOPER_ACCOUNT_ID = "account-a"
+`$env:TESTFLYING_CONNECTOR_TOKEN = "<random-token>"
+
+# Apple
+`$env:TESTFLYING_CONNECTOR_APPLE_ISSUER_ID = "<issuer-id>"
+`$env:TESTFLYING_CONNECTOR_APPLE_KEY_ID = "<key-id>"
+`$env:TESTFLYING_CONNECTOR_APPLE_PRIVATE_KEY_PATH = "$Root\secrets\apple\AuthKey_XXXX.p8"
+
+# Google
+# `$env:TESTFLYING_CONNECTOR_GOOGLE_SERVICE_ACCOUNT_JSON_PATH = "$Root\secrets\google\service-account.json"
+
+& "$Root\testflying-connector.exe"
+"@ | Set-Content -Encoding UTF8 "$Root\run-connector.ps1"
+
+schtasks /Create /TN $TaskName /SC ONSTART /RL HIGHEST /RU SYSTEM /TR "powershell.exe -ExecutionPolicy Bypass -File $Root\run-connector.ps1" /F
+schtasks /Run /TN $TaskName
+Invoke-RestMethod http://127.0.0.1:8100/health
+```
+
+中心后台里的 Connector 地址要填这台 Windows 机器对中心后台可访问的地址，例如 `http://192.168.1.20:8100`；调用 Token 要和 `TESTFLYING_CONNECTOR_TOKEN` 一致。
+
 ## Docker
 
 ```bash

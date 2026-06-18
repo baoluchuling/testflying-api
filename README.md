@@ -56,7 +56,10 @@ docker compose up -d api connector
 
 - `testflying_server-*.whl`
 - `testflying-server-<commit>.tar.gz`
-- `testflying-connector-<commit>.tar.gz`
+- `testflying-connector-<commit>.tar.gz`：Connector Docker 镜像包。
+- `testflying-connector-windows-amd64-<commit>.zip`：Windows Connector 单二进制。
+- `testflying-connector-linux-amd64-<commit>.tar.gz`：Linux Connector 单二进制。
+- `testflying-connector-darwin-arm64-<commit>.tar.gz` / `testflying-connector-darwin-amd64-<commit>.tar.gz`：macOS Connector 单二进制。
 
 如果不想在服务器上从源码构建，部署时可以下载 GitHub Actions 的 artifact，然后在服务器加载镜像：
 
@@ -90,6 +93,8 @@ curl http://localhost:8100/health
 ```json
 {"status":"ok"}
 ```
+
+如果 connector 部署在 Windows 机器上，不需要 Docker。下载 Release 里的 `testflying-connector-windows-amd64-<commit>.zip`，解压后用 PowerShell 设置 `TESTFLYING_CONNECTOR_*` 环境变量并运行 exe；需要长期运行时用任务计划程序创建开机启动任务。完整命令在开发者账号详情页的 `Connector 部署说明` 中可以直接复制。
 
 MinIO 控制台：
 
@@ -203,7 +208,7 @@ open http://localhost:8000/admin
 7. 进入 `商店元数据` 或 `管理版本说明`。
 8. 页面进入时自动检查目标商店版本是否存在、是否可编辑。
 9. 商店元数据页会从 connector 拉取支持语言；没有翻译时默认用当前语言内容填充。
-10. 商店元数据页可以创建多套商店内容草稿，并按套件切换打开。文案、链接和商店图都跟随当前套件保存。
+10. 商店元数据页可以创建多套商店内容草稿，并按套件切换打开。文案和商店图都跟随当前套件保存。
 11. 商店图支持拖拽图片、选择图片或拖入语言文件夹上传；后台会把图片保存到对象存储，并在同步 payload 中提供图片 URL。
 12. 5 分钟内相同账号、App、平台、版本、语言和操作返回同一个预检查状态。
 13. `canSync=true` 时可以手动同步草稿。

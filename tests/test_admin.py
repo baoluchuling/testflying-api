@@ -85,6 +85,17 @@ def test_admin_health_check_status_has_distinct_colors(client: TestClient) -> No
     assert "border-color: #ef4444" in response.text
 
 
+def test_admin_connector_deploy_commands_are_readable(client: TestClient) -> None:
+    response = client.get("/static/admin/admin.css")
+
+    assert response.status_code == 200
+    assert ".deploy-step pre" in response.text
+    assert "background: white" in response.text
+    assert "color: var(--text)" in response.text
+    assert ".deploy-step code" in response.text
+    assert "color: inherit" in response.text
+
+
 def test_admin_resource_pages_render_seeded_catalog(
     client: TestClient,
     db_session: Session,

@@ -238,6 +238,45 @@ h2 { font-size: 18px; }
   gap: 12px;
 }
 
+.app-log-connect-panel.is-connected {
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+
+.app-log-connect-panel.is-connected .panel-header {
+  margin-bottom: 10px;
+}
+
+.app-log-connect-panel.is-connected .app-log-connect-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+
+.app-log-connect-panel.is-connected .app-log-qr-card,
+.app-log-connect-panel.is-connected .detail-list {
+  display: none;
+}
+
+.app-log-connect-panel.is-connected .app-log-connect-form {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.app-log-connect-panel.is-connected .form-grid {
+  grid-template-columns: minmax(160px, 1fr) minmax(96px, .42fr) minmax(130px, .7fr);
+  gap: 10px;
+}
+
+.app-log-connect-panel.is-connected label {
+  gap: 5px;
+  font-size: 12px;
+}
+
+.app-log-connect-panel.is-connected input {
+  padding: 8px 9px;
+}
+
 .compact-actions {
   margin-top: 0;
 }
@@ -247,6 +286,15 @@ h2 { font-size: 18px; }
   grid-template-columns: 320px minmax(0, 1fr);
   gap: 18px;
   align-items: start;
+}
+
+.app-log-connect-panel.is-connected + .app-log-layout {
+  grid-template-columns: 240px minmax(0, 1fr);
+}
+
+.app-log-connect-panel.is-connected + .app-log-layout .app-log-device-panel,
+.app-log-connect-panel.is-connected + .app-log-layout .app-log-stream-panel {
+  min-height: calc(100vh - 188px);
 }
 
 .app-log-device-panel,
@@ -2194,6 +2242,9 @@ a.ghost-button {
   .store-id-form,
   .account-app-row,
   .app-log-connect-grid,
+  .app-log-connect-panel.is-connected .app-log-connect-form,
+  .app-log-connect-panel.is-connected .form-grid,
+  .app-log-connect-panel.is-connected + .app-log-layout,
   .app-log-layout,
   .app-log-fields {
     grid-template-columns: 1fr;

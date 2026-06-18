@@ -683,6 +683,7 @@
           page.dataset.initialized = 'true';
         }
         updateAppLogConnectPreview();
+        syncAppLogConnectedLayout();
         renderAppLogDevices();
         renderAppLogErrors();
         renderAppLogs();
@@ -751,6 +752,7 @@
           mergeAppLogEntries(payload.logs || [], 'logs');
           mergeAppLogEntries(payload.errors || [], 'errors');
           if (status) status.textContent = '实时刷新中';
+          syncAppLogConnectedLayout();
           renderAppLogDevices();
           renderAppLogErrors();
           renderAppLogs();
@@ -765,6 +767,13 @@
         appLogState[key] = Array.from(map.values())
           .sort((a, b) => Number(b.sequence || 0) - Number(a.sequence || 0))
           .slice(0, key === 'logs' ? 1000 : 100);
+      }
+
+      function syncAppLogConnectedLayout() {
+        const page = document.querySelector('[data-app-log-page]');
+        if (!page) return;
+        const hasConnectedDevice = appLogState.devices.some((device) => device.connected);
+        page.classList.toggle('is-connected', hasConnectedDevice);
       }
 
       function renderAppLogDevices() {

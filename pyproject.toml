@@ -33,6 +33,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 testflying_api = [
+  "templates/*.html",
   "templates/admin/*.html",
   "static/admin/*.css",
 ]

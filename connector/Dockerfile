@@ -1,33 +1,28 @@
-FROM python:3.11-slim AS builder
+FROM golang:1.20-alpine AS builder
 
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
+WORKDIR /src
 
-WORKDIR /build
+COPY go.mod ./
+RUN go mod download
 
-RUN pip install --no-cache-dir build
+COPY cmd ./cmd
+COPY internal ./internal
 
-COPY pyproject.toml ./
-COPY src ./src
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -trimpath \
+    -ldflags="-s -w" \
+    -o /out/testflying-connector \
+    ./cmd/testflying-connector
 
-RUN python -m build --wheel --outdir /dist
+FROM alpine:3.20 AS runtime
 
-FROM python:3.11-slim AS runtime
+RUN apk add --no-cache ca-certificates \
+    && adduser -D -H appuser
 
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-
-WORKDIR /app
-
-COPY --from=builder /dist/*.whl /tmp/
-
-RUN pip install --no-cache-dir /tmp/*.whl \
-    && rm -f /tmp/*.whl \
-    && adduser --disabled-password --gecos "" appuser \
-    && chown -R appuser:appuser /app
+COPY --from=builder /out/testflying-connector /usr/local/bin/testflying-connector
 
 USER appuser
 
 EXPOSE 8100
 
-CMD ["uvicorn", "testflying_connector.main:app", "--host", "0.0.0.0", "--port", "8100"]
+CMD ["testflying-connector"]

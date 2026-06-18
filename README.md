@@ -55,7 +55,6 @@ docker compose up -d api connector
 `.github/workflows/ci.yml` 会在 CI 里生成这些产物：
 
 - `testflying_server-*.whl`
-- `testflying_connector-*.whl`
 - `testflying-server-<commit>.tar.gz`
 - `testflying-connector-<commit>.tar.gz`
 
@@ -211,9 +210,8 @@ open http://localhost:8000/admin
 
 ```bash
 pytest
-pytest connector/tests
+cd connector && go test ./...
 ruff check src tests
-ruff check connector/src connector/tests
 ```
 
 ## 接口边界

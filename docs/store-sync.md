@@ -7,7 +7,7 @@
 ## 项目拆分
 
 - `testflying-server`：中心化后台，负责账号、App、构建、版本说明草稿、商店元数据草稿、预检查缓存、同步记录和审计。
-- `testflying-connector`：账号级子项目，每个开发者账号单独部署一份，负责保存该账号商店凭证并调用 Apple / Google 商店 API。
+- `testflying-connector`：账号级 Go 子项目，每个开发者账号单独部署一份，负责保存该账号商店凭证并调用 Apple / Google 商店 API。
 
 中心后台可以调用 connector 的接口，但不能保存 Apple `.p8`、Google service account JSON 或商店访问 token。
 
@@ -34,6 +34,7 @@
 - 自动提审。
 - 定时同步。
 - 跨账号批量同步。
+- Android 版本说明真实同步。Google Play 需要 `track` 和 `versionCode`，当前中心后台协议还没有提供这两个字段；Android 商店元数据同步可先使用。
 
 ## 中心后台数据
 
@@ -147,6 +148,39 @@ GET /v1/apps/app-aurora-ios/supported-locales?developerAccountId=account-apple-e
 ```
 
 中心后台会按语言多次调用 `POST /v1/sync-runs`，每次请求的 `locale` 和 `metadata` 对应该语言。connector 不提供同步记录查询接口，任务状态以中心后台 `store_sync_runs` 为准。
+
+## Connector 部署和凭据
+
+connector 默认以 `mock` 模式启动，用于本地测试。生产部署必须显式开启 `live`：
+
+```bash
+TESTFLYING_CONNECTOR_STORE_MODE=live
+```
+
+Apple connector 需要 App Store Connect API Key：
+
+- `TESTFLYING_CONNECTOR_APPLE_ISSUER_ID`
+- `TESTFLYING_CONNECTOR_APPLE_KEY_ID`
+- `TESTFLYING_CONNECTOR_APPLE_PRIVATE_KEY_PATH`
+
+`.p8` 文件挂载在 connector 所在机器，例如：
+
+```bash
+-v /opt/testflying/secrets/apple-a:/run/secrets/apple:ro
+```
+
+Google connector 需要 service account JSON：
+
+- `TESTFLYING_CONNECTOR_GOOGLE_SERVICE_ACCOUNT_JSON_PATH`
+- `TESTFLYING_CONNECTOR_GOOGLE_DEVELOPER_ID` 可选
+
+JSON 文件挂载在 connector 所在机器，例如：
+
+```bash
+-v /opt/testflying/secrets/google-a:/run/secrets/google:ro
+```
+
+中心后台只配置 connector URL 和 token，不接收、不转存这些商店凭据。
 
 ## 隔离规则
 

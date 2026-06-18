@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
@@ -51,9 +51,11 @@ from testflying_api.store_sync import (
     save_app_metadata_draft,
     save_connector,
     save_release_note_draft,
+    scoped_app,
     sync_app_metadata,
     sync_release_notes,
 )
+from testflying_api.translation import translate_store_metadata_text
 from testflying_api.upload_service import create_package_upload
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -836,6 +838,37 @@ async def create_store_metadata_content_set(
     )
 
 
+@router.post("/developer-accounts/{account_id}/apps/{app_id}/store-metadata/translations")
+async def translate_store_metadata_field(
+    account_id: str,
+    app_id: str,
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+) -> JSONResponse:
+    if scoped_app(session, account_id, app_id) is None:
+        raise ApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
+    payload = await _json_payload(request)
+    try:
+        translations = translate_store_metadata_text(
+            request.app.state.settings,
+            source_locale=str(payload.get("sourceLocale") or DEFAULT_LOCALE),
+            target_locales=[
+                str(locale or "")
+                for locale in payload.get("targetLocales", [])
+                if isinstance(locale, str)
+            ],
+            field=str(payload.get("field") or ""),
+            text=str(payload.get("text") or ""),
+        )
+    except ApiError as error:
+        return JSONResponse(
+            {"code": error.code, "message": error.message, "retryable": error.retryable},
+            status_code=error.status_code,
+        )
+    return JSONResponse({"translations": translations})
+
+
 @router.post(
     "/developer-accounts/{account_id}/apps/{app_id}/store-metadata/sync",
     response_class=HTMLResponse,
@@ -1014,6 +1047,14 @@ def _form_values(form: object, name: str) -> list[str] | None:
         return None
     values = [value for value in form.getlist(name) if isinstance(value, str)]
     return values or None
+
+
+async def _json_payload(request: Request) -> dict[str, Any]:
+    try:
+        payload = await request.json()
+    except ValueError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def _metadata_rows_from_request_form(

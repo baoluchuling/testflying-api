@@ -144,6 +144,10 @@ password: dev-token
 - `TESTFLYING_ADMIN_USERNAME`：默认 `admin`
 - `TESTFLYING_CORS_ALLOWED_ORIGINS`：默认允许 `http://localhost:8080,http://127.0.0.1:8080`，用于 Flutter Web 本地联调。
 - `TESTFLYING_CONNECTOR_BASE_URL_TEMPLATE`：按开发者账号 ID 自动生成 connector 地址的模板。支持 `{account_id}` 占位符，例如 `http://connector-{account_id}:8100`。账号详情页手填地址时优先使用手填值；留空时使用该模板。
+- `TESTFLYING_TRANSLATION_PROVIDER`：商店元数据多语言翻译服务，默认 `disabled`。设为 `openai` 后，后台“生成该项多语言”会调用 OpenAI-compatible Chat Completions 接口翻译源文案。
+- `TESTFLYING_TRANSLATION_OPENAI_API_KEY`：翻译服务 API Key。未配置时不会复制源文案冒充翻译，会在页面提示翻译服务未配置。
+- `TESTFLYING_TRANSLATION_OPENAI_BASE_URL`：默认 `https://api.openai.com/v1`，可替换成兼容 OpenAI Chat Completions 的内部网关地址。
+- `TESTFLYING_TRANSLATION_OPENAI_MODEL`：默认 `gpt-4o-mini`，可按实际账号可用模型调整。
 - `TESTFLYING_CONNECTOR_DEVELOPER_ACCOUNT_ID`：connector 绑定的开发者账号 ID。Docker Compose 会给 connector 增加 `connector-<账号 ID>` 网络别名。
 - `TESTFLYING_CONNECTOR_TOKEN`：中心后台调用 connector 的 Bearer token。
 - `TESTFLYING_CONNECTOR_GOOGLE_RATE_LIMIT_MAX_REQUESTS`：connector Google / Android 接口默认 `200` 次。

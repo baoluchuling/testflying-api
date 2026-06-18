@@ -405,12 +405,45 @@
         ));
       }
 
-      function fillMetadataFieldFromSource(form, field, sourceLocale) {
+      async function requestMetadataTranslation(form, field, sourceLocale, text, targetLocales) {
+        const response = await fetch(`${form.action}/translations`, {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            field,
+            sourceLocale,
+            targetLocales,
+            text,
+          }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload.message || payload.error || '翻译失败');
+        }
+        return payload.translations || {};
+      }
+
+      async function translateMetadataFieldFromSource(form, field, sourceLocale, overwrite = true) {
         let changed = 0;
         const sourceValue = metadataValue(form, sourceLocale, field);
-        storeImageLocales(form).filter((locale) => locale !== sourceLocale).forEach((locale) => {
-          if (!metadataValue(form, locale, field).trim()) {
-            setMetadataValue(form, locale, field, sourceValue);
+        const targetLocales = storeImageLocales(form)
+          .filter((locale) => locale !== sourceLocale)
+          .filter((locale) => overwrite || !metadataValue(form, locale, field).trim());
+        if (!sourceValue.trim() || !targetLocales.length) return changed;
+        const translations = await requestMetadataTranslation(
+          form,
+          field,
+          sourceLocale,
+          sourceValue,
+          targetLocales
+        );
+        targetLocales.forEach((locale) => {
+          const translated = String(translations[locale] || '').trim();
+          if (translated) {
+            setMetadataValue(form, locale, field, translated);
             changed += 1;
           }
         });
@@ -430,7 +463,7 @@
       }
 
       function flashButtonText(button, message) {
-        const previous = button.textContent;
+        const previous = button.dataset.originalText || button.textContent;
         button.textContent = message;
         setTimeout(() => { button.textContent = previous; }, 1400);
       }
@@ -799,14 +832,26 @@
           const form = translateButton.closest('[data-metadata-form]');
           const sourceLocale = form?.dataset.sourceLocale;
           if (!form || !sourceLocale) return;
-          metadataFields(form).forEach((field) => {
-            fillMetadataFieldFromSource(form, field, sourceLocale);
-          });
-          storeImageSlots(form).forEach((slot) => {
-            fillStoreImageSlotFromSource(form, slot, sourceLocale);
-          });
-          flashButtonText(translateButton, '已填充空白语言');
-          syncMetadataEditor();
+          translateButton.disabled = true;
+          translateButton.setAttribute('aria-busy', 'true');
+          translateButton.dataset.originalText ||= translateButton.textContent;
+          translateButton.textContent = '正在翻译';
+          try {
+            let changed = 0;
+            for (const field of metadataFields(form)) {
+              changed += await translateMetadataFieldFromSource(form, field, sourceLocale, true);
+            }
+            storeImageSlots(form).forEach((slot) => {
+              fillStoreImageSlotFromSource(form, slot, sourceLocale);
+            });
+            flashButtonText(translateButton, changed ? `已翻译 ${changed} 个语言项` : '没有可翻译内容');
+            syncMetadataEditor();
+          } catch (error) {
+            flashButtonText(translateButton, error.message || '翻译失败');
+          } finally {
+            translateButton.disabled = false;
+            translateButton.removeAttribute('aria-busy');
+          }
           return;
         }
 
@@ -815,9 +860,25 @@
           const form = translateField.closest('[data-metadata-form]');
           const sourceLocale = form?.dataset.sourceLocale;
           if (!form || !sourceLocale) return;
-          fillMetadataFieldFromSource(form, translateField.dataset.field, sourceLocale);
-          flashButtonText(translateField, '已生成当前项');
-          syncMetadataEditor();
+          translateField.disabled = true;
+          translateField.setAttribute('aria-busy', 'true');
+          translateField.dataset.originalText ||= translateField.textContent;
+          translateField.textContent = '正在翻译';
+          try {
+            const changed = await translateMetadataFieldFromSource(
+              form,
+              translateField.dataset.field,
+              sourceLocale,
+              true
+            );
+            flashButtonText(translateField, changed ? `已翻译 ${changed} 个语言` : '没有可翻译内容');
+            syncMetadataEditor();
+          } catch (error) {
+            flashButtonText(translateField, error.message || '翻译失败');
+          } finally {
+            translateField.disabled = false;
+            translateField.removeAttribute('aria-busy');
+          }
           return;
         }
 

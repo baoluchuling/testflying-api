@@ -25,6 +25,10 @@ class Settings:
     cors_allowed_origins: tuple[str, ...]
     admin_username: str
     connector_base_url_template: str | None
+    translation_provider: str
+    translation_openai_api_key: str | None
+    translation_openai_base_url: str
+    translation_openai_model: str
 
     @classmethod
     def from_environment(cls) -> Settings:
@@ -53,6 +57,18 @@ class Settings:
             admin_username=os.getenv("TESTFLYING_ADMIN_USERNAME", "admin"),
             connector_base_url_template=_normalize_optional(
                 os.getenv("TESTFLYING_CONNECTOR_BASE_URL_TEMPLATE"),
+            ),
+            translation_provider=os.getenv("TESTFLYING_TRANSLATION_PROVIDER", "disabled"),
+            translation_openai_api_key=_normalize_optional(
+                os.getenv("TESTFLYING_TRANSLATION_OPENAI_API_KEY"),
+            ),
+            translation_openai_base_url=os.getenv(
+                "TESTFLYING_TRANSLATION_OPENAI_BASE_URL",
+                "https://api.openai.com/v1",
+            ),
+            translation_openai_model=os.getenv(
+                "TESTFLYING_TRANSLATION_OPENAI_MODEL",
+                "gpt-4o-mini",
             ),
         )
 

@@ -55,6 +55,10 @@ def test_settings(tmp_path: Path) -> Settings:
         ),
         admin_username="admin",
         connector_base_url_template=None,
+        translation_provider="disabled",
+        translation_openai_api_key=None,
+        translation_openai_base_url="https://api.openai.com/v1",
+        translation_openai_model="gpt-4o-mini",
     )
 
 

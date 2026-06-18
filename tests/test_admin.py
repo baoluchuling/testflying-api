@@ -807,6 +807,58 @@ def test_admin_store_metadata_content_set_creation_persists(
     assert "holiday-copy" in page.text
 
 
+def test_admin_store_metadata_translation_requires_configured_provider(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+
+    response = client.post(
+        "/admin/developer-accounts/account-apple-enterprise"
+        "/apps/app-aurora-ios/store-metadata/translations",
+        headers=_admin_headers(),
+        json={
+            "field": "description",
+            "sourceLocale": "en-US",
+            "targetLocales": ["zh-Hant"],
+            "text": "Internal distribution metadata.",
+        },
+    )
+
+    assert response.status_code == 503
+    assert response.json()["code"] == "translation_not_configured"
+    assert "翻译服务未配置" in response.json()["message"]
+
+
+def test_admin_store_metadata_translation_returns_generated_locales(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+    client.app.state.settings = replace(
+        client.app.state.settings,
+        translation_provider="mock",
+    )
+
+    response = client.post(
+        "/admin/developer-accounts/account-apple-enterprise"
+        "/apps/app-aurora-ios/store-metadata/translations",
+        headers=_admin_headers(),
+        json={
+            "field": "description",
+            "sourceLocale": "en-US",
+            "targetLocales": ["zh-Hant", "fr-FR", "en-US"],
+            "text": "Internal distribution metadata.",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["translations"] == {
+        "zh-Hant": "Internal distribution metadata. [zh-Hant]",
+        "fr-FR": "Internal distribution metadata. [fr-FR]",
+    }
+
+
 def test_admin_store_metadata_page_lists_supported_locales(
     client: TestClient,
     db_session: Session,
@@ -829,7 +881,9 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "全部语言对照" not in response.text
     assert "单语言编辑" not in response.text
     assert "data-language-view" not in response.text
-    assert "从英文填充其他语言" in response.text
+    assert "翻译所有文案项" in response.text
+    assert "requestMetadataTranslation" in response.text
+    assert "未接入翻译服务前" not in response.text
     assert "商店内容套件" in response.text
     assert "新建套件" in response.text
     assert "复制当前套" in response.text

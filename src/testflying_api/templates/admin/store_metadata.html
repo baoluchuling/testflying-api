@@ -64,12 +64,12 @@
               {% endfor %}
             </select>
           </label>
-          <button class="ghost-button" type="button" data-translate-metadata>从英文填充其他语言</button>
+          <button class="ghost-button" type="button" data-translate-metadata>翻译所有文案项</button>
         </div>
 
         <div class="metadata-source-note">
           <strong>{{ source_locale }}</strong>
-          <span>作为源文案；未接入翻译服务前，翻译按钮会把源文案填充到空白语言，避免同步时缺字段。</span>
+          <span>作为源文案；翻译按钮会调用已配置的翻译服务生成其他语言文案。</span>
         </div>
 
         <div class="metadata-editor" data-metadata-editor data-mode="field">

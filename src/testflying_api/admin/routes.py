@@ -4,9 +4,10 @@ import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
@@ -733,15 +734,9 @@ async def save_store_metadata_page(
             version=version,
             content_set_id=content_set_id,
         )
-        metadata_rows = _metadata_rows_from_form(
+        metadata_rows = _metadata_rows_from_request_form(
+            form,
             current_locale=locale,
-            locales=_form_values(form, "locales"),
-            keywords=_form_values(form, "keywords"),
-            promotional_text=_form_values(form, "promotionalText"),
-            description=_form_values(form, "description"),
-            feature_graphic_url=_form_values(form, "featureGraphicUrl"),
-            phone_screenshots=_form_values(form, "phoneScreenshots"),
-            tablet_screenshots=_form_values(form, "tabletScreenshots"),
             store_image_assets_by_locale=store_image_assets,
         )
         for row in metadata_rows:
@@ -796,6 +791,51 @@ async def save_store_metadata_page(
         )
 
 
+@router.post("/developer-accounts/{account_id}/apps/{app_id}/store-metadata/content-sets")
+async def create_store_metadata_content_set(
+    account_id: str,
+    app_id: str,
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+) -> JSONResponse:
+    form = await request.form()
+    version = _form_value(form, "version")
+    locale = _form_value(form, "locale", DEFAULT_LOCALE)
+    content_set_id = _form_value(form, "contentSetId", f"set-{uuid4().hex[:12]}")
+    content_set_name = _form_value(form, "contentSetName", content_set_id)
+    try:
+        metadata_rows = _metadata_rows_from_request_form(form, current_locale=locale)
+        for row in metadata_rows:
+            save_app_metadata_draft(
+                session,
+                account_id=account_id,
+                app_id=app_id,
+                version=version,
+                locale=row["locale"],
+                content_set_id=content_set_id,
+                content_set_name=content_set_name,
+                keywords=row["keywords"],
+                promotional_text=row["promotional_text"],
+                description=row["description"],
+                store_images=row["store_images"],
+            )
+        session.commit()
+    except ApiError as error:
+        session.rollback()
+        return JSONResponse(
+            {"code": error.code, "error": error.message},
+            status_code=error.status_code,
+        )
+    return JSONResponse(
+        {
+            "id": content_set_id,
+            "name": content_set_name,
+            "locales": [row["locale"] for row in metadata_rows],
+        }
+    )
+
+
 @router.post(
     "/developer-accounts/{account_id}/apps/{app_id}/store-metadata/sync",
     response_class=HTMLResponse,
@@ -821,15 +861,9 @@ async def sync_store_metadata_page(
             version=version,
             content_set_id=content_set_id,
         )
-        metadata_rows = _metadata_rows_from_form(
+        metadata_rows = _metadata_rows_from_request_form(
+            form,
             current_locale=locale,
-            locales=_form_values(form, "locales"),
-            keywords=_form_values(form, "keywords"),
-            promotional_text=_form_values(form, "promotionalText"),
-            description=_form_values(form, "description"),
-            feature_graphic_url=_form_values(form, "featureGraphicUrl"),
-            phone_screenshots=_form_values(form, "phoneScreenshots"),
-            tablet_screenshots=_form_values(form, "tabletScreenshots"),
             store_image_assets_by_locale=store_image_assets,
         )
         sync_runs = []
@@ -980,6 +1014,25 @@ def _form_values(form: object, name: str) -> list[str] | None:
         return None
     values = [value for value in form.getlist(name) if isinstance(value, str)]
     return values or None
+
+
+def _metadata_rows_from_request_form(
+    form: object,
+    *,
+    current_locale: str,
+    store_image_assets_by_locale: dict[str, dict[str, list[dict[str, object]]]] | None = None,
+) -> list[dict[str, object]]:
+    return _metadata_rows_from_form(
+        current_locale=current_locale,
+        locales=_form_values(form, "locales"),
+        keywords=_form_values(form, "keywords"),
+        promotional_text=_form_values(form, "promotionalText"),
+        description=_form_values(form, "description"),
+        feature_graphic_url=_form_values(form, "featureGraphicUrl"),
+        phone_screenshots=_form_values(form, "phoneScreenshots"),
+        tablet_screenshots=_form_values(form, "tabletScreenshots"),
+        store_image_assets_by_locale=store_image_assets_by_locale,
+    )
 
 
 async def _store_image_assets_from_form(

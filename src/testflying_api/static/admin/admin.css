@@ -420,6 +420,13 @@ textarea {
   color: #111827;
 }
 
+.locale-block-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .metadata-field-title {
   display: grid;
   gap: 3px;
@@ -595,6 +602,11 @@ textarea {
 .store-image-bulk-drop.compact-bulk {
   padding: 12px;
   background: white;
+}
+
+.store-image-bulk-drop.item-bulk {
+  border-color: #c7d7f4;
+  background: #f8fbff;
 }
 
 .store-image-bulk-drop input[type="file"],

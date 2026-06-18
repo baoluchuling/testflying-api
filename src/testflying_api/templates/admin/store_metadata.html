@@ -86,9 +86,14 @@
                     <strong>{{ field.label }}</strong>
                     <span>当前语言：<b data-current-locale-label>{{ locale }}</b></span>
                   </div>
-                  <button class="ghost-button compact subtle" type="button" data-locale-group-toggle>
-                    展开多语言
-                  </button>
+                  <div class="locale-block-actions">
+                    <button class="ghost-button compact subtle" type="button" data-translate-field data-field="{{ field.key }}">
+                      生成该项多语言
+                    </button>
+                    <button class="ghost-button compact subtle" type="button" data-locale-group-toggle>
+                      展开多语言
+                    </button>
+                  </div>
                 </div>
                 <div class="metadata-locale-grid">
                   {% for item in localized_metadata %}
@@ -130,20 +135,7 @@
             <div class="store-image-section-header">
               <div>
                 <p class="subsection-title">商店图素材</p>
-                <span>拖拽图片或语言文件夹后，会按语言和素材类型自动归类到下面的商店图项。</span>
-              </div>
-              <div class="store-image-bulk-drop compact-bulk" data-store-image-bulk-drop>
-                <input type="file" accept="image/*" multiple data-store-image-bulk-files>
-                <input type="file" multiple webkitdirectory directory data-store-image-folder>
-                <div>
-                  <strong>批量上传</strong>
-                  <span>支持图片或语言文件夹，例如 en-US/icon.png、zh-Hant/phone/01.png。</span>
-                </div>
-                <div class="store-image-bulk-actions">
-                  <button class="ghost-button compact" type="button" data-store-image-folder-button>选择文件夹</button>
-                  <button class="ghost-button compact" type="button" data-store-image-files-button>选择图片</button>
-                </div>
-                <small data-store-image-bulk-status>还没有导入本地图片</small>
+                <span>每个商店图项支持独立拖拽图片或语言文件夹；文件夹会按 en-US、zh-Hant 等语言目录自动归类。</span>
               </div>
             </div>
             {% for slot in store_image_slots %}
@@ -156,9 +148,27 @@
                     {% endif %}
                     <span>当前语言：<b data-current-locale-label>{{ locale }}</b></span>
                   </div>
-                  <button class="ghost-button compact subtle" type="button" data-locale-group-toggle>
-                    展开多语言
-                  </button>
+                  <div class="locale-block-actions">
+                    <button class="ghost-button compact subtle" type="button" data-translate-store-image data-slot="{{ slot.key }}">
+                      生成该项多语言
+                    </button>
+                    <button class="ghost-button compact subtle" type="button" data-locale-group-toggle>
+                      展开多语言
+                    </button>
+                  </div>
+                </div>
+                <div class="store-image-bulk-drop compact-bulk item-bulk" data-store-image-bulk-drop data-slot="{{ slot.key }}">
+                  <input type="file" accept="image/*" multiple data-store-image-bulk-files>
+                  <input type="file" multiple webkitdirectory directory data-store-image-folder>
+                  <div>
+                    <strong>批量上传 {{ slot.label }}</strong>
+                    <span>拖图片或语言文件夹，只归类到当前项；例如 en-US/01.png、zh-Hant/02.png。</span>
+                  </div>
+                  <div class="store-image-bulk-actions">
+                    <button class="ghost-button compact" type="button" data-store-image-folder-button>选择文件夹</button>
+                    <button class="ghost-button compact" type="button" data-store-image-files-button>选择图片</button>
+                  </div>
+                  <small data-store-image-bulk-status>还没有导入本地图片</small>
                 </div>
                 <div class="metadata-locale-grid">
                   {% for item in localized_metadata %}

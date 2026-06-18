@@ -756,6 +756,57 @@ def test_admin_store_metadata_uploads_store_images_into_content_set(
     assert "phone-1.png" in page.text
 
 
+def test_admin_store_metadata_content_set_creation_persists(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+
+    path = (
+        "/admin/developer-accounts/account-apple-enterprise"
+        "/apps/app-aurora-ios/store-metadata"
+    )
+    response = client.post(
+        path + "/content-sets",
+        headers=_admin_headers(),
+        data={
+            "version": "2.4.0",
+            "locale": "en-US",
+            "contentSetId": "holiday-copy",
+            "contentSetName": "节日投放",
+            "locales": ["en-US", "zh-Hant"],
+            "keywords": ["internal,test", ""],
+            "promotionalText": ["Faster internal installs.", ""],
+            "description": ["Internal distribution metadata.", ""],
+            "featureGraphicUrl": ["", ""],
+            "phoneScreenshots": ["https://cdn.example.test/phone.png", ""],
+            "tabletScreenshots": ["", ""],
+        },
+    )
+
+    drafts = (
+        db_session.query(StoreAppMetadataDraft)
+        .filter_by(content_set_id="holiday-copy")
+        .order_by(StoreAppMetadataDraft.locale)
+        .all()
+    )
+    assert response.status_code == 200
+    assert response.json()["id"] == "holiday-copy"
+    assert response.json()["name"] == "节日投放"
+    assert {draft.locale for draft in drafts} == {"en-US", "zh-Hant"}
+    assert {draft.content_set_name for draft in drafts} == {"节日投放"}
+    zh_hant = next(draft for draft in drafts if draft.locale == "zh-Hant")
+    assert zh_hant.description == "Internal distribution metadata."
+
+    page = client.get(
+        path + "?content_set_id=holiday-copy",
+        headers=_admin_headers(),
+    )
+    assert page.status_code == 200
+    assert "节日投放" in page.text
+    assert "holiday-copy" in page.text
+
+
 def test_admin_store_metadata_page_lists_supported_locales(
     client: TestClient,
     db_session: Session,
@@ -787,6 +838,11 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "Keywords（关键词）" in response.text
     assert "Promotional Text（宣传文本）" in response.text
     assert "Description（描述）" in response.text
+    assert "data-translate-field" in response.text
+    assert "data-translate-store-image" in response.text
+    assert "replaceContentSetUrl" in response.text
+    assert "批量上传 iPhone screenshots（iPhone 屏幕快照）" in response.text
+    assert "批量上传 iPad screenshots（iPad 屏幕快照）" in response.text
     assert "标题" not in response.text
     assert "副标题" not in response.text
     assert "隐私政策 URL" not in response.text

@@ -330,19 +330,54 @@
         if (status) status.textContent = `已打开：${name}`;
       }
 
-      function addContentSetOption(form, name, copyCurrent) {
+      function addContentSetOption(form, id, name, existing = true) {
         const picker = form?.querySelector('[data-content-set-picker]');
-        if (!picker || !name) return;
-        const id = `set-${Date.now()}`;
-        const option = new Option(name, id, true, true);
+        if (!picker || !id || !name) return;
+        let option = Array.from(picker.options).find((item) => item.value === id);
+        if (!option) {
+          option = new Option(name, id, true, true);
+          picker.add(option);
+        }
+        option.textContent = name;
         option.dataset.name = name;
-        option.dataset.existing = 'false';
-        picker.add(option);
+        option.dataset.existing = existing ? 'true' : 'false';
         picker.value = id;
         syncContentSetControls(form);
+      }
+
+      function replaceContentSetUrl(form, contentSetId) {
+        if (!contentSetId) return;
+        const url = new URL(window.location.href);
+        url.searchParams.set('content_set_id', contentSetId);
+        const version = form?.querySelector('[name="version"]')?.value;
+        const locale = form?.querySelector('[name="locale"]')?.value;
+        if (version) url.searchParams.set('version', version);
+        if (locale) url.searchParams.set('locale', locale);
+        window.history.replaceState(window.history.state, '', url.toString());
+      }
+
+      async function persistContentSetOption(form, name, copyCurrent) {
+        if (!form || !name) return;
         const status = form.querySelector('[data-content-set-status]');
+        const id = `set-${Date.now()}`;
+        const formData = new FormData(form);
+        formData.set('contentSetId', id);
+        formData.set('contentSetName', name);
+        if (status) status.textContent = copyCurrent ? '正在复制套件...' : '正在新建套件...';
+        const response = await fetch(`${form.action}/content-sets`, {
+          method: 'POST',
+          body: formData,
+          headers: { Accept: 'application/json' },
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          if (status) status.textContent = payload.error || '套件保存失败';
+          return;
+        }
+        addContentSetOption(form, payload.id || id, payload.name || name, true);
+        replaceContentSetUrl(form, payload.id || id);
         if (status) {
-          status.textContent = `${copyCurrent ? '已复制为' : '新建'}：${name}，保存后生效`;
+          status.textContent = `${copyCurrent ? '已复制为' : '已新建'}：${payload.name || name}`;
         }
       }
 
@@ -352,6 +387,52 @@
             .map((input) => input.value)
             .filter(Boolean)
         ));
+      }
+
+      function metadataFields(form) {
+        return Array.from(new Set(
+          Array.from(form.querySelectorAll('[data-metadata-input]'))
+            .map((input) => input.dataset.field)
+            .filter(Boolean)
+        ));
+      }
+
+      function storeImageSlots(form) {
+        return Array.from(new Set(
+          Array.from(form.querySelectorAll('[data-store-image-input]'))
+            .map((input) => input.dataset.slot)
+            .filter(Boolean)
+        ));
+      }
+
+      function fillMetadataFieldFromSource(form, field, sourceLocale) {
+        let changed = 0;
+        const sourceValue = metadataValue(form, sourceLocale, field);
+        storeImageLocales(form).filter((locale) => locale !== sourceLocale).forEach((locale) => {
+          if (!metadataValue(form, locale, field).trim()) {
+            setMetadataValue(form, locale, field, sourceValue);
+            changed += 1;
+          }
+        });
+        return changed;
+      }
+
+      function fillStoreImageSlotFromSource(form, slot, sourceLocale) {
+        let changed = 0;
+        const sourceValue = storeImageValue(form, sourceLocale, slot);
+        storeImageLocales(form).filter((locale) => locale !== sourceLocale).forEach((locale) => {
+          if (!storeImageValue(form, locale, slot).trim()) {
+            setStoreImageValue(form, locale, slot, sourceValue);
+            changed += 1;
+          }
+        });
+        return changed;
+      }
+
+      function flashButtonText(button, message) {
+        const previous = button.textContent;
+        button.textContent = message;
+        setTimeout(() => { button.textContent = previous; }, 1400);
       }
 
       function normalizeStoreImageToken(value) {
@@ -450,7 +531,7 @@
             return;
           }
           const locale = detectStoreImageLocale(form, record.path, fallbackLocale);
-          const slot = detectStoreImageSlot(record.path, fallbackSlot);
+          const slot = fallbackSlot || detectStoreImageSlot(record.path, '');
           if (!locale || !slot) {
             skipped += 1;
             return;
@@ -468,7 +549,10 @@
           setStoreImageFiles(input, multiple ? sorted : sorted.slice(-1));
           renderStoreImagePreview(input);
         });
-        const status = form.querySelector('[data-store-image-bulk-status]');
+        const statusScope = fallbackSlot
+          ? form.querySelector(`[data-store-image-bulk-drop][data-slot="${fallbackSlot}"]`)
+          : form;
+        const status = statusScope?.querySelector('[data-store-image-bulk-status]');
         if (status) {
           const count = Array.from(groups.values()).reduce((sum, group) => sum + group.files.length, 0);
           status.textContent = `已归类 ${count} 张图片${skipped ? `，${skipped} 个文件未识别` : ''}`;
@@ -661,7 +745,13 @@
         const bulkFiles = event.target.closest('[data-store-image-bulk-files], [data-store-image-folder]');
         if (bulkFiles) {
           const form = bulkFiles.closest('[data-metadata-form]');
-          applyStoreImageRecords(form, storeImageFileRecords(bulkFiles.files), '', '');
+          const bulkDrop = bulkFiles.closest('[data-store-image-bulk-drop]');
+          applyStoreImageRecords(
+            form,
+            storeImageFileRecords(bulkFiles.files),
+            bulkDrop?.dataset.slot || '',
+            bulkDrop?.dataset.locale || ''
+          );
           bulkFiles.value = '';
         }
       });
@@ -709,32 +799,35 @@
           const form = translateButton.closest('[data-metadata-form]');
           const sourceLocale = form?.dataset.sourceLocale;
           if (!form || !sourceLocale) return;
-          const fields = Array.from(new Set(
-            Array.from(form.querySelectorAll('[data-metadata-input]')).map((input) => input.dataset.field)
-          ));
-          const locales = Array.from(new Set(
-            Array.from(form.querySelectorAll('[name="locales"]')).map((input) => input.value).filter(Boolean)
-          ));
-          locales.filter((locale) => locale !== sourceLocale).forEach((locale) => {
-            fields.forEach((field) => {
-              if (!metadataValue(form, locale, field).trim()) {
-                setMetadataValue(form, locale, field, metadataValue(form, sourceLocale, field));
-              }
-            });
+          metadataFields(form).forEach((field) => {
+            fillMetadataFieldFromSource(form, field, sourceLocale);
           });
-          const imageSlots = Array.from(new Set(
-            Array.from(form.querySelectorAll('[data-store-image-input]')).map((input) => input.dataset.slot)
-          ));
-          locales.filter((locale) => locale !== sourceLocale).forEach((locale) => {
-            imageSlots.forEach((slot) => {
-              if (!storeImageValue(form, locale, slot).trim()) {
-                setStoreImageValue(form, locale, slot, storeImageValue(form, sourceLocale, slot));
-              }
-            });
+          storeImageSlots(form).forEach((slot) => {
+            fillStoreImageSlotFromSource(form, slot, sourceLocale);
           });
-          const previous = translateButton.textContent;
-          translateButton.textContent = '已填充空白语言';
-          setTimeout(() => { translateButton.textContent = previous; }, 1400);
+          flashButtonText(translateButton, '已填充空白语言');
+          syncMetadataEditor();
+          return;
+        }
+
+        const translateField = event.target.closest('[data-translate-field]');
+        if (translateField) {
+          const form = translateField.closest('[data-metadata-form]');
+          const sourceLocale = form?.dataset.sourceLocale;
+          if (!form || !sourceLocale) return;
+          fillMetadataFieldFromSource(form, translateField.dataset.field, sourceLocale);
+          flashButtonText(translateField, '已生成当前项');
+          syncMetadataEditor();
+          return;
+        }
+
+        const translateStoreImage = event.target.closest('[data-translate-store-image]');
+        if (translateStoreImage) {
+          const form = translateStoreImage.closest('[data-metadata-form]');
+          const sourceLocale = form?.dataset.sourceLocale;
+          if (!form || !sourceLocale) return;
+          fillStoreImageSlotFromSource(form, translateStoreImage.dataset.slot, sourceLocale);
+          flashButtonText(translateStoreImage, '已生成当前项');
           syncMetadataEditor();
           return;
         }
@@ -743,7 +836,10 @@
         if (createSet) {
           const form = createSet.closest('[data-metadata-form]');
           const name = window.prompt('新套件名称', '新的商店内容套件');
-          addContentSetOption(form, name?.trim(), false);
+          persistContentSetOption(form, name?.trim(), false).catch(() => {
+            const status = form?.querySelector('[data-content-set-status]');
+            if (status) status.textContent = '套件保存失败';
+          });
           return;
         }
 
@@ -752,7 +848,10 @@
           const form = duplicateSet.closest('[data-metadata-form]');
           const currentName = form?.querySelector('[data-content-set-name]')?.value || '当前套件';
           const name = window.prompt('复制后的套件名称', `${currentName} 副本`);
-          addContentSetOption(form, name?.trim(), true);
+          persistContentSetOption(form, name?.trim(), true).catch(() => {
+            const status = form?.querySelector('[data-content-set-status]');
+            if (status) status.textContent = '套件保存失败';
+          });
           return;
         }
 

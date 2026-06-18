@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import shutil
+import subprocess
 from base64 import b64encode
 from dataclasses import replace
 from datetime import UTC, datetime
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -62,6 +65,23 @@ def test_admin_shell_supports_inline_navigation_and_upload_dock(client: TestClie
     assert "setSubmitterBusy" in response.text
     assert "setLinkBusy" in response.text
     assert "beforeunload" in response.text
+
+
+def test_admin_inline_script_has_valid_syntax(client: TestClient, tmp_path) -> None:
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is required to check admin inline script syntax")
+
+    response = client.get("/admin/app-logs", headers=_admin_headers())
+    assert response.status_code == 200
+    start = response.text.rfind("<script>")
+    end = response.text.rfind("</script>")
+    assert start != -1
+    assert end > start
+    script_path = tmp_path / "admin.js"
+    script_path.write_text(response.text[start + len("<script>") : end])
+
+    subprocess.run([node, "--check", str(script_path)], check=True)
 
 
 def test_admin_health_check_renders_inline_status(client: TestClient) -> None:

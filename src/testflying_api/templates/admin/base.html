@@ -268,7 +268,9 @@
           row.hidden = !visible;
           if (visible) {
             visibleCount += 1;
-            firstVisible ||= row;
+            if (!firstVisible) {
+              firstVisible = row;
+            }
           }
         });
 
@@ -960,7 +962,9 @@
 
       function setSubmitterBusy(submitter, busyText = '处理中') {
         if (!submitter) return;
-        submitter.dataset.originalText ||= submitter.textContent;
+        if (!submitter.dataset.originalText) {
+          submitter.dataset.originalText = submitter.textContent;
+        }
         submitter.disabled = true;
         submitter.setAttribute('aria-busy', 'true');
         submitter.textContent = busyText;
@@ -1058,7 +1062,7 @@
         }
       });
 
-      document.addEventListener('click', (event) => {
+      document.addEventListener('click', async (event) => {
         const connectorEdit = event.target.closest('[data-connector-edit]');
         if (connectorEdit) {
           const panel = connectorEdit.closest('[data-admin-main]');
@@ -1130,7 +1134,9 @@
           if (!form || !sourceLocale) return;
           translateButton.disabled = true;
           translateButton.setAttribute('aria-busy', 'true');
-          translateButton.dataset.originalText ||= translateButton.textContent;
+          if (!translateButton.dataset.originalText) {
+            translateButton.dataset.originalText = translateButton.textContent;
+          }
           translateButton.textContent = '正在翻译';
           try {
             let changed = 0;
@@ -1158,7 +1164,9 @@
           if (!form || !sourceLocale) return;
           translateField.disabled = true;
           translateField.setAttribute('aria-busy', 'true');
-          translateField.dataset.originalText ||= translateField.textContent;
+          if (!translateField.dataset.originalText) {
+            translateField.dataset.originalText = translateField.textContent;
+          }
           translateField.textContent = '正在翻译';
           try {
             const changed = await translateMetadataFieldFromSource(

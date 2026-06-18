@@ -1,0 +1,81 @@
+{% extends "admin/base.html" %}
+{% block heading %}App 日志{% endblock %}
+{% block content %}
+  <section class="panel app-log-connect-panel" data-app-log-page>
+    <div class="panel-header">
+      <h2>连接 App</h2>
+      <span data-app-log-poll-status>等待连接</span>
+    </div>
+    <div class="app-log-connect-grid">
+      <div class="app-log-qr-card">
+        <img
+          data-app-log-qr
+          alt="App 日志连接二维码"
+          src="/admin/app-logs/qr.svg?host={{ connect.host }}&port={{ connect.port }}&name={{ connect.name }}"
+        >
+      </div>
+      <div class="form app-log-connect-form">
+        <div class="form-grid">
+          <label>
+            电脑 IP
+            <input data-app-log-host value="{{ connect.host }}">
+          </label>
+          <label>
+            端口
+            <input data-app-log-port value="{{ connect.port }}">
+          </label>
+          <label>
+            名称
+            <input data-app-log-name value="{{ connect.name }}">
+          </label>
+        </div>
+        <dl class="detail-list compact">
+          <dt>二维码内容</dt>
+          <dd><code data-app-log-connect-url>{{ connect.connect_url }}</code></dd>
+          <dt>手机连接</dt>
+          <dd><code data-app-log-websocket-url>{{ connect.websocket_url }}</code></dd>
+        </dl>
+        <div class="form-actions compact-actions">
+          <button class="ghost-button compact" type="button" data-copy-app-log-url>复制二维码内容</button>
+          <button class="ghost-button compact" type="button" data-clear-app-log-view>清空当前视图</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="app-log-layout">
+    <aside class="panel app-log-device-panel">
+      <div class="panel-header">
+        <h2>设备</h2>
+        <span data-app-log-device-count>{{ devices|length }}</span>
+      </div>
+      <div class="app-log-device-list" data-app-log-devices></div>
+    </aside>
+
+    <section class="panel app-log-stream-panel">
+      <div class="panel-header app-log-stream-header">
+        <h2>日志流</h2>
+        <div class="app-log-tools">
+          <input data-app-log-search placeholder="搜索消息和字段值">
+          <div class="app-log-levels" data-app-log-levels>
+            {% for level in ["跟踪", "调试", "信息", "警告", "错误", "致命"] %}
+              <label><input type="checkbox" value="{{ level }}" checked> {{ level }}</label>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      <div class="app-log-errors" data-app-log-errors></div>
+      <div class="app-log-list" data-app-log-list></div>
+      <div class="empty" data-app-log-empty hidden>暂无日志，扫码连接 App 后会自动显示。</div>
+    </section>
+  </div>
+
+  <script type="application/json" data-app-log-initial>
+    {
+      "cursor": {{ cursor }},
+      "devices": {{ devices|tojson }},
+      "logs": {{ logs|tojson }},
+      "errors": {{ errors|tojson }}
+    }
+  </script>
+{% endblock %}

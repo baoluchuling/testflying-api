@@ -209,6 +209,219 @@ h2 { font-size: 18px; }
   gap: 18px;
 }
 
+.app-log-connect-panel {
+  overflow: visible;
+}
+
+.app-log-connect-grid {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.app-log-qr-card {
+  display: grid;
+  place-items: center;
+  min-height: 220px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.app-log-qr-card img {
+  width: 188px;
+  height: 188px;
+}
+
+.app-log-connect-form {
+  gap: 12px;
+}
+
+.compact-actions {
+  margin-top: 0;
+}
+
+.app-log-layout {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.app-log-device-panel,
+.app-log-stream-panel {
+  min-height: 520px;
+}
+
+.app-log-device-list {
+  display: grid;
+  gap: 8px;
+}
+
+.app-log-device {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  color: var(--text);
+  text-align: left;
+}
+
+.app-log-device:hover,
+.app-log-device.is-active {
+  border-color: #2478ff;
+  background: #eff6ff;
+}
+
+.app-log-device strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-log-device span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.app-log-device::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #94a3b8;
+}
+
+.app-log-device.is-connected::before {
+  background: #22c55e;
+}
+
+.app-log-stream-header {
+  align-items: flex-start;
+}
+
+.app-log-tools {
+  display: grid;
+  gap: 10px;
+  min-width: min(560px, 100%);
+}
+
+.app-log-tools input {
+  width: 100%;
+}
+
+.app-log-levels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.app-log-levels label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #344054;
+  font-size: 12px;
+  font-weight: 820;
+}
+
+.app-log-errors {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.app-log-client-error {
+  padding: 9px 10px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.app-log-list {
+  display: grid;
+  gap: 10px;
+}
+
+.app-log-entry {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-left: 4px solid #94a3b8;
+  border-radius: 8px;
+  background: white;
+}
+
+.app-log-entry[data-level="跟踪"] { border-left-color: #64748b; }
+.app-log-entry[data-level="调试"] { border-left-color: #06b6d4; }
+.app-log-entry[data-level="信息"] { border-left-color: #2478ff; }
+.app-log-entry[data-level="警告"] { border-left-color: #f59e0b; }
+.app-log-entry[data-level="错误"] { border-left-color: #ef4444; }
+.app-log-entry[data-level="致命"] { border-left-color: #7f1d1d; }
+
+.app-log-entry-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.app-log-entry-meta span {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #eef2f7;
+  color: #344054;
+  font-size: 12px;
+  font-weight: 860;
+}
+
+.app-log-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+}
+
+.app-log-field {
+  min-width: 0;
+  line-height: 1.45;
+}
+
+.app-log-field.wide {
+  grid-column: 1 / -1;
+}
+
+.app-log-field-key {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 860;
+}
+
+.app-log-field-value {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 760;
+  overflow-wrap: anywhere;
+}
+
+.app-log-field-value mark {
+  padding: 0 2px;
+  border-radius: 3px;
+  background: #fde68a;
+  color: #78350f;
+}
+
 .panel {
   padding: 18px;
   margin-bottom: 18px;
@@ -1979,7 +2192,10 @@ a.ghost-button {
   .account-filters,
   .account-preview-actions,
   .store-id-form,
-  .account-app-row {
+  .account-app-row,
+  .app-log-connect-grid,
+  .app-log-layout,
+  .app-log-fields {
     grid-template-columns: 1fr;
   }
 

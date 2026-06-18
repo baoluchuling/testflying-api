@@ -49,6 +49,14 @@
         text: '等待上传',
         responseText: null
       };
+      const appLogState = {
+        cursor: 0,
+        selectedToken: 'all',
+        devices: [],
+        logs: [],
+        errors: [],
+        poller: null
+      };
       const healthStorageKey = 'testflying.admin.health';
       const adminHealthState = loadHealthState();
 
@@ -135,6 +143,7 @@
         syncHealthView();
         syncAccountViews();
         syncMetadataEditor();
+        syncAppLogPage();
         window.scrollTo({ top: 0, behavior: 'auto' });
       }
 
@@ -658,6 +667,254 @@
         });
       }
 
+      function syncAppLogPage() {
+        const page = document.querySelector('[data-app-log-page]');
+        if (!page) {
+          if (appLogState.poller) {
+            clearInterval(appLogState.poller);
+            appLogState.poller = null;
+          }
+          return;
+        }
+        if (page.dataset.initialized !== 'true') {
+          initAppLogPage();
+          page.dataset.initialized = 'true';
+        }
+        updateAppLogConnectPreview();
+        renderAppLogDevices();
+        renderAppLogErrors();
+        renderAppLogs();
+        if (!appLogState.poller) {
+          appLogState.poller = setInterval(fetchAppLogEvents, 1200);
+        }
+      }
+
+      function initAppLogPage() {
+        const initial = document.querySelector('[data-app-log-initial]');
+        let payload = {};
+        try {
+          payload = JSON.parse(initial?.textContent || '{}');
+        } catch (error) {
+          payload = {};
+        }
+        appLogState.cursor = Number(payload.cursor || 0);
+        appLogState.selectedToken = 'all';
+        appLogState.devices = Array.isArray(payload.devices) ? payload.devices : [];
+        appLogState.logs = Array.isArray(payload.logs) ? payload.logs : [];
+        appLogState.errors = Array.isArray(payload.errors) ? payload.errors : [];
+      }
+
+      function appLogConnectValues() {
+        const host = document.querySelector('[data-app-log-host]')?.value?.trim()
+          || window.location.hostname
+          || '127.0.0.1';
+        const port = document.querySelector('[data-app-log-port]')?.value?.trim()
+          || window.location.port
+          || (window.location.protocol === 'https:' ? '443' : '80');
+        const name = document.querySelector('[data-app-log-name]')?.value?.trim() || 'Mac';
+        return { host, port, name };
+      }
+
+      function updateAppLogConnectPreview() {
+        const { host, port, name } = appLogConnectValues();
+        const params = new URLSearchParams({ host, port, name });
+        const connectUrl = `applog://connect?${params.toString()}`;
+        const websocketUrl = `ws://${host}:${port}/push?token=<设备ID>`;
+        const connectLabel = document.querySelector('[data-app-log-connect-url]');
+        const websocketLabel = document.querySelector('[data-app-log-websocket-url]');
+        const qr = document.querySelector('[data-app-log-qr]');
+        if (connectLabel) connectLabel.textContent = connectUrl;
+        if (websocketLabel) websocketLabel.textContent = websocketUrl;
+        if (qr) qr.src = `/admin/app-logs/qr.svg?${params.toString()}`;
+      }
+
+      async function fetchAppLogEvents() {
+        if (!document.querySelector('[data-app-log-page]')) {
+          syncAppLogPage();
+          return;
+        }
+        const status = document.querySelector('[data-app-log-poll-status]');
+        try {
+          const response = await fetch(`/admin/app-logs/events?cursor=${appLogState.cursor}`, {
+            headers: { Accept: 'application/json' },
+            cache: 'no-store'
+          });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const payload = await response.json();
+          appLogState.cursor = Number(payload.cursor || appLogState.cursor);
+          appLogState.devices = Array.isArray(payload.devices) ? payload.devices : appLogState.devices;
+          mergeAppLogEntries(payload.logs || [], 'logs');
+          mergeAppLogEntries(payload.errors || [], 'errors');
+          if (status) status.textContent = '实时刷新中';
+          renderAppLogDevices();
+          renderAppLogErrors();
+          renderAppLogs();
+        } catch (error) {
+          if (status) status.textContent = '刷新失败';
+        }
+      }
+
+      function mergeAppLogEntries(entries, key) {
+        const map = new Map(appLogState[key].map((entry) => [entry.sequence, entry]));
+        entries.forEach((entry) => map.set(entry.sequence, entry));
+        appLogState[key] = Array.from(map.values())
+          .sort((a, b) => Number(b.sequence || 0) - Number(a.sequence || 0))
+          .slice(0, key === 'logs' ? 1000 : 100);
+      }
+
+      function renderAppLogDevices() {
+        const list = document.querySelector('[data-app-log-devices]');
+        const count = document.querySelector('[data-app-log-device-count]');
+        if (!list) return;
+        list.innerHTML = '';
+        if (count) count.textContent = String(appLogState.devices.length);
+        list.appendChild(appLogDeviceButton({
+          token: 'all',
+          device: '全部设备',
+          platform: 'all',
+          connected: appLogState.devices.some((device) => device.connected),
+          logCount: appLogState.logs.length,
+          knownToken: true
+        }));
+        appLogState.devices.forEach((device) => {
+          list.appendChild(appLogDeviceButton(device));
+        });
+      }
+
+      function appLogDeviceButton(device) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'app-log-device';
+        button.dataset.appLogDevice = device.token;
+        button.classList.toggle('is-active', appLogState.selectedToken === device.token);
+        button.classList.toggle('is-connected', Boolean(device.connected));
+
+        const title = document.createElement('strong');
+        title.textContent = device.device || device.deviceId || device.token || '未知设备';
+        const meta = document.createElement('span');
+        meta.textContent = [
+          device.platform || 'unknown',
+          device.knownToken === false ? '未知 token' : device.token,
+          `${device.logCount || 0} 条`
+        ].filter(Boolean).join(' / ');
+        button.append(title, meta);
+        return button;
+      }
+
+      function selectedAppLogLevels() {
+        return new Set(Array.from(document.querySelectorAll('[data-app-log-levels] input:checked'))
+          .map((input) => input.value));
+      }
+
+      function appLogSearchQuery() {
+        return document.querySelector('[data-app-log-search]')?.value?.trim().toLowerCase() || '';
+      }
+
+      function appLogMatchesSearch(entry, query) {
+        if (!query) return true;
+        const values = [
+          entry.message,
+          entry.tag,
+          entry.event,
+          ...(entry.fields || []).map((field) => field.value)
+        ];
+        return values.some((value) => String(value || '').toLowerCase().includes(query));
+      }
+
+      function renderAppLogs() {
+        const list = document.querySelector('[data-app-log-list]');
+        const empty = document.querySelector('[data-app-log-empty]');
+        if (!list) return;
+        const levels = selectedAppLogLevels();
+        const query = appLogSearchQuery();
+        const logs = appLogState.logs.filter((entry) => (
+          (appLogState.selectedToken === 'all' || entry.token === appLogState.selectedToken)
+          && (!entry.level || levels.has(entry.level))
+          && appLogMatchesSearch(entry, query)
+        ));
+        list.innerHTML = '';
+        logs.forEach((entry) => list.appendChild(appLogEntryNode(entry, query)));
+        if (empty) empty.hidden = logs.length > 0;
+      }
+
+      function appLogEntryNode(entry, query) {
+        const article = document.createElement('article');
+        article.className = 'app-log-entry';
+        article.dataset.level = entry.level || '';
+
+        const meta = document.createElement('div');
+        meta.className = 'app-log-entry-meta';
+        [
+          entry.timestamp || entry.receivedAt,
+          entry.level || '未分级',
+          entry.history ? '历史' : '实时',
+          entry.device || entry.deviceId || entry.token || '未知设备'
+        ].filter(Boolean).forEach((value) => {
+          const span = document.createElement('span');
+          span.textContent = value;
+          meta.appendChild(span);
+        });
+
+        const fields = document.createElement('div');
+        fields.className = 'app-log-fields';
+        appendAppLogField(fields, '标签', entry.tag, query);
+        appendAppLogField(fields, '事件', entry.event, query);
+        appendAppLogField(fields, '消息', entry.message || entry.raw, query, true);
+        (entry.fields || []).forEach((field) => {
+          appendAppLogField(fields, field.key, field.value, query);
+        });
+        article.append(meta, fields);
+        return article;
+      }
+
+      function appendAppLogField(parent, key, value, query, wide = false) {
+        if (!value) return;
+        const field = document.createElement('div');
+        field.className = wide ? 'app-log-field wide' : 'app-log-field';
+        const label = document.createElement('span');
+        label.className = 'app-log-field-key';
+        label.textContent = `${key}：`;
+        const content = document.createElement('strong');
+        content.className = 'app-log-field-value';
+        appendHighlightedText(content, String(value), query);
+        field.append(label, content);
+        parent.appendChild(field);
+      }
+
+      function appendHighlightedText(parent, text, query) {
+        if (!query) {
+          parent.appendChild(document.createTextNode(text));
+          return;
+        }
+        const lowerText = text.toLowerCase();
+        let position = 0;
+        let match = lowerText.indexOf(query, position);
+        while (match !== -1) {
+          if (match > position) parent.appendChild(document.createTextNode(text.slice(position, match)));
+          const mark = document.createElement('mark');
+          mark.textContent = text.slice(match, match + query.length);
+          parent.appendChild(mark);
+          position = match + query.length;
+          match = lowerText.indexOf(query, position);
+        }
+        if (position < text.length) parent.appendChild(document.createTextNode(text.slice(position)));
+      }
+
+      function renderAppLogErrors() {
+        const list = document.querySelector('[data-app-log-errors]');
+        if (!list) return;
+        const errors = appLogState.errors.filter((entry) => (
+          appLogState.selectedToken === 'all' || entry.token === appLogState.selectedToken
+        ));
+        list.innerHTML = '';
+        errors.slice(0, 5).forEach((entry) => {
+          const item = document.createElement('div');
+          item.className = 'app-log-client-error';
+          item.textContent = `${entry.device || entry.token || '未知设备'}：${entry.message}`;
+          list.appendChild(item);
+        });
+      }
+
       function startAdminUpload(form) {
         if (adminUploadState.status === 'uploading' || adminUploadState.status === 'processing') {
           return;
@@ -724,6 +981,12 @@
         if (event.target.closest('[data-account-search]')) {
           syncAccountMatrix();
         }
+        if (event.target.closest('[data-app-log-host], [data-app-log-port], [data-app-log-name]')) {
+          updateAppLogConnectPreview();
+        }
+        if (event.target.closest('[data-app-log-search]')) {
+          renderAppLogs();
+        }
         const metadataInput = event.target.closest('[data-metadata-input]');
         if (metadataInput) {
           const form = metadataInput.closest('[data-metadata-form]');
@@ -755,6 +1018,9 @@
         }
         if (event.target.closest('[data-language-picker]')) {
           syncMetadataEditor();
+        }
+        if (event.target.closest('[data-app-log-levels] input')) {
+          renderAppLogs();
         }
         const contentSetPicker = event.target.closest('[data-content-set-picker]');
         if (contentSetPicker) {
@@ -799,6 +1065,33 @@
             connectorEdit.hidden = true;
             form.querySelector('input, select, textarea')?.focus();
           }
+          return;
+        }
+
+        const appLogDevice = event.target.closest('[data-app-log-device]');
+        if (appLogDevice) {
+          appLogState.selectedToken = appLogDevice.dataset.appLogDevice || 'all';
+          renderAppLogDevices();
+          renderAppLogErrors();
+          renderAppLogs();
+          return;
+        }
+
+        const copyAppLogUrl = event.target.closest('[data-copy-app-log-url]');
+        if (copyAppLogUrl) {
+          const value = document.querySelector('[data-app-log-connect-url]')?.textContent || '';
+          copyText(value);
+          flashButtonText(copyAppLogUrl, '已复制');
+          return;
+        }
+
+        const clearAppLogView = event.target.closest('[data-clear-app-log-view]');
+        if (clearAppLogView) {
+          appLogState.logs = [];
+          appLogState.errors = [];
+          renderAppLogErrors();
+          renderAppLogs();
+          flashButtonText(clearAppLogView, '已清空');
           return;
         }
 
@@ -1052,6 +1345,7 @@
       syncUploadStoreFields();
       syncAccountViews();
       syncMetadataEditor();
+      syncAppLogPage();
     </script>
   </body>
 </html>

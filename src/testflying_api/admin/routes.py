@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime, timedelta
+from io import BytesIO
 from pathlib import Path
 from typing import Annotated, Any
+from urllib.parse import urlencode
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
@@ -103,6 +105,66 @@ def apps_page(request: Request, session: SessionDep, _: AdminDep) -> HTMLRespons
         request,
         "admin/apps.html",
         _context(request, active="apps", apps=list_apps(session)),
+    )
+
+
+@router.get("/app-logs", response_class=HTMLResponse)
+def app_logs_page(request: Request, _: AdminDep) -> HTMLResponse:
+    context = _app_log_connect_context(request)
+    snapshot = request.app.state.app_log_hub.snapshot(limit=200)
+    return templates.TemplateResponse(
+        request,
+        "admin/app_logs.html",
+        _context(
+            request,
+            active="app-logs",
+            connect=context,
+            devices=snapshot.devices,
+            logs=snapshot.logs,
+            errors=snapshot.errors,
+            cursor=snapshot.cursor,
+        ),
+    )
+
+
+@router.get("/app-logs/events")
+def app_logs_events(
+    request: Request,
+    _: AdminDep,
+    cursor: int = 0,
+    limit: int = 500,
+) -> JSONResponse:
+    snapshot = request.app.state.app_log_hub.snapshot(cursor=cursor, limit=limit)
+    return JSONResponse(
+        {
+            "cursor": snapshot.cursor,
+            "devices": snapshot.devices,
+            "logs": snapshot.logs,
+            "errors": snapshot.errors,
+            "levels": list(("跟踪", "调试", "信息", "警告", "错误", "致命")),
+        }
+    )
+
+
+@router.get("/app-logs/qr.svg")
+def app_logs_qr(
+    request: Request,
+    _: AdminDep,
+    host: str = "",
+    port: str = "",
+    name: str = "Mac",
+) -> Response:
+    import qrcode
+    import qrcode.image.svg
+
+    context = _app_log_connect_context(request, host=host, port=port, name=name)
+    image = qrcode.make(context["connect_url"], image_factory=qrcode.image.svg.SvgPathImage)
+    stream = BytesIO()
+    image.save(stream)
+    return Response(
+        content=stream.getvalue(),
+        media_type="image/svg+xml",
+        headers={"Cache-Control": "no-store"},
     )
 
 
@@ -1277,6 +1339,36 @@ def _form_list_value(values: list[str] | None, index: int) -> str:
     return values[index].strip()
 
 
+def _app_log_connect_context(
+    request: Request,
+    *,
+    host: str = "",
+    port: str = "",
+    name: str = "Mac",
+) -> dict[str, str]:
+    normalized_host = (host or request.url.hostname or "127.0.0.1").strip()
+    normalized_port = (port or str(request.url.port or _default_port(request))).strip()
+    normalized_name = (name or "Mac").strip()
+    query = urlencode(
+        {
+            "host": normalized_host,
+            "port": normalized_port,
+            "name": normalized_name,
+        }
+    )
+    return {
+        "host": normalized_host,
+        "port": normalized_port,
+        "name": normalized_name,
+        "connect_url": f"applog://connect?{query}",
+        "websocket_url": f"ws://{normalized_host}:{normalized_port}/push?token=<设备ID>",
+    }
+
+
+def _default_port(request: Request) -> int:
+    return 443 if request.url.scheme == "https" else 80
+
+
 def _context(request: Request, *, active: str, **values: object) -> dict[str, object]:
     return {
         "request": request,
@@ -1287,6 +1379,7 @@ def _context(request: Request, *, active: str, **values: object) -> dict[str, ob
             ("apps", "/admin/apps", "应用"),
             ("builds", "/admin/builds", "构建"),
             ("devices", "/admin/devices", "设备"),
+            ("app-logs", "/admin/app-logs", "App 日志"),
             ("developer-accounts", "/admin/developer-accounts", "开发者账号"),
             ("notifications", "/admin/notifications", "通知"),
         ],

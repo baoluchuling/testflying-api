@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session, sessionmaker
 
+from testflying_api.app_logs import AppLogHub
 from testflying_api.config import Settings
 from testflying_api.database import create_engine_for_url, create_session_factory
 from testflying_api.errors import ApiError, api_error_handler
@@ -27,6 +28,7 @@ def create_app(
         description="Backend API for internal app distribution workspace data.",
     )
     app.state.settings = app_settings
+    app.state.app_log_hub = AppLogHub()
     if app_settings.cors_allowed_origins:
         app.add_middleware(
             CORSMiddleware,
@@ -65,9 +67,18 @@ def create_app(
     app.add_exception_handler(ApiError, api_error_handler)
 
     from testflying_api.admin import routes as admin_routes
-    from testflying_api.routes import accounts, devices, health, notifications, uploads, workspace
+    from testflying_api.routes import (
+        accounts,
+        app_logs,
+        devices,
+        health,
+        notifications,
+        uploads,
+        workspace,
+    )
 
     app.include_router(health.router)
+    app.include_router(app_logs.router)
     app.include_router(admin_routes.router)
     app.include_router(workspace.router)
     app.include_router(uploads.router)

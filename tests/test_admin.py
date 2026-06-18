@@ -107,6 +107,7 @@ def test_admin_resource_pages_render_seeded_catalog(
         "/admin/apps": "Aurora Mobile",
         "/admin/builds": "2.4.0",
         "/admin/devices": "iPhone 15 Pro",
+        "/admin/app-logs": "App 日志",
         "/admin/developer-accounts": "Internal Distribution Team",
         "/admin/notifications": "Apple 开发者账号即将到期",
         "/admin/uploads": "上传构建",

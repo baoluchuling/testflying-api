@@ -22,6 +22,8 @@
 - `GET /v1/test-distribution/notifications`：读取服务端通知 feed，支持 `type=build|account|device`。
 - `GET /admin`：内置管理后台，用于上传包、查看应用/构建/设备/账号/通知和复制安装资源链接。
 - 管理后台支持新增/编辑开发者账号、上传时绑定账号、绑定/解绑账号下 App、维护 App 商店标识、配置账号 connector，以及同步版本说明和商店元数据。商店元数据支持多语言、多套内容草稿和商店图图片上传预览。
+- `GET /admin/app-logs`：电脑端 App 日志查看页，展示连接二维码、在线设备、客户端异常和实时日志流。
+- `WS /push`：手机端主动连接的日志 WebSocket 入口，query 中的 `token` 会作为设备唯一标识；缺失时允许连接并标记为未知设备。
 - 商店同步页进入时会自动预检查，5 分钟内相同账号、App、平台、版本、语言和操作返回同一个预检查状态。
 - 请求上下文预留 `Authorization`、`X-Device-ID`、`X-Client-Platform`。
 - Docker Compose 默认启动中心后台、connector、PostgreSQL、MinIO。
@@ -157,6 +159,34 @@ password: dev-token
 - `TESTFLYING_CONNECTOR_APPLE_RATE_LIMIT_SAFETY_RATIO`：connector 读取 Apple `user-hour-lim` 后使用的安全比例，默认 `0.8`。
 
 这些公开 URL 会在上传时写入构建制品记录。修改环境变量后，已经上传过的构建不会自动改 URL；需要重新上传包，或者用 SQL 替换 `artifacts.download_url`、`artifacts.manifest_url` 和 `artifacts.install_url` 里的旧域名。
+
+## App 日志调试
+
+电脑端打开管理后台 `App 日志` 页面后，会显示二维码和连接参数。二维码内容格式为：
+
+```text
+applog://connect?host=<电脑IP>&port=<端口>&name=Mac
+```
+
+手机端扫码后主动连接：
+
+```text
+ws://<电脑IP>:<端口>/push?token=<设备ID>
+```
+
+电脑端不会访问手机。`token` 会作为设备唯一标识；同一设备重复连接时，会合并到同一个设备视图。日志保存在内存环形缓冲里，服务重启后清空。
+
+如果希望按示例使用 `18080` 端口，本地可以这样启动：
+
+```bash
+docker run -d \
+  --name testflying-server \
+  -p 18080:8000 \
+  -e TESTFLYING_DATABASE_URL=sqlite:////app/data/testflying.db \
+  -e TESTFLYING_PUBLIC_BASE_URL=http://localhost:18080 \
+  -v "$(pwd)/data:/app/data" \
+  testflying-server:latest
+```
 
 ## 轻量本地测试
 

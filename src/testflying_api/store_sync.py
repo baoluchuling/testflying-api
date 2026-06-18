@@ -407,6 +407,7 @@ def save_app_metadata_draft(
     privacy_policy_url: str,
     support_url: str,
     marketing_url: str,
+    store_images: dict[str, object] | None = None,
 ) -> StoreAppMetadataDraft:
     app = scoped_app(session, account_id, app_id)
     if app is None:
@@ -435,6 +436,7 @@ def save_app_metadata_draft(
         "privacy_policy_url": privacy_policy_url.strip(),
         "support_url": support_url.strip(),
         "marketing_url": marketing_url.strip(),
+        "store_images_json": _normalize_store_images(store_images),
     }
     if draft is None:
         draft = StoreAppMetadataDraft(
@@ -659,6 +661,7 @@ def sync_app_metadata(
     support_url: str,
     marketing_url: str,
     actor: str,
+    store_images: dict[str, object] | None = None,
     client: StoreConnectorClient | None = None,
 ) -> StoreSyncRun:
     app = scoped_app(session, account_id, app_id)
@@ -681,6 +684,7 @@ def sync_app_metadata(
         privacy_policy_url=privacy_policy_url,
         support_url=support_url,
         marketing_url=marketing_url,
+        store_images=store_images,
     )
     preflight = get_or_refresh_preflight(
         session,
@@ -854,6 +858,19 @@ def _metadata_payload(draft: StoreAppMetadataDraft) -> dict[str, object]:
         "supportUrl": draft.support_url,
         "marketingUrl": draft.marketing_url,
     }
+
+
+def _normalize_store_images(raw_images: dict[str, object] | None) -> dict[str, str]:
+    images = {
+        "app_icon_url": "",
+        "feature_graphic_url": "",
+        "phone_screenshots": "",
+        "tablet_screenshots": "",
+        "note": "",
+    }
+    for key in images:
+        images[key] = str((raw_images or {}).get(key) or "").strip()
+    return images
 
 
 def _post_json(

@@ -288,6 +288,24 @@
         });
       }
 
+      function storeImageInputs(form, locale, slot) {
+        if (!form) return [];
+        return Array.from(form.querySelectorAll('[data-store-image-input]')).filter((input) => (
+          input.dataset.locale === locale && input.dataset.slot === slot
+        ));
+      }
+
+      function storeImageValue(form, locale, slot) {
+        const input = storeImageInputs(form, locale, slot)[0];
+        return input?.value || '';
+      }
+
+      function setStoreImageValue(form, locale, slot, value) {
+        storeImageInputs(form, locale, slot).forEach((input) => {
+          input.value = value;
+        });
+      }
+
       function syncMetadataEditor(root = document) {
         root.querySelectorAll('[data-metadata-form]').forEach((form) => {
           const fieldView = form.querySelector('[data-field-view]');
@@ -389,6 +407,16 @@
             metadataInput.value
           );
         }
+        const storeImageInput = event.target.closest('[data-store-image-input]');
+        if (storeImageInput) {
+          const form = storeImageInput.closest('[data-metadata-form]');
+          setStoreImageValue(
+            form,
+            storeImageInput.dataset.locale,
+            storeImageInput.dataset.slot,
+            storeImageInput.value
+          );
+        }
       });
 
       document.addEventListener('change', (event) => {
@@ -452,6 +480,16 @@
             fields.forEach((field) => {
               if (!metadataValue(form, locale, field).trim()) {
                 setMetadataValue(form, locale, field, metadataValue(form, sourceLocale, field));
+              }
+            });
+          });
+          const imageSlots = Array.from(new Set(
+            Array.from(form.querySelectorAll('[data-store-image-input]')).map((input) => input.dataset.slot)
+          ));
+          locales.filter((locale) => locale !== sourceLocale).forEach((locale) => {
+            imageSlots.forEach((slot) => {
+              if (!storeImageValue(form, locale, slot).trim()) {
+                setStoreImageValue(form, locale, slot, storeImageValue(form, sourceLocale, slot));
               }
             });
           });

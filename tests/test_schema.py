@@ -42,3 +42,15 @@ def test_store_connector_is_unique_per_account() -> None:
     assert any(
         constraint["column_names"] == ["developer_account_id"] for constraint in constraints
     )
+
+
+def test_store_metadata_drafts_include_image_settings() -> None:
+    engine = create_engine_for_url("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+
+    columns = {
+        column["name"]
+        for column in inspect(engine).get_columns("store_app_metadata_drafts")
+    }
+
+    assert "store_images_json" in columns

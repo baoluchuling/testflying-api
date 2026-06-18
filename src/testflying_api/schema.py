@@ -246,6 +246,11 @@ class StoreAppMetadataDraft(Base):
     privacy_policy_url: Mapped[str] = mapped_column(String(400), nullable=False, default="")
     support_url: Mapped[str] = mapped_column(String(400), nullable=False, default="")
     marketing_url: Mapped[str] = mapped_column(String(400), nullable=False, default="")
+    store_images_json: Mapped[dict[str, object]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=dict,
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

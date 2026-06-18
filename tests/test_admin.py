@@ -649,6 +649,16 @@ def test_admin_store_metadata_save_and_sync_creates_records(
             "privacyPolicyUrl": "https://example.test/privacy",
             "supportUrl": "https://example.test/support",
             "marketingUrl": "",
+            "appIconUrl": ["https://cdn.example.test/icon.png", "", "", ""],
+            "featureGraphicUrl": ["https://cdn.example.test/feature.png", "", "", ""],
+            "phoneScreenshots": [
+                "https://cdn.example.test/phone-1.png\nhttps://cdn.example.test/phone-2.png",
+                "",
+                "https://cdn.example.test/ja-phone.png",
+                "",
+            ],
+            "tabletScreenshots": ["https://cdn.example.test/tablet.png", "", "", ""],
+            "storeImageNote": ["第一版素材", "", "日语截图已替换", ""],
         },
     )
 
@@ -664,6 +674,15 @@ def test_admin_store_metadata_save_and_sync_creates_records(
     assert en_us_draft.keywords == "internal,test"
     assert en_us_draft.promotional_text == "更稳定的测试体验。"
     assert en_us_draft.description == "用于内部测试包分发和回归验证。"
+    assert zh_hans_draft.store_images_json["app_icon_url"] == "https://cdn.example.test/icon.png"
+    assert zh_hans_draft.store_images_json["phone_screenshots"].splitlines() == [
+        "https://cdn.example.test/phone-1.png",
+        "https://cdn.example.test/phone-2.png",
+    ]
+    assert en_us_draft.store_images_json["feature_graphic_url"] == (
+        "https://cdn.example.test/feature.png"
+    )
+    assert en_us_draft.store_images_json["note"] == "第一版素材"
     assert [run.operation for run in runs[-4:]] == ["update_app_metadata"] * 4
     assert {run.locale for run in runs[-4:]} == {"zh-Hans", "en-US", "ja", "ko"}
     assert {run.status for run in runs[-4:]} == {"succeeded"}
@@ -691,6 +710,10 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "按字段编辑" in response.text
     assert "按语言编辑" in response.text
     assert "从英文填充其他语言" in response.text
+    assert "商店图素材" in response.text
+    assert "App 图标" in response.text
+    assert "手机截图" in response.text
+    assert "data-store-image-input" in response.text
     assert "后台构建" in response.text
     assert "商店版本" in response.text
 

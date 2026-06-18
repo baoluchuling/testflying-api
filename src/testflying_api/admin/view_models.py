@@ -277,6 +277,7 @@ def store_metadata_context(
         "draft": draft,
         "metadata": base_metadata,
         "metadata_fields": _metadata_fields(),
+        "store_image_slots": _store_image_slots(app.platform if app else ""),
         "supported_locales": supported_locales,
         "localized_metadata": _localized_metadata(
             supported_locales=supported_locales,
@@ -335,6 +336,7 @@ def _localized_metadata(
                 ),
                 "support_url": draft.support_url if draft else defaults["support_url"],
                 "marketing_url": draft.marketing_url if draft else defaults["marketing_url"],
+                "store_images": _store_images(draft),
             }
         )
     return rows
@@ -350,6 +352,26 @@ def _empty_metadata() -> dict[str, str]:
         "privacy_policy_url": "",
         "support_url": "",
         "marketing_url": "",
+    }
+
+
+def _store_images(draft: object | None) -> dict[str, str]:
+    raw_images = getattr(draft, "store_images_json", None) if draft else None
+    if not isinstance(raw_images, dict):
+        return _empty_store_images()
+    images = _empty_store_images()
+    for key in images:
+        images[key] = str(raw_images.get(key) or "").strip()
+    return images
+
+
+def _empty_store_images() -> dict[str, str]:
+    return {
+        "app_icon_url": "",
+        "feature_graphic_url": "",
+        "phone_screenshots": "",
+        "tablet_screenshots": "",
+        "note": "",
     }
 
 
@@ -428,6 +450,56 @@ def _metadata_fields() -> list[dict[str, object]]:
             "type": "input",
             "required": False,
             "placeholder": "https://example.com",
+        },
+    ]
+
+
+def _store_image_slots(platform: str) -> list[dict[str, object]]:
+    feature_label = "宣传图"
+    feature_placeholder = "https://example.com/store/feature.png"
+    if platform == "android":
+        feature_label = "Feature Graphic"
+        feature_placeholder = "https://example.com/google-play/feature-graphic.png"
+    return [
+        {
+            "key": "app_icon_url",
+            "name": "appIconUrl",
+            "label": "App 图标",
+            "type": "input",
+            "rows": 1,
+            "placeholder": "https://example.com/store/icon.png",
+        },
+        {
+            "key": "feature_graphic_url",
+            "name": "featureGraphicUrl",
+            "label": feature_label,
+            "type": "input",
+            "rows": 1,
+            "placeholder": feature_placeholder,
+        },
+        {
+            "key": "phone_screenshots",
+            "name": "phoneScreenshots",
+            "label": "手机截图",
+            "type": "textarea",
+            "rows": 3,
+            "placeholder": "一行一个图片 URL",
+        },
+        {
+            "key": "tablet_screenshots",
+            "name": "tabletScreenshots",
+            "label": "平板截图",
+            "type": "textarea",
+            "rows": 3,
+            "placeholder": "一行一个图片 URL",
+        },
+        {
+            "key": "note",
+            "name": "storeImageNote",
+            "label": "素材备注",
+            "type": "textarea",
+            "rows": 2,
+            "placeholder": "尺寸、状态、待替换说明",
         },
     ]
 

@@ -724,6 +724,11 @@ def save_store_metadata_page(
     privacy_policy_url: Annotated[list[str] | None, Form(alias="privacyPolicyUrl")] = None,
     support_url: Annotated[list[str] | None, Form(alias="supportUrl")] = None,
     marketing_url: Annotated[list[str] | None, Form(alias="marketingUrl")] = None,
+    app_icon_url: Annotated[list[str] | None, Form(alias="appIconUrl")] = None,
+    feature_graphic_url: Annotated[list[str] | None, Form(alias="featureGraphicUrl")] = None,
+    phone_screenshots: Annotated[list[str] | None, Form(alias="phoneScreenshots")] = None,
+    tablet_screenshots: Annotated[list[str] | None, Form(alias="tabletScreenshots")] = None,
+    store_image_note: Annotated[list[str] | None, Form(alias="storeImageNote")] = None,
 ) -> HTMLResponse:
     try:
         metadata_rows = _metadata_rows_from_form(
@@ -737,6 +742,11 @@ def save_store_metadata_page(
             privacy_policy_url=privacy_policy_url,
             support_url=support_url,
             marketing_url=marketing_url,
+            app_icon_url=app_icon_url,
+            feature_graphic_url=feature_graphic_url,
+            phone_screenshots=phone_screenshots,
+            tablet_screenshots=tablet_screenshots,
+            store_image_note=store_image_note,
         )
         for row in metadata_rows:
             save_app_metadata_draft(
@@ -753,6 +763,7 @@ def save_store_metadata_page(
                 privacy_policy_url=row["privacy_policy_url"],
                 support_url=row["support_url"],
                 marketing_url=row["marketing_url"],
+                store_images=row["store_images"],
             )
         session.commit()
         context = store_metadata_context(
@@ -811,6 +822,11 @@ def sync_store_metadata_page(
     privacy_policy_url: Annotated[list[str] | None, Form(alias="privacyPolicyUrl")] = None,
     support_url: Annotated[list[str] | None, Form(alias="supportUrl")] = None,
     marketing_url: Annotated[list[str] | None, Form(alias="marketingUrl")] = None,
+    app_icon_url: Annotated[list[str] | None, Form(alias="appIconUrl")] = None,
+    feature_graphic_url: Annotated[list[str] | None, Form(alias="featureGraphicUrl")] = None,
+    phone_screenshots: Annotated[list[str] | None, Form(alias="phoneScreenshots")] = None,
+    tablet_screenshots: Annotated[list[str] | None, Form(alias="tabletScreenshots")] = None,
+    store_image_note: Annotated[list[str] | None, Form(alias="storeImageNote")] = None,
 ) -> HTMLResponse:
     try:
         metadata_rows = _metadata_rows_from_form(
@@ -824,6 +840,11 @@ def sync_store_metadata_page(
             privacy_policy_url=privacy_policy_url,
             support_url=support_url,
             marketing_url=marketing_url,
+            app_icon_url=app_icon_url,
+            feature_graphic_url=feature_graphic_url,
+            phone_screenshots=phone_screenshots,
+            tablet_screenshots=tablet_screenshots,
+            store_image_note=store_image_note,
         )
         sync_runs = []
         for row in metadata_rows:
@@ -843,6 +864,7 @@ def sync_store_metadata_page(
                     support_url=row["support_url"],
                     marketing_url=row["marketing_url"],
                     actor="admin",
+                    store_images=row["store_images"],
                 )
             )
         session.commit()
@@ -973,7 +995,12 @@ def _metadata_rows_from_form(
     privacy_policy_url: list[str] | None,
     support_url: list[str] | None,
     marketing_url: list[str] | None,
-) -> list[dict[str, str]]:
+    app_icon_url: list[str] | None,
+    feature_graphic_url: list[str] | None,
+    phone_screenshots: list[str] | None,
+    tablet_screenshots: list[str] | None,
+    store_image_note: list[str] | None,
+) -> list[dict[str, object]]:
     normalized_locales = _unique_non_empty(locales) or [current_locale.strip() or DEFAULT_LOCALE]
     rows = [
         {
@@ -986,6 +1013,13 @@ def _metadata_rows_from_form(
             "privacy_policy_url": _form_list_value(privacy_policy_url, index),
             "support_url": _form_list_value(support_url, index),
             "marketing_url": _form_list_value(marketing_url, index),
+            "store_images": {
+                "app_icon_url": _form_list_value(app_icon_url, index),
+                "feature_graphic_url": _form_list_value(feature_graphic_url, index),
+                "phone_screenshots": _form_list_value(phone_screenshots, index),
+                "tablet_screenshots": _form_list_value(tablet_screenshots, index),
+                "note": _form_list_value(store_image_note, index),
+            },
         }
         for index, locale in enumerate(normalized_locales)
     ]
@@ -1002,7 +1036,18 @@ def _metadata_rows_from_form(
         row["privacy_policy_url"] = row["privacy_policy_url"] or base_row["privacy_policy_url"]
         row["support_url"] = row["support_url"] or base_row["support_url"]
         row["marketing_url"] = row["marketing_url"] or base_row["marketing_url"]
+        row["store_images"] = _merge_store_images(row["store_images"], base_row["store_images"])
     return rows
+
+
+def _merge_store_images(
+    store_images: dict[str, str],
+    base_store_images: dict[str, str],
+) -> dict[str, str]:
+    return {
+        key: value or base_store_images.get(key, "")
+        for key, value in store_images.items()
+    }
 
 
 def _unique_non_empty(values: list[str] | None) -> list[str]:

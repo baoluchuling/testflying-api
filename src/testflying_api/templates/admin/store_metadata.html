@@ -105,6 +105,46 @@
                 </div>
               </section>
             {% endfor %}
+            <div class="subsection-title">商店图素材</div>
+            {% for slot in store_image_slots %}
+              <section class="metadata-field-block store-image-field-block" data-store-image-slot="{{ slot.key }}">
+                <div class="locale-block-header">
+                  <strong>{{ slot.label }}</strong>
+                  <span>{{ supported_locales|length }} 个语言</span>
+                </div>
+                <div class="metadata-locale-grid">
+                  {% for item in localized_metadata %}
+                    <label class="metadata-locale-input" data-locale="{{ item.locale }}">
+                      <span>
+                        {{ item.locale }}
+                        {% if item.is_source %}
+                          <small>源文案</small>
+                        {% endif %}
+                      </span>
+                      {% if slot.type == "textarea" %}
+                        <textarea
+                          name="{{ slot.name }}"
+                          rows="{{ slot.rows }}"
+                          placeholder="{{ slot.placeholder }}"
+                          data-store-image-input
+                          data-locale="{{ item.locale }}"
+                          data-slot="{{ slot.key }}"
+                        >{{ item.store_images[slot.key] }}</textarea>
+                      {% else %}
+                        <input
+                          name="{{ slot.name }}"
+                          value="{{ item.store_images[slot.key] }}"
+                          placeholder="{{ slot.placeholder }}"
+                          data-store-image-input
+                          data-locale="{{ item.locale }}"
+                          data-slot="{{ slot.key }}"
+                        >
+                      {% endif %}
+                    </label>
+                  {% endfor %}
+                </div>
+              </section>
+            {% endfor %}
           </div>
 
           <div class="metadata-language-view" data-language-view hidden>
@@ -142,6 +182,33 @@
                           data-field="{{ field.key }}"
                           disabled
                           {% if field.required %}required{% endif %}
+                        >
+                      {% endif %}
+                    </label>
+                  {% endfor %}
+                  <div class="subsection-title">商店图素材</div>
+                  {% for slot in store_image_slots %}
+                    <label>
+                      {{ slot.label }}
+                      {% if slot.type == "textarea" %}
+                        <textarea
+                          name="{{ slot.name }}"
+                          rows="{{ slot.rows }}"
+                          placeholder="{{ slot.placeholder }}"
+                          data-store-image-input
+                          data-locale="{{ item.locale }}"
+                          data-slot="{{ slot.key }}"
+                          disabled
+                        >{{ item.store_images[slot.key] }}</textarea>
+                      {% else %}
+                        <input
+                          name="{{ slot.name }}"
+                          value="{{ item.store_images[slot.key] }}"
+                          placeholder="{{ slot.placeholder }}"
+                          data-store-image-input
+                          data-locale="{{ item.locale }}"
+                          data-slot="{{ slot.key }}"
+                          disabled
                         >
                       {% endif %}
                     </label>

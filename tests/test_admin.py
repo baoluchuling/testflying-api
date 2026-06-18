@@ -707,8 +707,8 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert 'name="locales" value="ko"' in response.text
     assert "源文案语言" in response.text
     assert 'value="en-US" required readonly' in response.text
-    assert "按字段编辑" in response.text
-    assert "按语言编辑" in response.text
+    assert "全部语言对照" in response.text
+    assert "单语言编辑" in response.text
     assert "从英文填充其他语言" in response.text
     assert "商店图素材" in response.text
     assert "App 图标" in response.text

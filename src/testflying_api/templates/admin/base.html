@@ -97,6 +97,7 @@
           history.pushState({ adminPath: path }, '', path);
         }
         syncUploadViews();
+        syncAccountViews();
         window.scrollTo({ top: 0, behavior: 'auto' });
       }
 
@@ -162,6 +163,77 @@
         }
       }
 
+      function syncAccountStoreFields(root = document) {
+        root.querySelectorAll('[data-account-app-bind-form]').forEach((form) => {
+          const select = form.querySelector('select[name="appId"]');
+          const fields = form.querySelectorAll('[data-store-field]');
+          if (!select || fields.length === 0) return;
+          const platform = select.selectedOptions[0]?.dataset.platform || 'ios';
+          fields.forEach((field) => {
+            const active = field.dataset.storeField === platform;
+            field.hidden = !active;
+            const input = field.querySelector('input');
+            if (input && !active) input.value = '';
+          });
+        });
+      }
+
+      function selectAccountPreview(accountId) {
+        document.querySelectorAll('[data-account-row]').forEach((row) => {
+          row.classList.toggle('is-selected', row.dataset.accountId === accountId);
+        });
+        document.querySelectorAll('[data-account-preview]').forEach((preview) => {
+          preview.hidden = preview.dataset.accountPreview !== accountId;
+        });
+      }
+
+      function accountRowMatchesFilter(row, filter) {
+        if (filter === 'ok') return row.dataset.accountStatus === 'ok';
+        if (filter === 'renewal') return row.dataset.accountStatus !== 'ok';
+        if (filter === 'connector') return row.dataset.accountConnector !== 'ok';
+        return true;
+      }
+
+      function syncAccountMatrix() {
+        const rows = Array.from(document.querySelectorAll('[data-account-row]'));
+        if (rows.length === 0) return;
+        const searchInput = document.querySelector('[data-account-search]');
+        const activeFilter = document.querySelector('[data-account-filter].is-active');
+        const query = (searchInput?.value || '').trim().toLowerCase();
+        const filter = activeFilter?.dataset.accountFilter || 'all';
+        let visibleCount = 0;
+        let firstVisible = null;
+
+        rows.forEach((row) => {
+          const haystack = (row.dataset.accountSearch || '').toLowerCase();
+          const visible = haystack.includes(query) && accountRowMatchesFilter(row, filter);
+          row.hidden = !visible;
+          if (visible) {
+            visibleCount += 1;
+            firstVisible ||= row;
+          }
+        });
+
+        const resultCount = document.querySelector('[data-account-result-count]');
+        if (resultCount) resultCount.textContent = String(visibleCount);
+
+        const selected = rows.find((row) => row.classList.contains('is-selected') && !row.hidden);
+        if (selected) {
+          selectAccountPreview(selected.dataset.accountId);
+        } else if (firstVisible) {
+          selectAccountPreview(firstVisible.dataset.accountId);
+        } else {
+          document.querySelectorAll('[data-account-preview]').forEach((preview) => {
+            preview.hidden = true;
+          });
+        }
+      }
+
+      function syncAccountViews() {
+        syncAccountStoreFields();
+        syncAccountMatrix();
+      }
+
       function startAdminUpload(form) {
         if (adminUploadState.status === 'uploading' || adminUploadState.status === 'processing') {
           return;
@@ -209,6 +281,39 @@
         const previous = button.textContent;
         button.textContent = '已复制';
         setTimeout(() => { button.textContent = previous; }, 1200);
+      });
+
+      document.addEventListener('input', (event) => {
+        if (event.target.closest('[data-account-search]')) {
+          syncAccountMatrix();
+        }
+      });
+
+      document.addEventListener('change', (event) => {
+        if (event.target.closest('[data-account-app-bind-form] select[name="appId"]')) {
+          syncAccountStoreFields();
+        }
+      });
+
+      document.addEventListener('click', (event) => {
+        const selector = event.target.closest('[data-account-select]');
+        if (selector) {
+          selectAccountPreview(selector.dataset.accountSelect);
+          return;
+        }
+
+        const filter = event.target.closest('[data-account-filter]');
+        if (filter) {
+          document.querySelectorAll('[data-account-filter]').forEach((item) => {
+            item.classList.toggle('is-active', item === filter);
+          });
+          syncAccountMatrix();
+          return;
+        }
+
+        const row = event.target.closest('[data-account-row]');
+        if (!row || event.target.closest('a, button, form, input, select, textarea')) return;
+        selectAccountPreview(row.dataset.accountId);
       });
 
       document.addEventListener('click', async (event) => {
@@ -281,6 +386,8 @@
         event.preventDefault();
         event.returnValue = '';
       });
+
+      syncAccountViews();
     </script>
   </body>
 </html>

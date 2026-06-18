@@ -14,6 +14,7 @@ from testflying_api.schema import (
     DeveloperAccountApp,
     Device,
     Notification,
+    StoreSyncRun,
 )
 from testflying_api.store_sync import (
     DEFAULT_LOCALE,
@@ -108,12 +109,22 @@ def list_accounts(session: Session) -> list[dict[str, object]]:
         names = names_by_account.setdefault(account_id, [])
         if app_name not in names:
             names.append(app_name)
+    sync_rows = session.scalars(
+        select(StoreSyncRun).order_by(
+            StoreSyncRun.developer_account_id.asc(),
+            StoreSyncRun.started_at.desc(),
+        )
+    )
+    latest_sync_by_account: dict[str, StoreSyncRun] = {}
+    for run in sync_rows:
+        latest_sync_by_account.setdefault(run.developer_account_id, run)
     return [
         {
             "account": account,
             "remaining_days": remaining_days(account.expires_at),
             "apps": names_by_account.get(account.id, []),
             "connector": account_connector(session, account.id),
+            "latest_sync": latest_sync_by_account.get(account.id),
         }
         for account in accounts
     ]

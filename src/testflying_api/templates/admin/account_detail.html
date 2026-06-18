@@ -1,19 +1,16 @@
 {% extends "admin/base.html" %}
-{% block heading %}开发者账号详情{% endblock %}
+{% block heading %}开发者账号{% endblock %}
 {% block content %}
-  <section class="context-banner">
-    <div>
-      <p class="eyebrow">当前开发者账号</p>
-      <h2>{{ account.team_name }}</h2>
-      <small>{{ account.id }}</small>
-    </div>
-    <div class="context-meta">
-      <span>到期：{{ account.expires_at|datetime }}</span>
-      <span>剩余：{{ remaining_days }} 天</span>
-      <span>状态：{{ account.status|account_status }}</span>
-      <a class="ghost-link" href="/admin/developer-accounts/{{ account.id }}/edit">编辑账号</a>
-    </div>
-  </section>
+  {% set first_app = apps[0] if apps else none %}
+  {% set connector_state = connector.status if connector else "missing" %}
+  {% set status_tone = "success" if account.status == "ok" else "danger" if account.status in ["expired", "disabled"] else "warning" %}
+  {% set connector_tone = "success" if connector_state == "ok" else "danger" %}
+
+  <div class="account-breadcrumb">
+    <a href="/admin/developer-accounts">开发者账号</a>
+    <span>/</span>
+    <strong>{{ account.team_name }} {{ account.id }}</strong>
+  </div>
 
   {% if success %}
     <div class="alert success"><strong>{{ success }}</strong></div>
@@ -22,160 +19,242 @@
     <div class="alert error"><strong>{{ error }}</strong></div>
   {% endif %}
 
-  <section class="panel">
-    <div class="panel-header"><h2>Connector</h2><span>一个开发者账号只能配置一个 connector</span></div>
-    {% if connector %}
-      <div class="metadata-grid">
-        <div class="metadata-item"><span>名称</span><strong>{{ connector.name }}</strong></div>
-        <div class="metadata-item"><span>状态</span><strong><span class="badge {{ 'success' if connector.status == 'ok' else 'danger' }}">{{ connector.status }}</span></strong></div>
-        <div class="metadata-item"><span>最近检查</span><strong>{{ connector.last_checked_at|datetime }}</strong></div>
-      </div>
-      <form class="inline-form connector-check-form" action="/admin/developer-accounts/{{ account.id }}/connector/check" method="post">
-        <button class="ghost-button" type="submit">检查连接</button>
-      </form>
-    {% else %}
-      <div class="alert error">
-        <strong>未配置 connector</strong>
-        <span>该账号暂不能同步商店元数据。</span>
-      </div>
-    {% endif %}
-    <form class="form compact-form" action="/admin/developer-accounts/{{ account.id }}/connector" method="post">
-      <div class="form-grid">
-        <label>
-          名称
-          <input name="name" value="{{ connector.name if connector else 'Store Connector' }}" required>
-        </label>
-        <label>
-          Connector 地址
-          <input
-            name="baseUrl"
-            value="{{ connector.base_url if connector else default_connector_base_url }}"
-            placeholder="{{ '留空则按账号 ID 自动生成' if default_connector_base_url else 'http://connector:8100' }}"
-          >
-        </label>
-      </div>
-      <label>
-        调用 Token
-        <input name="authToken" type="password" placeholder="{{ '留空表示不修改' if connector else '首次配置必填' }}">
-      </label>
-      <button class="primary-button" type="submit">{{ "保存修改" if connector else "保存 Connector" }}</button>
-    </form>
-  </section>
+  <section class="account-workspace">
+    <aside class="panel account-rail">
+      <div class="account-avatar" aria-hidden="true">{{ account.team_name[:1] }}{{ account.id[:1] }}</div>
+      <p class="eyebrow">当前开发者账号</p>
+      <h2>{{ account.team_name }}</h2>
+      <small>{{ account.id }}</small>
+      <span class="badge {{ status_tone }}">{{ account.status|account_status }}</span>
 
-  <section class="panel">
-    <div class="panel-header"><h2>账号下 App</h2><a href="/admin/uploads">上传新构建</a></div>
-    <table>
-      <thead><tr><th>App</th><th>平台</th><th>Bundle ID / Package</th><th>最新版本</th><th>商店标识</th><th>操作</th></tr></thead>
-      <tbody>
-        {% for item in apps %}
-          <tr>
-            <td><strong>{{ item.app.name }}</strong><br><small>{{ item.app.id }}</small></td>
-            <td>{{ item.app.platform|platform }}</td>
-            <td><code>{{ item.app.bundle_identifier }}</code></td>
-            <td>
-              {% if item.latest_build %}
-                {{ item.latest_build.version }} ({{ item.latest_build.build_number }})
-              {% else %}
-                -
-              {% endif %}
-            </td>
-            <td>
-              <form class="inline-form" action="/admin/developer-accounts/{{ account.id }}/apps/{{ item.app.id }}/settings" method="post">
+      <div class="renewal-meter">
+        <div>
+          <span>账号到期时间</span>
+          <strong>{{ account.expires_at|datetime }}</strong>
+        </div>
+        <div>
+          <span>剩余</span>
+          <strong class="{{ 'danger-text' if remaining_days <= 30 else 'success-text' }}">{{ remaining_days }} 天</strong>
+        </div>
+        <div class="renewal-track"><span style="width: {{ 100 if remaining_days > 90 else 0 if remaining_days < 0 else (remaining_days / 90 * 100)|round(0) }}%"></span></div>
+        <div class="renewal-scale"><span>0</span><span>90 天</span></div>
+      </div>
+
+      <dl class="account-rail-facts">
+        <dt>Connector 状态</dt>
+        <dd><span class="status-dot {{ connector_tone }}"></span>{{ connector_state }}</dd>
+        <dt>绑定 App 数量</dt>
+        <dd>{{ apps|length }} 个 App</dd>
+      </dl>
+
+      {% if first_app and first_app.latest_build %}
+        <a class="primary-button account-wide-action" href="/admin/developer-accounts/{{ account.id }}/apps/{{ first_app.app.id }}/store-metadata">同步商店信息</a>
+      {% else %}
+        <button class="primary-button account-wide-action" type="button" disabled>同步商店信息</button>
+      {% endif %}
+      <a class="ghost-button account-wide-action" href="/admin/developer-accounts/{{ account.id }}/edit">编辑账号</a>
+
+      <nav class="account-mini-nav" aria-label="账号详情导航">
+        <a class="is-active" href="#account-overview">账号概览</a>
+        <a href="#connector">Connector</a>
+        <a href="#account-apps">账号下 App</a>
+        <a href="#sync-runs">同步记录</a>
+      </nav>
+    </aside>
+
+    <div class="account-workspace-main">
+      <section id="account-overview" class="panel account-metric-band">
+        <div>
+          <span>Connector 状态</span>
+          <strong><span class="status-dot {{ connector_tone }}"></span>{{ connector_state }}</strong>
+        </div>
+        <div>
+          <span>账号下 App</span>
+          <strong>{{ apps|length }}</strong>
+        </div>
+        <div>
+          <span>最近检查</span>
+          <strong>{{ connector.last_checked_at|datetime if connector else "-" }}</strong>
+        </div>
+      </section>
+
+      <section id="connector" class="panel account-connector-panel">
+        <div class="panel-header">
+          <div>
+            <h2>Connector 配置</h2>
+            <span>一个开发者账号只能配置一个 connector</span>
+          </div>
+          {% if connector %}
+            <form action="/admin/developer-accounts/{{ account.id }}/connector/check" method="post">
+              <button class="ghost-button" type="submit">检查连接</button>
+            </form>
+          {% endif %}
+        </div>
+
+        {% if connector %}
+          <div class="connector-readout">
+            <div><span>Connector 名称</span><strong>{{ connector.name }}</strong></div>
+            <div><span>Connector 地址</span><strong>{{ connector.base_url }}</strong></div>
+            <div><span>Token 状态</span><strong class="success-text">已配置</strong></div>
+            <div><span>限流策略</span><strong>账号级 Connector 控制</strong></div>
+            <div><span>最近检查时间</span><strong>{{ connector.last_checked_at|datetime }}</strong></div>
+            <div><span>连接结果</span><strong><span class="badge {{ connector_tone }}">{{ "连接正常" if connector.status == "ok" else connector.status }}</span></strong></div>
+          </div>
+        {% else %}
+          <div class="alert error">
+            <strong>未配置 connector</strong>
+            <span>该账号暂不能同步商店元数据。</span>
+          </div>
+        {% endif %}
+
+        <form class="form compact-form" action="/admin/developer-accounts/{{ account.id }}/connector" method="post">
+          <div class="form-grid">
+            <label>
+              名称
+              <input name="name" value="{{ connector.name if connector else 'Store Connector' }}" required>
+            </label>
+            <label>
+              Connector 地址
+              <input
+                name="baseUrl"
+                value="{{ connector.base_url if connector else default_connector_base_url }}"
+                placeholder="{{ '留空则按账号 ID 自动生成' if default_connector_base_url else 'http://connector:8100' }}"
+              >
+            </label>
+          </div>
+          <label>
+            调用 Token
+            <input name="authToken" type="password" placeholder="{{ '留空表示不修改' if connector else '首次配置必填' }}">
+          </label>
+          <button class="primary-button" type="submit">{{ "保存修改" if connector else "保存 Connector" }}</button>
+        </form>
+      </section>
+
+      <section id="account-apps" class="panel">
+        <div class="panel-header">
+          <div>
+            <h2>账号下 App</h2>
+            <span>iOS 只维护 Apple App ID，Android 只维护 Google package</span>
+          </div>
+          <a href="/admin/uploads">上传新构建</a>
+        </div>
+        <div class="account-app-list">
+          {% for item in apps %}
+            <article class="account-app-row">
+              <div class="app-identity">
+                <span class="app-avatar" style="background: {{ item.app.icon_color }}">{{ item.app.name[:1] }}</span>
+                <div>
+                  <strong>{{ item.app.name }}</strong>
+                  <small>{{ item.app.id }}</small>
+                </div>
+              </div>
+              <div class="app-meta">
+                <span class="badge muted">{{ item.app.platform|platform }}</span>
+                <code>{{ item.app.bundle_identifier }}</code>
+              </div>
+              <div class="app-version">
+                <span>最新版本</span>
+                <strong>
+                  {% if item.latest_build %}
+                    {{ item.latest_build.version }} ({{ item.latest_build.build_number }})
+                  {% else %}
+                    -
+                  {% endif %}
+                </strong>
+              </div>
+              <form class="store-id-form" action="/admin/developer-accounts/{{ account.id }}/apps/{{ item.app.id }}/settings" method="post">
                 {% if item.app.platform == "ios" %}
-                  <input name="storeAppId" value="{{ item.app.store_app_id or '' }}" placeholder="Apple App ID">
+                  <label>
+                    Apple App ID
+                    <input name="storeAppId" value="{{ item.app.store_app_id or '' }}" placeholder="Apple App ID">
+                  </label>
                   <input name="storePackageName" value="" type="hidden">
                 {% else %}
                   <input name="storeAppId" value="" type="hidden">
-                  <input name="storePackageName" value="{{ item.app.store_package_name or '' }}" placeholder="Google package">
+                  <label>
+                    Google package
+                    <input name="storePackageName" value="{{ item.app.store_package_name or '' }}" placeholder="Google package">
+                  </label>
                 {% endif %}
                 <button class="ghost-button" type="submit">保存</button>
               </form>
-            </td>
-            <td>
-              {% if item.latest_build %}
-                <a class="ghost-link" href="/admin/developer-accounts/{{ account.id }}/apps/{{ item.app.id }}/store-metadata">商店元数据</a>
-                <br>
-                <a class="ghost-link" href="/admin/developer-accounts/{{ account.id }}/apps/{{ item.app.id }}/release-notes">管理版本说明</a>
-              {% else %}
-                <span class="empty">暂无构建</span>
-              {% endif %}
-              <form class="link-form" action="/admin/developer-accounts/{{ account.id }}/apps/{{ item.app.id }}/unbind" method="post">
-                <button type="submit">解绑</button>
-              </form>
-            </td>
-          </tr>
-        {% else %}
-          <tr><td colspan="6" class="empty">该账号下暂无 App。</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </section>
-
-  <section class="panel">
-    <div class="panel-header"><h2>绑定已有 App</h2><span>只展示尚未绑定账号的 App</span></div>
-    {% if unassigned_apps %}
-      <form class="form" action="/admin/developer-accounts/{{ account.id }}/apps" method="post">
-        <div class="form-grid">
-          <label>
-            App
-            <select name="appId" required>
-              {% for app in unassigned_apps %}
-                <option value="{{ app.id }}" data-platform="{{ app.platform }}">{{ app.name }} / {{ app.bundle_identifier }}</option>
-              {% endfor %}
-            </select>
-          </label>
-          <label data-store-field="ios">
-            Apple App ID
-            <input name="storeAppId" placeholder="iOS App Store Connect App ID">
-          </label>
+              <div class="app-actions">
+                {% if item.latest_build %}
+                  <a class="ghost-link" href="/admin/developer-accounts/{{ account.id }}/apps/{{ item.app.id }}/store-metadata">商店元数据</a>
+                  <a class="ghost-link" href="/admin/developer-accounts/{{ account.id }}/apps/{{ item.app.id }}/release-notes">管理版本说明</a>
+                {% else %}
+                  <span class="empty">暂无构建</span>
+                {% endif %}
+                <form class="link-form" action="/admin/developer-accounts/{{ account.id }}/apps/{{ item.app.id }}/unbind" method="post">
+                  <button type="submit">解绑</button>
+                </form>
+              </div>
+            </article>
+          {% else %}
+            <div class="empty">该账号下暂无 App。</div>
+          {% endfor %}
         </div>
-        <label data-store-field="android">
-          Google package
-          <input name="storePackageName" placeholder="Android Google Play package">
-        </label>
-        <button class="primary-button" type="submit">绑定 App</button>
-      </form>
-    {% else %}
-      <div class="empty">暂无可绑定 App。可以先上传一个构建，上传时也可以直接选择开发者账号。</div>
-    {% endif %}
-  </section>
+      </section>
 
-  <section class="panel">
-    <div class="panel-header"><h2>最近同步记录</h2><span>只展示该账号范围内的记录</span></div>
-    <table>
-      <thead><tr><th>时间</th><th>操作</th><th>版本</th><th>语言</th><th>状态</th><th>错误摘要</th></tr></thead>
-      <tbody>
-        {% for run in sync_runs %}
-          <tr>
-            <td>{{ run.started_at|datetime }}</td>
-            <td>{{ run.operation }}</td>
-            <td>{{ run.version }}</td>
-            <td>{{ run.locale }}</td>
-            <td><span class="badge {{ 'success' if run.status == 'succeeded' else 'danger' }}">{{ run.status }}</span></td>
-            <td>{{ run.error_summary or "-" }}</td>
-          </tr>
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <h2>绑定已有 App</h2>
+            <span>只展示尚未绑定账号的 App</span>
+          </div>
+        </div>
+        {% if unassigned_apps %}
+          <form class="form account-bind-form" data-account-app-bind-form action="/admin/developer-accounts/{{ account.id }}/apps" method="post">
+            <div class="form-grid">
+              <label>
+                App
+                <select name="appId" required>
+                  {% for app in unassigned_apps %}
+                    <option value="{{ app.id }}" data-platform="{{ app.platform }}">{{ app.name }} / {{ app.bundle_identifier }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label data-store-field="ios">
+                Apple App ID
+                <input name="storeAppId" placeholder="iOS App Store Connect App ID">
+              </label>
+            </div>
+            <label data-store-field="android">
+              Google package
+              <input name="storePackageName" placeholder="Android Google Play package">
+            </label>
+            <button class="primary-button" type="submit">绑定 App</button>
+          </form>
         {% else %}
-          <tr><td colspan="6" class="empty">暂无同步记录。</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+          <div class="empty">暂无可绑定 App。可以先上传一个构建，上传时也可以直接选择开发者账号。</div>
+        {% endif %}
+      </section>
+
+      <section id="sync-runs" class="panel">
+        <div class="panel-header">
+          <div>
+            <h2>最近同步记录</h2>
+            <span>只展示该账号范围内的记录</span>
+          </div>
+        </div>
+        <table class="sync-table">
+          <thead><tr><th>时间</th><th>操作</th><th>版本</th><th>语言</th><th>状态</th><th>错误摘要</th></tr></thead>
+          <tbody>
+            {% for run in sync_runs %}
+              <tr>
+                <td>{{ run.started_at|datetime }}</td>
+                <td>{{ run.operation }}</td>
+                <td>{{ run.version }}</td>
+                <td>{{ run.locale }}</td>
+                <td><span class="badge {{ 'success' if run.status == 'succeeded' else 'danger' }}">{{ run.status }}</span></td>
+                <td>{{ run.error_summary or "-" }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="6" class="empty">暂无同步记录。</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+    </div>
   </section>
-  <script>
-    (() => {
-      const select = document.querySelector('select[name="appId"]');
-      const fields = document.querySelectorAll('[data-store-field]');
-      if (!select || fields.length === 0) return;
-      const syncStoreFields = () => {
-        const platform = select.selectedOptions[0]?.dataset.platform || 'ios';
-        fields.forEach((field) => {
-          const active = field.dataset.storeField === platform;
-          field.hidden = !active;
-          const input = field.querySelector('input');
-          if (input && !active) input.value = '';
-        });
-      };
-      select.addEventListener('change', syncStoreFields);
-      syncStoreFields();
-    })();
-  </script>
 {% endblock %}

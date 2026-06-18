@@ -211,6 +211,15 @@ h2 { font-size: 18px; }
 
 .app-log-connect-panel {
   overflow: visible;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  transition: box-shadow .18s ease, margin-bottom .18s ease, padding .18s ease;
+}
+
+.app-log-connect-panel.is-scrolled,
+.app-log-connect-panel.is-compact {
+  box-shadow: 0 10px 24px rgba(15, 23, 42, .10);
 }
 
 .app-log-connect-grid {
@@ -238,42 +247,51 @@ h2 { font-size: 18px; }
   gap: 12px;
 }
 
-.app-log-connect-panel.is-connected {
+.app-log-connect-panel.is-connected,
+.app-log-connect-panel.is-compact {
   padding: 12px 14px;
   margin-bottom: 12px;
 }
 
-.app-log-connect-panel.is-connected .panel-header {
+.app-log-connect-panel.is-connected .panel-header,
+.app-log-connect-panel.is-compact .panel-header {
   margin-bottom: 10px;
 }
 
-.app-log-connect-panel.is-connected .app-log-connect-grid {
+.app-log-connect-panel.is-connected .app-log-connect-grid,
+.app-log-connect-panel.is-compact .app-log-connect-grid {
   grid-template-columns: minmax(0, 1fr);
   gap: 10px;
 }
 
 .app-log-connect-panel.is-connected .app-log-qr-card,
-.app-log-connect-panel.is-connected .detail-list {
+.app-log-connect-panel.is-connected .detail-list,
+.app-log-connect-panel.is-compact .app-log-qr-card,
+.app-log-connect-panel.is-compact .detail-list {
   display: none;
 }
 
-.app-log-connect-panel.is-connected .app-log-connect-form {
+.app-log-connect-panel.is-connected .app-log-connect-form,
+.app-log-connect-panel.is-compact .app-log-connect-form {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
   gap: 12px;
 }
 
-.app-log-connect-panel.is-connected .form-grid {
+.app-log-connect-panel.is-connected .form-grid,
+.app-log-connect-panel.is-compact .form-grid {
   grid-template-columns: minmax(160px, 1fr) minmax(96px, .42fr) minmax(130px, .7fr);
   gap: 10px;
 }
 
-.app-log-connect-panel.is-connected label {
+.app-log-connect-panel.is-connected label,
+.app-log-connect-panel.is-compact label {
   gap: 5px;
   font-size: 12px;
 }
 
-.app-log-connect-panel.is-connected input {
+.app-log-connect-panel.is-connected input,
+.app-log-connect-panel.is-compact input {
   padding: 8px 9px;
 }
 
@@ -288,18 +306,31 @@ h2 { font-size: 18px; }
   align-items: start;
 }
 
-.app-log-connect-panel.is-connected + .app-log-layout {
+.app-log-connect-panel.is-connected + .app-log-layout,
+.app-log-connect-panel.is-compact + .app-log-layout {
   grid-template-columns: 240px minmax(0, 1fr);
 }
 
 .app-log-connect-panel.is-connected + .app-log-layout .app-log-device-panel,
-.app-log-connect-panel.is-connected + .app-log-layout .app-log-stream-panel {
+.app-log-connect-panel.is-connected + .app-log-layout .app-log-stream-panel,
+.app-log-connect-panel.is-compact + .app-log-layout .app-log-device-panel,
+.app-log-connect-panel.is-compact + .app-log-layout .app-log-stream-panel {
   min-height: calc(100vh - 188px);
 }
 
 .app-log-device-panel,
 .app-log-stream-panel {
   min-height: 520px;
+}
+
+.app-log-device-panel {
+  position: sticky;
+  top: var(--app-log-sticky-offset, 148px);
+  z-index: 12;
+}
+
+.app-log-stream-panel {
+  overflow: visible;
 }
 
 .app-log-device-list {
@@ -351,6 +382,15 @@ h2 { font-size: 18px; }
 
 .app-log-stream-header {
   align-items: flex-start;
+  position: sticky;
+  top: var(--app-log-sticky-offset, 148px);
+  z-index: 20;
+  margin: -18px -18px 14px;
+  padding: 18px 18px 14px;
+  border-bottom: 1px solid var(--line);
+  border-radius: 8px 8px 0 0;
+  background: var(--panel);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, .06);
 }
 
 .app-log-tools {

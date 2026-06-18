@@ -773,7 +773,17 @@
         const page = document.querySelector('[data-app-log-page]');
         if (!page) return;
         const hasConnectedDevice = appLogState.devices.some((device) => device.connected);
+        const isScrolled = window.scrollY > 80;
         page.classList.toggle('is-connected', hasConnectedDevice);
+        page.classList.toggle('is-scrolled', isScrolled);
+        page.classList.toggle('is-compact', hasConnectedDevice || isScrolled);
+        syncAppLogStickyOffsets(page);
+      }
+
+      function syncAppLogStickyOffsets(page = document.querySelector('[data-app-log-page]')) {
+        if (!page) return;
+        const top = page.getBoundingClientRect().height + 12;
+        document.documentElement.style.setProperty('--app-log-sticky-offset', `${Math.ceil(top)}px`);
       }
 
       function renderAppLogDevices() {
@@ -999,6 +1009,7 @@
         }
         if (event.target.closest('[data-app-log-host], [data-app-log-port], [data-app-log-name]')) {
           updateAppLogConnectPreview();
+          syncAppLogStickyOffsets();
         }
         if (event.target.closest('[data-app-log-search]')) {
           renderAppLogs();
@@ -1022,6 +1033,18 @@
             storeImageInput.dataset.slot,
             storeImageInput.value
           );
+        }
+      });
+
+      window.addEventListener('scroll', () => {
+        if (document.querySelector('[data-app-log-page]')) {
+          syncAppLogConnectedLayout();
+        }
+      }, { passive: true });
+
+      window.addEventListener('resize', () => {
+        if (document.querySelector('[data-app-log-page]')) {
+          syncAppLogStickyOffsets();
         }
       });
 

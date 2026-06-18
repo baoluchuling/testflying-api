@@ -115,6 +115,9 @@ def test_admin_app_logs_page_and_qr_render(client: TestClient) -> None:
     assert "anystories:///connect" in page.text
     assert "data-app-log-list" in page.text
     assert "syncAppLogConnectedLayout" in page.text
+    assert "syncAppLogStickyOffsets" in page.text
+    assert "is-compact" in page.text
+    assert "window.addEventListener('scroll'" in page.text
     assert qr.status_code == 200
     assert qr.headers["content-type"].startswith("image/svg+xml")
 
@@ -124,6 +127,9 @@ def test_admin_app_logs_connected_layout_styles(client: TestClient) -> None:
 
     assert response.status_code == 200
     assert ".app-log-connect-panel.is-connected" in response.text
+    assert ".app-log-connect-panel.is-compact" in response.text
+    assert "position: sticky" in response.text
+    assert "--app-log-sticky-offset" in response.text
     assert "grid-template-columns: 240px minmax(0, 1fr)" in response.text
     assert "min-height: calc(100vh - 188px)" in response.text
 

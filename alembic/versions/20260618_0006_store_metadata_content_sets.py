@@ -26,7 +26,7 @@ def upgrade() -> None:
                 WHERE rel.relname = 'store_app_metadata_drafts'
                   AND con.contype = 'u'
                   AND (
-                    SELECT array_agg(att.attname ORDER BY keys.ordinality)
+                    SELECT array_agg(att.attname::text ORDER BY keys.ordinality)
                     FROM unnest(con.conkey) WITH ORDINALITY AS keys(attnum, ordinality)
                     JOIN pg_attribute att
                       ON att.attrelid = rel.oid
@@ -37,7 +37,7 @@ def upgrade() -> None:
                     'platform',
                     'version',
                     'locale'
-                  ];
+                  ]::text[];
 
                 IF old_constraint_name IS NOT NULL THEN
                     EXECUTE format(

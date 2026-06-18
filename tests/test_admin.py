@@ -17,6 +17,7 @@ from testflying_api.schema import (
     StoreSyncRun,
 )
 from testflying_api.seed import seed_demo_catalog
+from testflying_api.store_sync import supported_locales_for_app
 from tests.fixtures import make_android_apk_bytes
 
 
@@ -559,7 +560,7 @@ def test_admin_release_notes_page_runs_cached_preflight(
     assert first_response.status_code == 200
     assert second_response.status_code == 200
     assert "商店状态正常" in first_response.text
-    assert "目标版本已存在且允许修改，可以同步到商店。" in first_response.text
+    assert "商店版本已创建且允许修改，可以同步到商店。" in first_response.text
     assert "5 分钟缓存" in first_response.text
     assert "缓存" in second_response.text
     assert len(checks) == 1
@@ -578,8 +579,9 @@ def test_admin_preflight_uses_friendly_blocked_copy(
     )
 
     assert response.status_code == 200
-    assert "目标版本还没有创建" in response.text
-    assert "请先在商店后台创建这个版本，再回到这里同步。" in response.text
+    assert "商店版本还没有创建" in response.text
+    assert "testflying 后台构建可以存在，但商店后台还没有对应版本" in response.text
+    assert "请先在 App Store Connect 或 Google Play 创建这个商店版本" in response.text
     assert "store_version_missing" in response.text
     assert "商店中还没有创建 missing-2.4.0" not in response.text
 
@@ -684,3 +686,61 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert 'name="locales" value="en-US"' in response.text
     assert 'name="locales" value="ja"' in response.text
     assert 'name="locales" value="ko"' in response.text
+    assert "源文案语言" in response.text
+    assert 'value="en-US" required readonly' in response.text
+    assert "按字段编辑" in response.text
+    assert "按语言编辑" in response.text
+    assert "从英文填充其他语言" in response.text
+    assert "后台构建" in response.text
+    assert "商店版本" in response.text
+
+
+class _LocaleClient:
+    def supported_locales(
+        self,
+        connector: StoreConnector,
+        *,
+        account_id: str,
+        app: App,
+        version: str,
+    ) -> list[str]:
+        return ["en-US", "zh-Hant", "fr-FR"]
+
+
+def test_supported_locales_use_connector_app_languages_only(db_session: Session) -> None:
+    seed_demo_catalog(db_session)
+
+    locales = supported_locales_for_app(
+        db_session,
+        account_id="account-apple-enterprise",
+        app_id="app-aurora-ios",
+        version="2.4.0",
+        fallback_locale="zh-Hans",
+        client=_LocaleClient(),
+    )
+
+    assert locales == ["en-US", "zh-Hant", "fr-FR"]
+    assert "zh-Hans" not in locales
+
+
+def test_admin_store_metadata_realtime_preflight_is_throttled(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+    path = (
+        "/admin/developer-accounts/account-apple-enterprise"
+        "/apps/app-aurora-ios/store-metadata/preflight"
+    )
+    data = {"version": "2.4.0", "locale": "en-US"}
+
+    first_response = client.post(path, headers=_admin_headers(), data=data)
+    second_response = client.post(path, headers=_admin_headers(), data=data)
+
+    checks = db_session.query(StorePreflightCheck).order_by(StorePreflightCheck.checked_at).all()
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    assert "已实时查询商店状态" in first_response.text
+    assert "1 分钟内已查询过，已显示最近一次结果" in second_response.text
+    assert len(checks) == 1
+    assert checks[0].store_state_json["manualRefresh"] is True

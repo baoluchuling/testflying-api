@@ -415,6 +415,105 @@ textarea {
   color: #111827;
 }
 
+.store-metadata-panel {
+  min-width: 0;
+}
+
+.metadata-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.segmented-control {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid #dbe3ef;
+  border-radius: 8px;
+  background: white;
+}
+
+.segmented-control button {
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.segmented-control button.is-active {
+  background: var(--blue);
+  color: white;
+}
+
+.language-picker {
+  min-width: 150px;
+  font-size: 12px;
+}
+
+.language-picker select {
+  padding: 8px 9px;
+}
+
+.metadata-source-note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  line-height: 1.45;
+}
+
+.metadata-source-note strong {
+  color: #1d4ed8;
+}
+
+.metadata-field-view,
+.metadata-language-view {
+  display: grid;
+  gap: 12px;
+}
+
+.metadata-field-block {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #dbe3ef;
+  border-radius: 8px;
+  background: white;
+}
+
+.metadata-locale-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.metadata-locale-input {
+  min-width: 0;
+}
+
+.metadata-locale-input span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.metadata-locale-input small {
+  color: var(--blue);
+  font-size: 11px;
+  font-weight: 900;
+}
+
 .primary-button, button {
   border: 0;
   border-radius: 8px;
@@ -1515,6 +1614,10 @@ a.ghost-button {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .metadata-locale-grid {
+    grid-template-columns: 1fr;
+  }
+
   .account-matrix-toolbar,
   .account-matrix-layout,
   .account-workspace {
@@ -1585,6 +1688,7 @@ a.ghost-button {
 
   .stat-grid,
   .metadata-grid,
+  .metadata-locale-grid,
   .form-grid,
   .account-summary-strip,
   .account-metric-band,

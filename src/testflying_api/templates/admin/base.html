@@ -133,6 +133,7 @@
         syncUploadViews();
         syncHealthView();
         syncAccountViews();
+        syncMetadataEditor();
         window.scrollTo({ top: 0, behavior: 'auto' });
       }
 
@@ -269,6 +270,49 @@
         syncAccountMatrix();
       }
 
+      function metadataInputs(form, locale, field) {
+        if (!form) return [];
+        return Array.from(form.querySelectorAll('[data-metadata-input]')).filter((input) => (
+          input.dataset.locale === locale && input.dataset.field === field
+        ));
+      }
+
+      function metadataValue(form, locale, field) {
+        const input = metadataInputs(form, locale, field)[0];
+        return input?.value || '';
+      }
+
+      function setMetadataValue(form, locale, field, value) {
+        metadataInputs(form, locale, field).forEach((input) => {
+          input.value = value;
+        });
+      }
+
+      function syncMetadataEditor(root = document) {
+        root.querySelectorAll('[data-metadata-form]').forEach((form) => {
+          const fieldView = form.querySelector('[data-field-view]');
+          const languageView = form.querySelector('[data-language-view]');
+          const picker = form.querySelector('[data-language-picker]');
+          const activeMode = form.querySelector('[data-metadata-mode].is-active')?.dataset.metadataMode || 'field';
+          const activeLocale = picker?.value || form.dataset.sourceLocale;
+
+          form.querySelector('[data-metadata-editor]')?.setAttribute('data-mode', activeMode);
+          if (fieldView) fieldView.hidden = activeMode !== 'field';
+          if (languageView) languageView.hidden = activeMode !== 'language';
+
+          fieldView?.querySelectorAll('input, textarea, select').forEach((input) => {
+            input.disabled = activeMode !== 'field';
+          });
+          languageView?.querySelectorAll('[data-language-block]').forEach((block) => {
+            const isActiveBlock = block.dataset.languageBlock === activeLocale;
+            block.hidden = !isActiveBlock;
+            block.querySelectorAll('input, textarea, select').forEach((input) => {
+              input.disabled = activeMode !== 'language' || !isActiveBlock;
+            });
+          });
+        });
+      }
+
       function startAdminUpload(form) {
         if (adminUploadState.status === 'uploading' || adminUploadState.status === 'processing') {
           return;
@@ -335,11 +379,24 @@
         if (event.target.closest('[data-account-search]')) {
           syncAccountMatrix();
         }
+        const metadataInput = event.target.closest('[data-metadata-input]');
+        if (metadataInput) {
+          const form = metadataInput.closest('[data-metadata-form]');
+          setMetadataValue(
+            form,
+            metadataInput.dataset.locale,
+            metadataInput.dataset.field,
+            metadataInput.value
+          );
+        }
       });
 
       document.addEventListener('change', (event) => {
         if (event.target.closest('[data-account-app-bind-form] select[name="appId"]')) {
           syncAccountStoreFields();
+        }
+        if (event.target.closest('[data-language-picker]')) {
+          syncMetadataEditor();
         }
       });
 
@@ -368,6 +425,40 @@
             item.classList.toggle('is-active', item === filter);
           });
           syncAccountMatrix();
+          return;
+        }
+
+        const metadataMode = event.target.closest('[data-metadata-mode]');
+        if (metadataMode) {
+          metadataMode.closest('.segmented-control')?.querySelectorAll('[data-metadata-mode]').forEach((item) => {
+            item.classList.toggle('is-active', item === metadataMode);
+          });
+          syncMetadataEditor();
+          return;
+        }
+
+        const translateButton = event.target.closest('[data-translate-metadata]');
+        if (translateButton) {
+          const form = translateButton.closest('[data-metadata-form]');
+          const sourceLocale = form?.dataset.sourceLocale;
+          if (!form || !sourceLocale) return;
+          const fields = Array.from(new Set(
+            Array.from(form.querySelectorAll('[data-metadata-input]')).map((input) => input.dataset.field)
+          ));
+          const locales = Array.from(new Set(
+            Array.from(form.querySelectorAll('[name="locales"]')).map((input) => input.value).filter(Boolean)
+          ));
+          locales.filter((locale) => locale !== sourceLocale).forEach((locale) => {
+            fields.forEach((field) => {
+              if (!metadataValue(form, locale, field).trim()) {
+                setMetadataValue(form, locale, field, metadataValue(form, sourceLocale, field));
+              }
+            });
+          });
+          const previous = translateButton.textContent;
+          translateButton.textContent = '已填充空白语言';
+          setTimeout(() => { translateButton.textContent = previous; }, 1400);
+          syncMetadataEditor();
           return;
         }
 
@@ -452,6 +543,7 @@
 
       syncHealthView();
       syncAccountViews();
+      syncMetadataEditor();
     </script>
   </body>
 </html>

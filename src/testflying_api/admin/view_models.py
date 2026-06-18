@@ -207,23 +207,12 @@ def store_metadata_context(
     app_id: str,
     version: str | None = None,
     locale: str = DEFAULT_LOCALE,
+    force_preflight_refresh: bool = False,
 ) -> dict[str, object]:
     account = session.get(DeveloperAccount, account_id)
     app = next((item for item in account_apps(session, account_id) if item.id == app_id), None)
     latest_build = latest_build_for_app(session, app_id)
     target_version = version or (latest_build.version if latest_build else "")
-    draft = (
-        metadata_draft_for_scope(
-            session,
-            account_id=account_id,
-            app_id=app_id,
-            platform=app.platform,
-            version=target_version,
-            locale=locale,
-        )
-        if app and target_version
-        else None
-    )
     drafts_by_locale = (
         metadata_drafts_for_scope(
             session,
@@ -246,6 +235,20 @@ def store_metadata_context(
         if app and target_version
         else [locale]
     )
+    source_locale = _source_locale(supported_locales)
+    active_locale = locale if locale in supported_locales else source_locale
+    draft = (
+        metadata_draft_for_scope(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            platform=app.platform,
+            version=target_version,
+            locale=source_locale,
+        )
+        if app and target_version
+        else None
+    )
     base_metadata = _store_metadata_defaults(
         app=app,
         latest_build=latest_build,
@@ -257,8 +260,9 @@ def store_metadata_context(
             account_id=account_id,
             app_id=app_id,
             version=target_version,
-            locale=locale,
+            locale=source_locale,
             operation=UPDATE_APP_METADATA,
+            force_refresh=force_preflight_refresh,
         )
         if app and target_version
         else None
@@ -268,14 +272,17 @@ def store_metadata_context(
         "app": app,
         "latest_build": latest_build,
         "version": target_version,
-        "locale": locale,
+        "locale": active_locale,
+        "source_locale": source_locale,
         "draft": draft,
         "metadata": base_metadata,
+        "metadata_fields": _metadata_fields(),
         "supported_locales": supported_locales,
         "localized_metadata": _localized_metadata(
             supported_locales=supported_locales,
             drafts_by_locale=drafts_by_locale,
             base_metadata=base_metadata,
+            source_locale=source_locale,
         ),
         "preflight": preflight,
         "connector": account_connector(session, account_id),
@@ -306,21 +313,123 @@ def _localized_metadata(
     supported_locales: list[str],
     drafts_by_locale: dict[str, object],
     base_metadata: dict[str, str],
-) -> list[dict[str, str]]:
-    rows: list[dict[str, str]] = []
+    source_locale: str,
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
     for locale in supported_locales:
         draft = drafts_by_locale.get(locale)
+        defaults = base_metadata if locale == source_locale else _empty_metadata()
         rows.append(
             {
                 "locale": locale,
-                "keywords": draft.keywords if draft else base_metadata["keywords"],
+                "is_source": locale == source_locale,
+                "title": draft.title if draft else defaults["title"],
+                "subtitle": draft.subtitle if draft else defaults["subtitle"],
+                "keywords": draft.keywords if draft else defaults["keywords"],
                 "promotional_text": (
-                    draft.promotional_text if draft else base_metadata["promotional_text"]
+                    draft.promotional_text if draft else defaults["promotional_text"]
                 ),
-                "description": draft.description if draft else base_metadata["description"],
+                "description": draft.description if draft else defaults["description"],
+                "privacy_policy_url": (
+                    draft.privacy_policy_url if draft else defaults["privacy_policy_url"]
+                ),
+                "support_url": draft.support_url if draft else defaults["support_url"],
+                "marketing_url": draft.marketing_url if draft else defaults["marketing_url"],
             }
         )
     return rows
+
+
+def _empty_metadata() -> dict[str, str]:
+    return {
+        "title": "",
+        "subtitle": "",
+        "keywords": "",
+        "promotional_text": "",
+        "description": "",
+        "privacy_policy_url": "",
+        "support_url": "",
+        "marketing_url": "",
+    }
+
+
+def _source_locale(supported_locales: list[str]) -> str:
+    if "en-US" in supported_locales:
+        return "en-US"
+    if "en" in supported_locales:
+        return "en"
+    return supported_locales[0] if supported_locales else DEFAULT_LOCALE
+
+
+def _metadata_fields() -> list[dict[str, object]]:
+    return [
+        {
+            "key": "title",
+            "name": "title",
+            "label": "标题",
+            "type": "input",
+            "required": True,
+            "placeholder": "App name",
+        },
+        {
+            "key": "subtitle",
+            "name": "subtitle",
+            "label": "副标题",
+            "type": "input",
+            "required": False,
+            "placeholder": "Short subtitle",
+        },
+        {
+            "key": "keywords",
+            "name": "keywords",
+            "label": "关键词",
+            "type": "input",
+            "required": False,
+            "placeholder": "Comma separated keywords",
+        },
+        {
+            "key": "promotional_text",
+            "name": "promotionalText",
+            "label": "宣传文本",
+            "type": "textarea",
+            "rows": 3,
+            "required": False,
+            "placeholder": "Promotional text",
+        },
+        {
+            "key": "description",
+            "name": "description",
+            "label": "描述",
+            "type": "textarea",
+            "rows": 8,
+            "required": True,
+            "placeholder": "App description",
+        },
+        {
+            "key": "privacy_policy_url",
+            "name": "privacyPolicyUrl",
+            "label": "隐私政策 URL",
+            "type": "input",
+            "required": False,
+            "placeholder": "https://example.com/privacy",
+        },
+        {
+            "key": "support_url",
+            "name": "supportUrl",
+            "label": "支持 URL",
+            "type": "input",
+            "required": False,
+            "placeholder": "https://example.com/support",
+        },
+        {
+            "key": "marketing_url",
+            "name": "marketingUrl",
+            "label": "营销 URL",
+            "type": "input",
+            "required": False,
+            "placeholder": "https://example.com",
+        },
+    ]
 
 
 def list_notifications(session: Session, *, limit: int | None = None) -> list[Notification]:

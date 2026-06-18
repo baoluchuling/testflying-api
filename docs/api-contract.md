@@ -115,6 +115,7 @@ POST /admin/developer-accounts/{accountId}/apps/{appId}/settings
 POST /admin/developer-accounts/{accountId}/apps/{appId}/unbind
 GET /admin/developer-accounts/{accountId}/apps/{appId}/store-metadata
 POST /admin/developer-accounts/{accountId}/apps/{appId}/store-metadata
+POST /admin/developer-accounts/{accountId}/apps/{appId}/store-metadata/preflight
 POST /admin/developer-accounts/{accountId}/apps/{appId}/store-metadata/sync
 GET /admin/developer-accounts/{accountId}/apps/{appId}/release-notes
 POST /admin/developer-accounts/{accountId}/apps/{appId}/release-notes
@@ -129,7 +130,7 @@ GET /admin/notifications
 
 后台上传表单复用 `POST /v1/test-distribution/uploads` 的业务逻辑，上传成功后同样会创建应用、构建、制品、iOS manifest 和通知。后台页面使用浏览器上传进度事件展示上传百分比；服务端收到完整文件后再解析包信息和写入数据库。MinIO Console 只管理对象存储文件，不能替代管理后台上传，因为直接上传到 MinIO 不会写入业务数据库。
 
-开发者账号后台支持新增/编辑账号、配置账号级 connector、检查 connector 连接状态、绑定/解绑 App、维护 App 商店标识，并在账号上下文中同步版本说明和文字类商店元数据。每个开发者账号只能有一个 connector，保存后只能编辑原 connector；账号详情页进入时会自动检查一次连接状态。App 商店标识按平台收窄：iOS 只填 Apple App ID，Android 只填 package。商店元数据的关键词、宣传文本和描述支持多语言编辑，支持语言从 connector 拉取；缺少翻译时默认使用当前语言内容填充。商店同步页面进入时会自动预检查；相同账号、App、平台、版本、语言和操作的预检查结果缓存 5 分钟。connector 是独立 Go 服务，生产环境使用 `TESTFLYING_CONNECTOR_STORE_MODE=live` 并在 connector 部署机器挂载 Apple `.p8` 或 Google service account JSON；中心后台不保存这些商店凭据。
+开发者账号后台支持新增/编辑账号、配置账号级 connector、检查 connector 连接状态、绑定/解绑 App、维护 App 商店标识，并在账号上下文中同步版本说明和文字类商店元数据。每个开发者账号只能有一个 connector，保存后只能编辑原 connector；账号详情页进入时会自动检查一次连接状态。App 商店标识按平台收窄：iOS 只填 Apple App ID，Android 只填 package。商店元数据支持多语言编辑，语言列表只使用 connector 从商店 App 拉取的实际支持语言；页面默认优先使用 `en-US` 作为源文案语言，标题、副标题、关键词、宣传文本、描述、隐私政策 URL、支持 URL 和营销 URL 都按语言独立保存。商店元数据页支持按字段编辑、按语言编辑，以及“从英文填充其他语言”的占位翻译按钮。商店同步页面进入时会自动预检查；相同账号、App、平台、版本、语言和操作的预检查结果缓存 5 分钟；商店元数据页的实时查询按钮可以绕过 5 分钟缓存，但同一请求 1 分钟内只允许触发一次。connector 是独立 Go 服务，生产环境使用 `TESTFLYING_CONNECTOR_STORE_MODE=live` 并在 connector 部署机器挂载 Apple `.p8` 或 Google service account JSON；中心后台不保存这些商店凭据。
 
 ## 设备
 

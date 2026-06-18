@@ -22,8 +22,11 @@
 - 账号下 App 商店标识按平台收窄：iOS 只填 Apple App ID，Android 只填 package。
 - 后台在开发者账号详情页下进入 App 的 `商店元数据` 或 `管理版本说明` 页面。
 - 页面进入时自动发起预检查。
-- 商店元数据页进入时通过 connector 拉取商店支持语言；关键词、宣传文本和描述支持多语言编辑，缺少翻译时默认使用当前语言内容填充。
+- 商店元数据页进入时通过 connector 拉取商店 App 实际支持语言；后台不再把本地默认语言混入商店返回结果。
+- 商店元数据页默认优先使用 `en-US` 作为源文案语言，标题、副标题、关键词、宣传文本、描述、隐私政策 URL、支持 URL 和营销 URL 都按 `locale` 独立保存。
+- 商店元数据页支持“按字段编辑”和“按语言编辑”两种模式，并提供“从英文填充其他语言”按钮；第一版未接入翻译服务时只把英文源文案填充到空白语言。
 - 相同账号、App、平台、版本、语言和操作的预检查结果缓存 5 分钟。
+- 商店元数据页提供“实时查询”按钮，可以绕过 5 分钟缓存重新查询商店状态；同一账号、App、版本、语言和操作 1 分钟内只能触发一次手动实时查询。
 - 只有预检查通过时才允许同步。
 - 同步前复用同一套 5 分钟预检查规则。
 - 同步结果写入 `store_sync_runs`，操作写入 `audit_logs`。
@@ -42,7 +45,7 @@
 - `apps.store_app_id` / `apps.store_package_name`：商店侧 App 标识。
 - `store_connectors`：账号对应 connector 地址和调用 token。
 - `store_release_note_drafts`：版本说明草稿。
-- `store_app_metadata_drafts`：文字类商店元数据草稿，包括标题、副标题、关键词、宣传文本、描述、隐私政策 URL、支持 URL 和营销 URL。关键词、宣传文本和描述按 `locale` 分别保存。
+- `store_app_metadata_drafts`：文字类商店元数据草稿，包括标题、副标题、关键词、宣传文本、描述、隐私政策 URL、支持 URL 和营销 URL。所有字段都按 `locale` 分别保存。
 - `store_preflight_checks`：5 分钟预检查缓存。
 - `store_sync_runs`：同步执行记录。
 - `audit_logs`：后台操作审计。

@@ -28,6 +28,7 @@ from testflying_api.schema import (
 )
 
 PREFLIGHT_TTL = timedelta(minutes=5)
+PREFLIGHT_FORCE_REFRESH_COOLDOWN = timedelta(minutes=1)
 UPDATE_RELEASE_NOTES = "update_release_notes"
 UPDATE_APP_METADATA = "update_app_metadata"
 DEFAULT_LOCALE = "zh-Hans"
@@ -42,10 +43,17 @@ class PreflightState:
     checked_at: datetime
     expires_at: datetime
     cached: bool
+    throttled: bool = False
 
     @property
     def remaining_seconds(self) -> int:
         return max(int((_as_utc(self.expires_at) - datetime.now(UTC)).total_seconds()), 0)
+
+    @property
+    def source_label(self) -> str:
+        if self.throttled:
+            return "1 分钟节流"
+        return "缓存" if self.cached else "实时检查"
 
 
 @dataclass(frozen=True)
@@ -84,7 +92,7 @@ class StoreConnectorClient:
             }
         )
         response = _get_json(connector, f"/v1/apps/{app.id}/supported-locales?{query}")
-        return _normalize_locales(response.get("locales"))
+        return _normalize_connector_locales(response.get("locales"))
 
     def preflight(
         self,
@@ -381,7 +389,7 @@ def supported_locales_for_app(
         )
     except ConnectorCallError:
         return fallback
-    return _merge_locales(locales, fallback)
+    return _normalize_locales(locales)
 
 
 def save_app_metadata_draft(
@@ -455,6 +463,7 @@ def get_or_refresh_preflight(
     version: str,
     locale: str,
     operation: str = UPDATE_RELEASE_NOTES,
+    force_refresh: bool = False,
     client: StoreConnectorClient | None = None,
 ) -> PreflightState:
     app = scoped_app(session, account_id, app_id)
@@ -483,6 +492,19 @@ def get_or_refresh_preflight(
     )
     request_hash = _request_hash(payload)
     now = datetime.now(UTC)
+    if force_refresh:
+        throttled = session.scalar(
+            select(StorePreflightCheck)
+            .where(
+                StorePreflightCheck.request_hash == request_hash,
+                StorePreflightCheck.checked_at > now - PREFLIGHT_FORCE_REFRESH_COOLDOWN,
+            )
+            .order_by(StorePreflightCheck.checked_at.desc())
+            .limit(1)
+        )
+        if throttled is not None and throttled.store_state_json.get("manualRefresh") is True:
+            return _state_from_check(throttled, cached=True, throttled=True)
+
     cached = session.scalar(
         select(StorePreflightCheck)
         .where(
@@ -492,7 +514,7 @@ def get_or_refresh_preflight(
         .order_by(StorePreflightCheck.checked_at.desc())
         .limit(1)
     )
-    if cached is not None:
+    if cached is not None and not force_refresh:
         return _state_from_check(cached, cached=True)
 
     connector_client = client or StoreConnectorClient()
@@ -519,7 +541,10 @@ def get_or_refresh_preflight(
         can_sync=bool(response.get("canSync")),
         reason_code=_optional_str(response.get("reasonCode")),
         message=str(response.get("message") or "已完成同步条件检查。"),
-        store_state_json=dict(response.get("storeState") or {}),
+        store_state_json={
+            **dict(response.get("storeState") or {}),
+            **({"manualRefresh": True} if force_refresh else {}),
+        },
         checked_at=now,
         expires_at=now + PREFLIGHT_TTL,
     )
@@ -927,8 +952,17 @@ def _normalize_locales(raw_locales: object) -> list[str]:
     return locales or [DEFAULT_LOCALE]
 
 
-def _merge_locales(primary: list[str], fallback: list[str]) -> list[str]:
-    return _normalize_locales([*fallback, *primary])
+def _normalize_connector_locales(raw_locales: object) -> list[str]:
+    if not isinstance(raw_locales, list | tuple):
+        return []
+    locales: list[str] = []
+    seen: set[str] = set()
+    for raw_locale in raw_locales:
+        locale = str(raw_locale or "").strip()
+        if locale and locale not in seen:
+            locales.append(locale)
+            seen.add(locale)
+    return locales
 
 
 def _apply_sync_response(run: StoreSyncRun, response: dict[str, object]) -> None:
@@ -950,7 +984,12 @@ def _request_hash(payload: dict[str, object]) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def _state_from_check(check: StorePreflightCheck, *, cached: bool) -> PreflightState:
+def _state_from_check(
+    check: StorePreflightCheck,
+    *,
+    cached: bool,
+    throttled: bool = False,
+) -> PreflightState:
     return PreflightState(
         can_sync=check.can_sync,
         reason_code=check.reason_code,
@@ -959,6 +998,7 @@ def _state_from_check(check: StorePreflightCheck, *, cached: bool) -> PreflightS
         checked_at=check.checked_at,
         expires_at=check.expires_at,
         cached=cached,
+        throttled=throttled,
     )
 
 

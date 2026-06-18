@@ -715,23 +715,28 @@ def save_store_metadata_page(
     _: AdminDep,
     version: Annotated[str, Form()],
     locale: Annotated[str, Form()] = DEFAULT_LOCALE,
-    title: Annotated[str, Form()] = "",
-    subtitle: Annotated[str, Form()] = "",
     locales: Annotated[list[str] | None, Form()] = None,
+    title: Annotated[list[str] | None, Form()] = None,
+    subtitle: Annotated[list[str] | None, Form()] = None,
     keywords: Annotated[list[str] | None, Form()] = None,
     promotional_text: Annotated[list[str] | None, Form(alias="promotionalText")] = None,
     description: Annotated[list[str] | None, Form()] = None,
-    privacy_policy_url: Annotated[str, Form(alias="privacyPolicyUrl")] = "",
-    support_url: Annotated[str, Form(alias="supportUrl")] = "",
-    marketing_url: Annotated[str, Form(alias="marketingUrl")] = "",
+    privacy_policy_url: Annotated[list[str] | None, Form(alias="privacyPolicyUrl")] = None,
+    support_url: Annotated[list[str] | None, Form(alias="supportUrl")] = None,
+    marketing_url: Annotated[list[str] | None, Form(alias="marketingUrl")] = None,
 ) -> HTMLResponse:
     try:
         metadata_rows = _metadata_rows_from_form(
             current_locale=locale,
             locales=locales,
+            title=title,
+            subtitle=subtitle,
             keywords=keywords,
             promotional_text=promotional_text,
             description=description,
+            privacy_policy_url=privacy_policy_url,
+            support_url=support_url,
+            marketing_url=marketing_url,
         )
         for row in metadata_rows:
             save_app_metadata_draft(
@@ -740,14 +745,14 @@ def save_store_metadata_page(
                 app_id=app_id,
                 version=version,
                 locale=row["locale"],
-                title=title,
-                subtitle=subtitle,
+                title=row["title"],
+                subtitle=row["subtitle"],
                 keywords=row["keywords"],
                 promotional_text=row["promotional_text"],
                 description=row["description"],
-                privacy_policy_url=privacy_policy_url,
-                support_url=support_url,
-                marketing_url=marketing_url,
+                privacy_policy_url=row["privacy_policy_url"],
+                support_url=row["support_url"],
+                marketing_url=row["marketing_url"],
             )
         session.commit()
         context = store_metadata_context(
@@ -797,23 +802,28 @@ def sync_store_metadata_page(
     _: AdminDep,
     version: Annotated[str, Form()],
     locale: Annotated[str, Form()] = DEFAULT_LOCALE,
-    title: Annotated[str, Form()] = "",
-    subtitle: Annotated[str, Form()] = "",
     locales: Annotated[list[str] | None, Form()] = None,
+    title: Annotated[list[str] | None, Form()] = None,
+    subtitle: Annotated[list[str] | None, Form()] = None,
     keywords: Annotated[list[str] | None, Form()] = None,
     promotional_text: Annotated[list[str] | None, Form(alias="promotionalText")] = None,
     description: Annotated[list[str] | None, Form()] = None,
-    privacy_policy_url: Annotated[str, Form(alias="privacyPolicyUrl")] = "",
-    support_url: Annotated[str, Form(alias="supportUrl")] = "",
-    marketing_url: Annotated[str, Form(alias="marketingUrl")] = "",
+    privacy_policy_url: Annotated[list[str] | None, Form(alias="privacyPolicyUrl")] = None,
+    support_url: Annotated[list[str] | None, Form(alias="supportUrl")] = None,
+    marketing_url: Annotated[list[str] | None, Form(alias="marketingUrl")] = None,
 ) -> HTMLResponse:
     try:
         metadata_rows = _metadata_rows_from_form(
             current_locale=locale,
             locales=locales,
+            title=title,
+            subtitle=subtitle,
             keywords=keywords,
             promotional_text=promotional_text,
             description=description,
+            privacy_policy_url=privacy_policy_url,
+            support_url=support_url,
+            marketing_url=marketing_url,
         )
         sync_runs = []
         for row in metadata_rows:
@@ -824,14 +834,14 @@ def sync_store_metadata_page(
                     app_id=app_id,
                     version=version,
                     locale=row["locale"],
-                    title=title,
-                    subtitle=subtitle,
+                    title=row["title"],
+                    subtitle=row["subtitle"],
                     keywords=row["keywords"],
                     promotional_text=row["promotional_text"],
                     description=row["description"],
-                    privacy_policy_url=privacy_policy_url,
-                    support_url=support_url,
-                    marketing_url=marketing_url,
+                    privacy_policy_url=row["privacy_policy_url"],
+                    support_url=row["support_url"],
+                    marketing_url=row["marketing_url"],
                     actor="admin",
                 )
             )
@@ -871,6 +881,43 @@ def sync_store_metadata_page(
             _context(request, active="developer-accounts", error=error.message, **context),
             status_code=error.status_code,
         )
+
+
+@router.post(
+    "/developer-accounts/{account_id}/apps/{app_id}/store-metadata/preflight",
+    response_class=HTMLResponse,
+)
+def refresh_store_metadata_preflight_page(
+    account_id: str,
+    app_id: str,
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+    version: Annotated[str, Form()],
+    locale: Annotated[str, Form()] = DEFAULT_LOCALE,
+) -> HTMLResponse:
+    context = store_metadata_context(
+        session,
+        account_id=account_id,
+        app_id=app_id,
+        version=version,
+        locale=locale,
+        force_preflight_refresh=True,
+    )
+    if context["account"] is None or context["app"] is None:
+        raise ApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
+    session.commit()
+    preflight = context.get("preflight")
+    success = (
+        "1 分钟内已查询过，已显示最近一次结果"
+        if getattr(preflight, "throttled", False)
+        else "已实时查询商店状态"
+    )
+    return templates.TemplateResponse(
+        request,
+        "admin/store_metadata.html",
+        _context(request, active="developer-accounts", success=success, **context),
+    )
 
 
 @router.get("/notifications", response_class=HTMLResponse)
@@ -918,17 +965,27 @@ def _metadata_rows_from_form(
     *,
     current_locale: str,
     locales: list[str] | None,
+    title: list[str] | None,
+    subtitle: list[str] | None,
     keywords: list[str] | None,
     promotional_text: list[str] | None,
     description: list[str] | None,
+    privacy_policy_url: list[str] | None,
+    support_url: list[str] | None,
+    marketing_url: list[str] | None,
 ) -> list[dict[str, str]]:
     normalized_locales = _unique_non_empty(locales) or [current_locale.strip() or DEFAULT_LOCALE]
     rows = [
         {
             "locale": locale,
+            "title": _form_list_value(title, index),
+            "subtitle": _form_list_value(subtitle, index),
             "keywords": _form_list_value(keywords, index),
             "promotional_text": _form_list_value(promotional_text, index),
             "description": _form_list_value(description, index),
+            "privacy_policy_url": _form_list_value(privacy_policy_url, index),
+            "support_url": _form_list_value(support_url, index),
+            "marketing_url": _form_list_value(marketing_url, index),
         }
         for index, locale in enumerate(normalized_locales)
     ]
@@ -937,9 +994,14 @@ def _metadata_rows_from_form(
         rows[0],
     )
     for row in rows:
+        row["title"] = row["title"] or base_row["title"]
+        row["subtitle"] = row["subtitle"] or base_row["subtitle"]
         row["keywords"] = row["keywords"] or base_row["keywords"]
         row["promotional_text"] = row["promotional_text"] or base_row["promotional_text"]
         row["description"] = row["description"] or base_row["description"]
+        row["privacy_policy_url"] = row["privacy_policy_url"] or base_row["privacy_policy_url"]
+        row["support_url"] = row["support_url"] or base_row["support_url"]
+        row["marketing_url"] = row["marketing_url"] or base_row["marketing_url"]
     return rows
 
 
@@ -1014,16 +1076,16 @@ def _preflight_copy(preflight: object | None) -> dict[str, str]:
     if bool(getattr(preflight, "can_sync", False)):
         return {
             "title": "商店状态正常",
-            "summary": "目标版本已存在且允许修改，可以同步到商店。",
+            "summary": "商店版本已创建且允许修改，可以同步到商店。",
             "action": "确认草稿内容后即可提交同步。",
         }
 
     reason_code = str(getattr(preflight, "reason_code", "") or "")
     blocked_copy = {
         "store_version_missing": {
-            "title": "目标版本还没有创建",
-            "summary": "当前商店后台还没有对应版本，所以暂时不能同步。",
-            "action": "请先在商店后台创建这个版本，再回到这里同步。",
+            "title": "商店版本还没有创建",
+            "summary": "testflying 后台构建可以存在，但商店后台还没有对应版本，所以暂时不能同步。",
+            "action": "请先在 App Store Connect 或 Google Play 创建这个商店版本，再回到这里同步。",
         },
         "connector_missing": {
             "title": "Connector 还未配置",

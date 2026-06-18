@@ -22,69 +22,136 @@
   {% endif %}
 
   <div class="split-grid">
-    <section class="panel">
+    <section class="panel store-metadata-panel">
       <div class="panel-header"><h2>元数据草稿</h2><a href="/admin/developer-accounts/{{ account.id }}">返回账号</a></div>
-      <form class="form" action="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata" method="post">
+      <form class="form" action="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata" method="post" data-metadata-form data-source-locale="{{ source_locale }}">
         <div class="form-grid">
           <label>
             目标版本
             <input name="version" value="{{ version }}" required>
           </label>
           <label>
-            当前语言
-            <input name="locale" value="{{ locale }}" required>
+            源文案语言
+            <input name="locale" value="{{ source_locale }}" required readonly>
           </label>
         </div>
-        <div class="form-grid">
-          <label>
-            标题
-            <input name="title" value="{{ metadata.title }}" required>
+
+        <div class="metadata-toolbar">
+          <div class="segmented-control" role="group" aria-label="多语言编辑模式">
+            <button type="button" class="is-active" data-metadata-mode="field">按字段编辑</button>
+            <button type="button" data-metadata-mode="language">按语言编辑</button>
+          </div>
+          <label class="language-picker">
+            语言
+            <select data-language-picker>
+              {% for item in localized_metadata %}
+                <option value="{{ item.locale }}" {% if item.locale == locale %}selected{% endif %}>{{ item.locale }}</option>
+              {% endfor %}
+            </select>
           </label>
-          <label>
-            副标题
-            <input name="subtitle" value="{{ metadata.subtitle }}">
-          </label>
+          <button class="ghost-button" type="button" data-translate-metadata>从英文填充其他语言</button>
         </div>
-        <div class="subsection-title">多语言商店文案</div>
-        <div class="locale-stack">
-          {% for item in localized_metadata %}
-            <section class="locale-block">
-              <input type="hidden" name="locales" value="{{ item.locale }}">
-              <div class="locale-block-header">
-                <strong>{{ item.locale }}</strong>
-                {% if item.locale == locale %}
-                  <span class="badge muted">当前语言</span>
-                {% endif %}
-              </div>
-              <label>
-                关键词
-                <input name="keywords" value="{{ item.keywords }}" placeholder="逗号分隔">
-              </label>
-              <label>
-                宣传文本
-                <textarea name="promotionalText" rows="3">{{ item.promotional_text }}</textarea>
-              </label>
-              <label>
-                描述
-                <textarea name="description" rows="8" required>{{ item.description }}</textarea>
-              </label>
-            </section>
-          {% endfor %}
+
+        <div class="metadata-source-note">
+          <strong>{{ source_locale }}</strong>
+          <span>作为源文案；未接入翻译服务前，翻译按钮会把源文案填充到空白语言，避免同步时缺字段。</span>
         </div>
-        <div class="form-grid">
-          <label>
-            隐私政策 URL
-            <input name="privacyPolicyUrl" value="{{ metadata.privacy_policy_url }}">
-          </label>
-          <label>
-            支持 URL
-            <input name="supportUrl" value="{{ metadata.support_url }}">
-          </label>
+
+        <div class="metadata-editor" data-metadata-editor data-mode="field">
+          <div class="metadata-field-view" data-field-view>
+            <div data-field-locales hidden>
+              {% for item in localized_metadata %}
+                <input type="hidden" name="locales" value="{{ item.locale }}">
+              {% endfor %}
+            </div>
+            {% for field in metadata_fields %}
+              <section class="metadata-field-block" data-field="{{ field.key }}">
+                <div class="locale-block-header">
+                  <strong>{{ field.label }}</strong>
+                  <span>{{ supported_locales|length }} 个语言</span>
+                </div>
+                <div class="metadata-locale-grid">
+                  {% for item in localized_metadata %}
+                    <label class="metadata-locale-input" data-locale="{{ item.locale }}">
+                      <span>
+                        {{ item.locale }}
+                        {% if item.is_source %}
+                          <small>源文案</small>
+                        {% endif %}
+                      </span>
+                      {% if field.type == "textarea" %}
+                        <textarea
+                          name="{{ field.name }}"
+                          rows="{{ field.rows }}"
+                          placeholder="{{ field.placeholder }}"
+                          data-metadata-input
+                          data-locale="{{ item.locale }}"
+                          data-field="{{ field.key }}"
+                          {% if field.required %}required{% endif %}
+                        >{{ item[field.key] }}</textarea>
+                      {% else %}
+                        <input
+                          name="{{ field.name }}"
+                          value="{{ item[field.key] }}"
+                          placeholder="{{ field.placeholder }}"
+                          data-metadata-input
+                          data-locale="{{ item.locale }}"
+                          data-field="{{ field.key }}"
+                          {% if field.required %}required{% endif %}
+                        >
+                      {% endif %}
+                    </label>
+                  {% endfor %}
+                </div>
+              </section>
+            {% endfor %}
+          </div>
+
+          <div class="metadata-language-view" data-language-view hidden>
+            <div class="locale-stack">
+              {% for item in localized_metadata %}
+                <section class="locale-block" data-language-block="{{ item.locale }}" {% if item.locale != locale %}hidden{% endif %}>
+                  <input type="hidden" name="locales" value="{{ item.locale }}" disabled>
+                  <div class="locale-block-header">
+                    <strong>{{ item.locale }}</strong>
+                    {% if item.is_source %}
+                      <span class="badge muted">源文案</span>
+                    {% endif %}
+                  </div>
+                  {% for field in metadata_fields %}
+                    <label>
+                      {{ field.label }}
+                      {% if field.type == "textarea" %}
+                        <textarea
+                          name="{{ field.name }}"
+                          rows="{{ field.rows }}"
+                          placeholder="{{ field.placeholder }}"
+                          data-metadata-input
+                          data-locale="{{ item.locale }}"
+                          data-field="{{ field.key }}"
+                          disabled
+                          {% if field.required %}required{% endif %}
+                        >{{ item[field.key] }}</textarea>
+                      {% else %}
+                        <input
+                          name="{{ field.name }}"
+                          value="{{ item[field.key] }}"
+                          placeholder="{{ field.placeholder }}"
+                          data-metadata-input
+                          data-locale="{{ item.locale }}"
+                          data-field="{{ field.key }}"
+                          disabled
+                          {% if field.required %}required{% endif %}
+                        >
+                      {% endif %}
+                    </label>
+                  {% endfor %}
+                </section>
+              {% endfor %}
+            </div>
+          </div>
         </div>
-        <label>
-          营销 URL
-          <input name="marketingUrl" value="{{ metadata.marketing_url }}">
-        </label>
+
         <div class="form-actions">
           <button class="primary-button" type="submit">保存草稿</button>
           <button
@@ -98,7 +165,14 @@
     </section>
 
     <aside class="panel">
-      <div class="panel-header"><h2>商店状态检查</h2><span>5 分钟缓存</span></div>
+      <div class="panel-header">
+        <h2>商店状态检查</h2>
+        <form action="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata/preflight" method="post">
+          <input type="hidden" name="version" value="{{ version }}">
+          <input type="hidden" name="locale" value="{{ source_locale }}">
+          <button class="ghost-button compact" type="submit">实时查询</button>
+        </form>
+      </div>
       {% if preflight %}
         <div class="preflight-status {{ 'ok' if preflight.can_sync else 'blocked' }}">
           <span class="preflight-status-mark" aria-hidden="true">{{ "OK" if preflight.can_sync else "!" }}</span>
@@ -110,12 +184,16 @@
           </div>
         </div>
         <dl class="detail-list">
+          <dt>后台构建</dt>
+          <dd>{{ "已存在" if latest_build else "未找到" }}</dd>
+          <dt>商店版本</dt>
+          <dd>{{ "已创建" if preflight.can_sync else "未确认" }}</dd>
           <dt>检查时间</dt>
           <dd>{{ preflight.checked_at|datetime }}</dd>
           <dt>缓存剩余</dt>
           <dd>{{ preflight.remaining_seconds }} 秒</dd>
           <dt>来源</dt>
-          <dd>{{ "缓存" if preflight.cached else "实时检查" }}</dd>
+          <dd>{{ preflight.source_label }}</dd>
           <dt>原因码</dt>
           <dd>{{ preflight.reason_code or "-" }}</dd>
         </dl>

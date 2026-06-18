@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated
 
@@ -40,6 +41,7 @@ from testflying_api.models import UploadResponse
 from testflying_api.schema import App, DeveloperAccount
 from testflying_api.store_sync import (
     DEFAULT_LOCALE,
+    account_connector,
     check_connector_health,
     resolve_connector_base_url,
     save_app_metadata_draft,
@@ -53,6 +55,7 @@ from testflying_api.upload_service import create_package_upload
 router = APIRouter(prefix="/admin", tags=["admin"])
 SessionDep = Annotated[Session, Depends(get_db_session)]
 AdminDep = Annotated[None, Depends(require_admin)]
+CONNECTOR_AUTO_CHECK_TTL = timedelta(minutes=5)
 
 templates = Jinja2Templates(directory=str(Path(__file__).parents[1] / "templates"))
 templates.env.filters["datetime"] = format_datetime
@@ -878,11 +881,21 @@ def _account_detail_context(
 
 
 def _auto_check_connector(session: Session, account_id: str) -> None:
+    connector = account_connector(session, account_id)
+    if connector and _recently_checked(connector.last_checked_at):
+        return
     try:
         check_connector_health(session, account_id=account_id)
     except ApiError as error:
         if error.code not in {"connector_missing", "account_not_found"}:
             raise
+
+
+def _recently_checked(value: datetime | None) -> bool:
+    if value is None:
+        return False
+    checked_at = value if value.tzinfo else value.replace(tzinfo=UTC)
+    return datetime.now(UTC) - checked_at.astimezone(UTC) < CONNECTOR_AUTO_CHECK_TTL
 
 
 def _metadata_rows_from_form(
@@ -963,4 +976,13 @@ def _upload_details(session: Session, upload: UploadResponse) -> dict[str, str]:
         "version": upload.build.version,
         "build_number": upload.build.build_number,
         "developer_account": account.team_name if account else "未绑定",
+        "store_identifier": _store_identifier_label(app),
     }
+
+
+def _store_identifier_label(app: App | None) -> str:
+    if app is None:
+        return "-"
+    if app.platform == "android":
+        return app.store_package_name or app.bundle_identifier
+    return app.store_app_id or "需手动填写 Apple App ID"

@@ -49,6 +49,40 @@
         text: '等待上传',
         responseText: null
       };
+      const healthStorageKey = 'testflying.admin.health';
+      const adminHealthState = loadHealthState();
+
+      function loadHealthState() {
+        try {
+          const raw = window.sessionStorage?.getItem(healthStorageKey);
+          if (!raw) return { state: 'idle', text: '未检查' };
+          const parsed = JSON.parse(raw);
+          return {
+            state: parsed.state || 'idle',
+            text: parsed.text || '未检查'
+          };
+        } catch (error) {
+          return { state: 'idle', text: '未检查' };
+        }
+      }
+
+      function updateHealthState(state, text) {
+        adminHealthState.state = state;
+        adminHealthState.text = text;
+        try {
+          window.sessionStorage?.setItem(healthStorageKey, JSON.stringify(adminHealthState));
+        } catch (error) {
+          // Storage can be unavailable in private or constrained browser contexts.
+        }
+        syncHealthView();
+      }
+
+      function syncHealthView() {
+        const status = document.querySelector('[data-health-status]');
+        if (!status) return;
+        status.dataset.state = adminHealthState.state;
+        status.textContent = adminHealthState.text;
+      }
 
       async function copyText(value) {
         if (navigator.clipboard && window.isSecureContext) {
@@ -97,6 +131,7 @@
           history.pushState({ adminPath: path }, '', path);
         }
         syncUploadViews();
+        syncHealthView();
         syncAccountViews();
         window.scrollTo({ top: 0, behavior: 'auto' });
       }
@@ -274,6 +309,19 @@
         request.send(new FormData(form));
       }
 
+      function setSubmitterBusy(submitter, busyText = '处理中') {
+        if (!submitter) return;
+        submitter.dataset.originalText ||= submitter.textContent;
+        submitter.disabled = true;
+        submitter.setAttribute('aria-busy', 'true');
+        submitter.textContent = busyText;
+      }
+
+      function setLinkBusy(link) {
+        if (!link) return;
+        link.setAttribute('aria-busy', 'true');
+      }
+
       document.addEventListener('click', async (event) => {
         const button = event.target.closest('[data-copy]');
         if (!button) return;
@@ -331,12 +379,10 @@
       document.addEventListener('click', async (event) => {
         const button = event.target.closest('[data-health-check]');
         if (!button) return;
-        const status = document.querySelector('[data-health-status]');
         const previous = button.textContent;
         button.disabled = true;
         button.textContent = '检查中';
-        status.dataset.state = 'checking';
-        status.textContent = '检查中';
+        updateHealthState('checking', '检查中');
         try {
           const response = await fetch('/health', {
             headers: { Accept: 'application/json' },
@@ -345,11 +391,9 @@
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
           const payload = await response.json();
           if (payload.status !== 'ok') throw new Error('Health status is not ok');
-          status.dataset.state = 'ok';
-          status.textContent = '正常';
+          updateHealthState('ok', '正常');
         } catch (error) {
-          status.dataset.state = 'error';
-          status.textContent = '异常';
+          updateHealthState('error', '异常');
         } finally {
           button.disabled = false;
           button.textContent = previous;
@@ -369,6 +413,7 @@
           return;
         }
         event.preventDefault();
+        setLinkBusy(link);
         try {
           await navigateAdmin(adminPathFromUrl(link.href));
         } catch (error) {
@@ -381,6 +426,12 @@
         if (!form || !window.FormData || !window.XMLHttpRequest) return;
         event.preventDefault();
         startAdminUpload(form);
+      });
+
+      document.addEventListener('submit', (event) => {
+        const form = event.target.closest('form');
+        if (!form || form.matches('[data-upload-form]')) return;
+        setSubmitterBusy(event.submitter);
       });
 
       window.addEventListener('popstate', async () => {
@@ -399,6 +450,7 @@
         event.returnValue = '';
       });
 
+      syncHealthView();
       syncAccountViews();
     </script>
   </body>

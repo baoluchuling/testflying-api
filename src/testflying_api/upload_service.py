@@ -203,6 +203,8 @@ def _upsert_app(
         store_app_id=store_app_id,
         store_package_name=store_package_name,
     )
+    if metadata.platform == "android" and normalized_store_package is None:
+        normalized_store_package = metadata.bundle_identifier
 
     app = session.scalar(
         select(App).where(

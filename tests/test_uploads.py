@@ -86,7 +86,6 @@ def test_upload_can_attach_new_app_to_developer_account(
             "platform": "android",
             "environment": "development",
             "developerAccountId": "account-apple-enterprise",
-            "storePackageName": "com.example.autoparse",
             "changelog": "带账号上传",
         },
         files={

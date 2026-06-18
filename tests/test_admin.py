@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from base64 import b64encode
 from dataclasses import replace
+from datetime import UTC, datetime
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -55,6 +56,10 @@ def test_admin_shell_supports_inline_navigation_and_upload_dock(client: TestClie
     assert "navigateAdmin" in response.text
     assert "history.pushState" in response.text
     assert "adminUploadState.responseText" in response.text
+    assert "sessionStorage" in response.text
+    assert "syncHealthView" in response.text
+    assert "setSubmitterBusy" in response.text
+    assert "setLinkBusy" in response.text
     assert "beforeunload" in response.text
 
 
@@ -115,6 +120,8 @@ def test_admin_upload_page_uses_auto_metadata_and_progress(client: TestClient) -
     assert "name=\"developerAccountId\"" in response.text
     assert "name=\"storeAppId\"" in response.text
     assert "name=\"storePackageName\"" in response.text
+    assert "iOS 需手动填写 App Store Connect 数字 ID" in response.text
+    assert "Android 留空则使用 APK 包名" in response.text
     assert "name=\"buildNumber\"" not in response.text
 
 
@@ -248,7 +255,6 @@ def test_admin_upload_can_bind_package_to_developer_account(
             "platform": "android",
             "environment": "development",
             "developerAccountId": "account-apple-enterprise",
-            "storePackageName": "com.example.autoparse",
             "changelog": "绑定账号上传",
         },
         files={
@@ -263,6 +269,7 @@ def test_admin_upload_can_bind_package_to_developer_account(
     app = db_session.query(App).filter_by(bundle_identifier="com.example.autoparse").one()
     assert response.status_code == 200
     assert "Internal Distribution Team" in response.text
+    assert "商店标识" in response.text
     assert app.developer_account_id == "account-apple-enterprise"
     assert app.store_package_name == "com.example.autoparse"
 
@@ -425,6 +432,26 @@ def test_admin_account_detail_auto_checks_connector(
     assert response.status_code == 200
     assert connector.status == "ok"
     assert connector.last_checked_at is not None
+
+
+def test_admin_account_detail_reuses_recent_connector_check(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+    connector = db_session.query(StoreConnector).one()
+    connector.status = "error"
+    connector.last_checked_at = datetime.now(UTC)
+    db_session.commit()
+
+    response = client.get(
+        "/admin/developer-accounts/account-apple-enterprise",
+        headers=_admin_headers(),
+    )
+
+    db_session.refresh(connector)
+    assert response.status_code == 200
+    assert connector.status == "error"
 
 
 def test_admin_can_check_connector_manually(

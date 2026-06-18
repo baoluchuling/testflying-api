@@ -40,6 +40,10 @@
           <span>开发者账号</span>
           <strong>{{ upload_details.developer_account }}</strong>
         </div>
+        <div class="metadata-item">
+          <span>商店标识</span>
+          <strong>{{ upload_details.store_identifier }}</strong>
+        </div>
       </div>
     </section>
     <section class="panel">
@@ -97,11 +101,11 @@
       <div class="form-grid">
         <label>
           Apple App ID
-          <input name="storeAppId" placeholder="iOS App Store Connect App ID">
+          <input name="storeAppId" placeholder="iOS 需手动填写 App Store Connect 数字 ID">
         </label>
         <label>
-          Google package / 备用包名
-          <input name="storePackageName" placeholder="Android 可填 Google Play package">
+          Google package
+          <input name="storePackageName" placeholder="Android 留空则使用 APK 包名">
         </label>
       </div>
       <label>

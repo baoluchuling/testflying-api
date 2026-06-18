@@ -116,6 +116,15 @@ h2 { font-size: 18px; }
   opacity: .7;
 }
 
+.primary-button[aria-busy="true"],
+.ghost-button[aria-busy="true"],
+.ghost-link[aria-busy="true"],
+.nav-link[aria-busy="true"],
+.panel-header a[aria-busy="true"] {
+  cursor: wait;
+  opacity: .72;
+}
+
 .health-status {
   display: inline-flex;
   align-items: center;

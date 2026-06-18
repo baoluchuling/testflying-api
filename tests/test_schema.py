@@ -23,6 +23,7 @@ def test_catalog_schema_contains_no_user_state_tables() -> None:
         "device_build_visibility",
         "store_connectors",
         "store_release_note_drafts",
+        "store_app_metadata_drafts",
         "store_preflight_checks",
         "store_sync_runs",
         "audit_logs",

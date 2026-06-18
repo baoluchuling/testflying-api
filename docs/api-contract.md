@@ -73,12 +73,16 @@ Content-Type: multipart/form-data
 - `environment`：`development` 或 `production`。
 - `changelog`：可选更新说明。
 - `appName`：可选，仅用于覆盖服务端解析出的应用名称。
+- `developerAccountId`：可选，上传后把新 App 或未绑定 App 归属到指定开发者账号。
+- `storeAppId`：可选，Apple App Store Connect App ID。
+- `storePackageName`：可选，Google Play package 或备用商店包名。
 
 iOS 上传会从 IPA 的 `Payload/*.app/Info.plist` 解析 bundle id、应用名、版本号和 build number。Android 上传会从 APK 的 binary manifest 和资源表解析 package name、应用名、version name 和 version code。
 
 上传成功后服务端会：
 
 - 根据 bundle id 或 package name 加平台 upsert 应用。
+- 如果传入 `developerAccountId`，校验账号存在；如果 App 已绑定其他账号，则拒绝上传，避免静默改绑。
 - 创建构建。
 - 保存 IPA/APK 制品。
 - iOS 额外生成 `manifest.plist`。
@@ -99,6 +103,21 @@ GET /admin/apps
 GET /admin/builds
 GET /admin/devices
 GET /admin/developer-accounts
+GET /admin/developer-accounts/new
+POST /admin/developer-accounts
+GET /admin/developer-accounts/{accountId}
+GET /admin/developer-accounts/{accountId}/edit
+POST /admin/developer-accounts/{accountId}
+POST /admin/developer-accounts/{accountId}/connector
+POST /admin/developer-accounts/{accountId}/apps
+POST /admin/developer-accounts/{accountId}/apps/{appId}/settings
+POST /admin/developer-accounts/{accountId}/apps/{appId}/unbind
+GET /admin/developer-accounts/{accountId}/apps/{appId}/store-metadata
+POST /admin/developer-accounts/{accountId}/apps/{appId}/store-metadata
+POST /admin/developer-accounts/{accountId}/apps/{appId}/store-metadata/sync
+GET /admin/developer-accounts/{accountId}/apps/{appId}/release-notes
+POST /admin/developer-accounts/{accountId}/apps/{appId}/release-notes
+POST /admin/developer-accounts/{accountId}/apps/{appId}/release-notes/sync
 GET /admin/notifications
 ```
 
@@ -108,6 +127,8 @@ GET /admin/notifications
 - 密码：复用 `TESTFLYING_STATIC_TOKEN`。
 
 后台上传表单复用 `POST /v1/test-distribution/uploads` 的业务逻辑，上传成功后同样会创建应用、构建、制品、iOS manifest 和通知。后台页面使用浏览器上传进度事件展示上传百分比；服务端收到完整文件后再解析包信息和写入数据库。MinIO Console 只管理对象存储文件，不能替代管理后台上传，因为直接上传到 MinIO 不会写入业务数据库。
+
+开发者账号后台支持新增/编辑账号、配置账号级 connector、绑定/解绑 App、维护 App 商店标识，并在账号上下文中同步版本说明和文字类商店元数据。商店同步页面进入时会自动预检查；相同账号、App、平台、版本、语言和操作的预检查结果缓存 5 分钟。
 
 ## 设备
 

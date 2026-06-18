@@ -13,7 +13,7 @@
 
 - `GET /health`：服务健康检查。
 - `GET /v1/test-distribution/workspace`：返回客户端首屏需要的 workspace 快照结构。
-- `POST /v1/test-distribution/uploads`：上传 IPA/APK，自动解析包信息，创建应用、构建、制品和构建通知。
+- `POST /v1/test-distribution/uploads`：上传 IPA/APK，自动解析包信息，创建应用、构建、制品和构建通知；可选绑定开发者账号并写入商店标识。
 - `GET /v1/test-distribution/devices/current`：读取当前设备登记事实。
 - `GET /v1/test-distribution/devices`：读取设备列表。
 - `POST /v1/test-distribution/devices/registration-link`：生成设备登记请求链接，不自动审批设备。
@@ -21,7 +21,8 @@
 - `GET /v1/test-distribution/developer-accounts/renewals`：读取需要续费提醒的账号。
 - `GET /v1/test-distribution/notifications`：读取服务端通知 feed，支持 `type=build|account|device`。
 - `GET /admin`：内置管理后台，用于上传包、查看应用/构建/设备/账号/通知和复制安装资源链接。
-- 管理后台支持按开发者账号进入商店同步页，第一版只做版本说明草稿、自动预检查、5 分钟预检查缓存和手动同步。
+- 管理后台支持新增/编辑开发者账号、上传时绑定账号、绑定/解绑账号下 App、维护 App 商店标识、配置账号 connector，以及同步版本说明和文字类商店元数据。
+- 商店同步页进入时会自动预检查，5 分钟内相同账号、App、平台、版本、语言和操作返回同一个预检查状态。
 - 请求上下文预留 `Authorization`、`X-Device-ID`、`X-Client-Platform`。
 - Docker Compose 默认启动中心后台、connector、PostgreSQL、MinIO。
 
@@ -184,17 +185,19 @@ uvicorn testflying_api.main:app --reload
 open http://localhost:8000/admin
 ```
 
-第一版后台支持上传 IPA/APK、查看应用/构建/设备/开发者账号/通知，以及复制 `installUrl`、`manifestUrl` 和 `downloadUrl`。上传页会显示上传进度；IPA/APK 的包名、应用名、版本号和构建号由服务端自动解析，必要时可以在后台覆盖应用名称。设备审批、构建删除和开发者账号编辑会放到后续管理能力里。
+第一版后台支持上传 IPA/APK、查看应用/构建/设备/开发者账号/通知，以及复制 `installUrl`、`manifestUrl` 和 `downloadUrl`。上传页会显示上传进度；IPA/APK 的包名、应用名、版本号和构建号由服务端自动解析，必要时可以在后台覆盖应用名称。上传时可以选择开发者账号，并填写 Apple App ID 或 Google package 等商店标识。设备审批和构建删除会放到后续管理能力里。
 
 商店同步第一版入口：
 
 1. 进入 `开发者账号`。
-2. 打开某个账号详情。
-3. 配置该账号的 connector 地址和调用 token。
-4. 在账号下选择 App，进入 `管理版本说明`。
-5. 页面进入时自动检查目标商店版本是否存在、是否可编辑。
-6. 5 分钟内相同账号、App、平台、版本、语言和操作返回同一个预检查状态。
-7. `canSync=true` 时可以手动同步版本说明。
+2. 新增或编辑开发者账号。
+3. 打开某个账号详情，配置该账号的 connector 地址和调用 token。
+4. 上传新构建时直接选择账号，或者在账号详情里绑定已有 App。
+5. 在账号下维护 App 的 `store_app_id` / `store_package_name`。
+6. 进入 `商店元数据` 或 `管理版本说明`。
+7. 页面进入时自动检查目标商店版本是否存在、是否可编辑。
+8. 5 分钟内相同账号、App、平台、版本、语言和操作返回同一个预检查状态。
+9. `canSync=true` 时可以手动同步草稿。
 
 运行测试：
 
@@ -214,7 +217,8 @@ ruff check connector/src connector/tests
 - 构建环境分类：`development` 或 `production`。
 - 设备登记事实和设备对构建的可见性。
 - 开发者账号续费事实。
-- 商店版本说明草稿、预检查缓存、同步记录和审计日志。
+- 开发者账号与 App 的绑定关系、App 商店标识。
+- 商店版本说明草稿、文字类商店元数据草稿、预检查缓存、同步记录和审计日志。
 - 服务端产生的通知 feed。
 
 服务端明确不做：

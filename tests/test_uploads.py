@@ -72,3 +72,35 @@ def test_upload_android_parses_metadata_from_apk(
     app = db_session.get(App, body["app"]["id"])
     assert app is not None
     assert app.bundle_identifier == "com.example.autoparse"
+
+
+def test_upload_can_attach_new_app_to_developer_account(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+
+    response = client.post(
+        "/v1/test-distribution/uploads",
+        data={
+            "platform": "android",
+            "environment": "development",
+            "developerAccountId": "account-apple-enterprise",
+            "storePackageName": "com.example.autoparse",
+            "changelog": "带账号上传",
+        },
+        files={
+            "file": (
+                "app.apk",
+                make_android_apk_bytes(),
+                "application/vnd.android.package-archive",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    app = db_session.get(App, body["app"]["id"])
+    assert app is not None
+    assert app.developer_account_id == "account-apple-enterprise"
+    assert app.store_package_name == "com.example.autoparse"

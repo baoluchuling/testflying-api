@@ -19,7 +19,15 @@ from testflying_api.package_parser import (
     parse_apk_metadata,
     parse_ipa_metadata,
 )
-from testflying_api.schema import App, Artifact, Build, Device, DeviceBuildVisibility, Notification
+from testflying_api.schema import (
+    App,
+    Artifact,
+    Build,
+    DeveloperAccount,
+    Device,
+    DeviceBuildVisibility,
+    Notification,
+)
 from testflying_api.storage import ArtifactStorage
 
 
@@ -34,6 +42,9 @@ def create_package_upload(
     environment: str,
     changelog: str = "",
     app_name: str | None = None,
+    developer_account_id: str | None = None,
+    store_app_id: str | None = None,
+    store_package_name: str | None = None,
 ) -> UploadResponse:
     normalized_platform = _parse_platform(platform)
     normalized_environment = _parse_environment(environment)
@@ -45,7 +56,14 @@ def create_package_upload(
         content=content,
         app_name=app_name,
     )
-    app = _upsert_app(session, metadata, environment=normalized_environment)
+    app = _upsert_app(
+        session,
+        metadata,
+        environment=normalized_environment,
+        developer_account_id=developer_account_id,
+        store_app_id=store_app_id,
+        store_package_name=store_package_name,
+    )
     build = _create_build(
         session,
         app,
@@ -111,6 +129,7 @@ def create_package_upload(
             tag_color="#2478FF" if normalized_environment == "development" else "#20864A",
             app_id=app.id,
             build_id=build.id,
+            developer_account_id=app.developer_account_id,
             created_at=datetime.now(UTC),
         )
     )
@@ -166,7 +185,19 @@ def _metadata_for_upload(
         raise ApiError("invalid_package", str(error), status_code=422) from error
 
 
-def _upsert_app(session: Session, metadata: PackageMetadata, *, environment: str) -> App:
+def _upsert_app(
+    session: Session,
+    metadata: PackageMetadata,
+    *,
+    environment: str,
+    developer_account_id: str | None,
+    store_app_id: str | None,
+    store_package_name: str | None,
+) -> App:
+    normalized_account_id = _normalize_optional(developer_account_id)
+    if normalized_account_id and session.get(DeveloperAccount, normalized_account_id) is None:
+        raise ApiError("account_not_found", "开发者账号不存在", status_code=404)
+
     app = session.scalar(
         select(App).where(
             App.platform == metadata.platform,
@@ -174,6 +205,19 @@ def _upsert_app(session: Session, metadata: PackageMetadata, *, environment: str
         )
     )
     if app is not None:
+        if normalized_account_id:
+            if app.developer_account_id and app.developer_account_id != normalized_account_id:
+                raise ApiError(
+                    "app_bound_to_other_account",
+                    "该 App 已绑定到其他开发者账号，请先在后台解绑后再上传。",
+                    status_code=422,
+                )
+            app.developer_account_id = normalized_account_id
+        _apply_store_identifiers(
+            app,
+            store_app_id=store_app_id,
+            store_package_name=store_package_name,
+        )
         app.name = metadata.app_name
         app.default_channel = channel_for_environment(environment)
         return app
@@ -184,6 +228,9 @@ def _upsert_app(session: Session, metadata: PackageMetadata, *, environment: str
         bundle_identifier=metadata.bundle_identifier,
         platform=metadata.platform,
         default_channel=channel_for_environment(environment),
+        developer_account_id=normalized_account_id,
+        store_app_id=_normalize_optional(store_app_id),
+        store_package_name=_normalize_optional(store_package_name),
         icon_key="rocket" if metadata.platform == "ios" else "layers",
         icon_color="#2478FF" if metadata.platform == "ios" else "#B45309",
     )
@@ -240,3 +287,24 @@ def _content_type_for_platform(platform: str) -> str:
 
 def _environment_label(environment: str) -> str:
     return "线上环境" if environment == "production" else "开发环境"
+
+
+def _apply_store_identifiers(
+    app: App,
+    *,
+    store_app_id: str | None,
+    store_package_name: str | None,
+) -> None:
+    normalized_store_app_id = _normalize_optional(store_app_id)
+    normalized_store_package_name = _normalize_optional(store_package_name)
+    if normalized_store_app_id is not None:
+        app.store_app_id = normalized_store_app_id
+    if normalized_store_package_name is not None:
+        app.store_package_name = normalized_store_package_name
+
+
+def _normalize_optional(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    return normalized or None

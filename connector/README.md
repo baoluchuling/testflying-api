@@ -36,4 +36,4 @@ docker run --rm -p 8100:8100 \
 - `POST /v1/sync-runs`
 - `GET /v1/sync-runs/{run_id}`
 
-第一版只实现版本说明同步协议。真实 Apple / Google 调用后续在 `store_clients` 层替换。
+第一版实现 `update_release_notes` 和 `update_app_metadata` 两类同步协议。当前 connector 仍是可运行的示例执行器，真实 Apple / Google 调用后续在 `store_clients` 层替换。

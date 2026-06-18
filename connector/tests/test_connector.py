@@ -66,3 +66,26 @@ def test_connector_sync_run_succeeds() -> None:
     assert response.json()["status"] == "succeeded"
     assert detail_response.status_code == 200
     assert detail_response.json()["status"] == "succeeded"
+
+
+def test_connector_metadata_sync_run_succeeds() -> None:
+    client = TestClient(app)
+    payload = _payload()
+    payload["operation"] = "update_app_metadata"
+    payload["runId"] = "sync-metadata-001"
+    payload["metadata"] = {
+        "title": "Aurora Mobile",
+        "subtitle": "内部测试分发",
+        "keywords": "internal,test",
+        "promotionalText": "更稳定的测试体验。",
+        "description": "用于内部测试包分发和回归验证。",
+        "privacyPolicyUrl": "https://example.test/privacy",
+        "supportUrl": "https://example.test/support",
+        "marketingUrl": "",
+    }
+
+    response = client.post("/v1/sync-runs", headers=_headers(), json=payload)
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "succeeded"
+    assert response.json()["message"] == "商店元数据已同步。"

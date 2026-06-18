@@ -22,6 +22,9 @@ async def upload_package(
     environment: Annotated[str, Form()],
     changelog: Annotated[str, Form()] = "",
     app_name: Annotated[str | None, Form(alias="appName")] = None,
+    developer_account_id: Annotated[str | None, Form(alias="developerAccountId")] = None,
+    store_app_id: Annotated[str | None, Form(alias="storeAppId")] = None,
+    store_package_name: Annotated[str | None, Form(alias="storePackageName")] = None,
 ) -> UploadResponse:
     return create_package_upload(
         session=session,
@@ -33,4 +36,7 @@ async def upload_package(
         environment=environment,
         changelog=changelog,
         app_name=app_name,
+        developer_account_id=developer_account_id,
+        store_app_id=store_app_id,
+        store_package_name=store_package_name,
     )

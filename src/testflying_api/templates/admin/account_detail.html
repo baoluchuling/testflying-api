@@ -10,7 +10,8 @@
     <div class="context-meta">
       <span>到期：{{ account.expires_at|datetime }}</span>
       <span>剩余：{{ remaining_days }} 天</span>
-      <span>状态：{{ account.status }}</span>
+      <span>状态：{{ account.status|account_status }}</span>
+      <a class="ghost-link" href="/admin/developer-accounts/{{ account.id }}/edit">编辑账号</a>
     </div>
   </section>
 
@@ -71,13 +72,24 @@
                 -
               {% endif %}
             </td>
-            <td>{{ item.app.store_app_id or item.app.store_package_name or "-" }}</td>
+            <td>
+              <form class="inline-form" action="/admin/developer-accounts/{{ account.id }}/apps/{{ item.app.id }}/settings" method="post">
+                <input name="storeAppId" value="{{ item.app.store_app_id or '' }}" placeholder="Apple App ID">
+                <input name="storePackageName" value="{{ item.app.store_package_name or '' }}" placeholder="Google package / 可留空">
+                <button class="ghost-button" type="submit">保存</button>
+              </form>
+            </td>
             <td>
               {% if item.latest_build %}
+                <a class="ghost-link" href="/admin/developer-accounts/{{ account.id }}/apps/{{ item.app.id }}/store-metadata">商店元数据</a>
+                <br>
                 <a class="ghost-link" href="/admin/developer-accounts/{{ account.id }}/apps/{{ item.app.id }}/release-notes">管理版本说明</a>
               {% else %}
                 <span class="empty">暂无构建</span>
               {% endif %}
+              <form class="link-form" action="/admin/developer-accounts/{{ account.id }}/apps/{{ item.app.id }}/unbind" method="post">
+                <button type="submit">解绑</button>
+              </form>
             </td>
           </tr>
         {% else %}
@@ -85,6 +97,35 @@
         {% endfor %}
       </tbody>
     </table>
+  </section>
+
+  <section class="panel">
+    <div class="panel-header"><h2>绑定已有 App</h2><span>只展示尚未绑定账号的 App</span></div>
+    {% if unassigned_apps %}
+      <form class="form" action="/admin/developer-accounts/{{ account.id }}/apps" method="post">
+        <div class="form-grid">
+          <label>
+            App
+            <select name="appId" required>
+              {% for app in unassigned_apps %}
+                <option value="{{ app.id }}">{{ app.name }} / {{ app.bundle_identifier }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            Apple App ID
+            <input name="storeAppId" placeholder="iOS App Store Connect App ID">
+          </label>
+        </div>
+        <label>
+          Google package / 备用包名
+          <input name="storePackageName" placeholder="Android 可填 Google Play package，iOS 可留空">
+        </label>
+        <button class="primary-button" type="submit">绑定 App</button>
+      </form>
+    {% else %}
+      <div class="empty">暂无可绑定 App。可以先上传一个构建，上传时也可以直接选择开发者账号。</div>
+    {% endif %}
   </section>
 
   <section class="panel">

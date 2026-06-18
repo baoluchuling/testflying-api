@@ -60,26 +60,39 @@ class CatalogRepository:
         if not app_id_set:
             return []
 
-        statement = (
-            select(DeveloperAccount)
-            .join(
-                DeveloperAccountApp,
-                DeveloperAccountApp.developer_account_id == DeveloperAccount.id,
+        direct_accounts = list(
+            self._session.scalars(
+                select(DeveloperAccount)
+                .join(App, App.developer_account_id == DeveloperAccount.id)
+                .where(App.id.in_(app_id_set))
             )
-            .where(DeveloperAccountApp.app_id.in_(app_id_set))
-            .order_by(DeveloperAccount.expires_at.asc())
-            .distinct()
         )
-        return list(self._session.scalars(statement))
+        legacy_accounts = list(
+            self._session.scalars(
+                select(DeveloperAccount)
+                .join(
+                    DeveloperAccountApp,
+                    DeveloperAccountApp.developer_account_id == DeveloperAccount.id,
+                )
+                .where(DeveloperAccountApp.app_id.in_(app_id_set))
+            )
+        )
+        accounts_by_id = {account.id: account for account in [*direct_accounts, *legacy_accounts]}
+        return sorted(accounts_by_id.values(), key=lambda account: account.expires_at)
 
     def app_ids_for_developer_account(self, account_id: str) -> list[str]:
-        return list(
+        direct_ids = list(
+            self._session.scalars(select(App.id).where(App.developer_account_id == account_id))
+        )
+        legacy_ids = list(
             self._session.scalars(
                 select(DeveloperAccountApp.app_id).where(
                     DeveloperAccountApp.developer_account_id == account_id,
                 )
             )
         )
+        merged_ids = list(dict.fromkeys([*direct_ids, *legacy_ids]))
+        return merged_ids
 
     def notifications(self, *, types: set[str] | None = None) -> list[Notification]:
         statement: Select[tuple[Notification]] = select(Notification).order_by(

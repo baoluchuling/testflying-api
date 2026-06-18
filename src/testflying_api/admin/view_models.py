@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
+from testflying_api.admin.services import list_account_options, list_unassigned_apps
 from testflying_api.schema import (
     App,
     Build,
@@ -16,11 +17,13 @@ from testflying_api.schema import (
 )
 from testflying_api.store_sync import (
     DEFAULT_LOCALE,
+    UPDATE_APP_METADATA,
     account_apps,
     account_connector,
     draft_for_scope,
     get_or_refresh_preflight,
     latest_build_for_app,
+    metadata_draft_for_scope,
     recent_sync_runs,
 )
 
@@ -58,10 +61,14 @@ def list_apps(session: Session) -> list[App]:
     return list(
         session.scalars(
             select(App)
-            .options(selectinload(App.builds))
+            .options(selectinload(App.builds), selectinload(App.developer_account))
             .order_by(App.added_at.desc(), App.name.asc())
         )
     )
+
+
+def upload_context(session: Session) -> dict[str, object]:
+    return {"accounts": list_account_options(session)}
 
 
 def list_builds(session: Session, *, limit: int | None = None) -> list[Build]:
@@ -125,6 +132,7 @@ def account_detail_context(session: Session, account_id: str) -> dict[str, objec
             for app in apps
         ],
         "connector": connector,
+        "unassigned_apps": list_unassigned_apps(session),
         "sync_runs": recent_sync_runs(session, account_id=account_id),
     }
 
@@ -179,6 +187,67 @@ def release_notes_context(
     }
 
 
+def store_metadata_context(
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    version: str | None = None,
+    locale: str = DEFAULT_LOCALE,
+) -> dict[str, object]:
+    account = session.get(DeveloperAccount, account_id)
+    app = next((item for item in account_apps(session, account_id) if item.id == app_id), None)
+    latest_build = latest_build_for_app(session, app_id)
+    target_version = version or (latest_build.version if latest_build else "")
+    draft = (
+        metadata_draft_for_scope(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            platform=app.platform,
+            version=target_version,
+            locale=locale,
+        )
+        if app and target_version
+        else None
+    )
+    preflight = (
+        get_or_refresh_preflight(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            version=target_version,
+            locale=locale,
+            operation=UPDATE_APP_METADATA,
+        )
+        if app and target_version
+        else None
+    )
+    return {
+        "account": account,
+        "app": app,
+        "latest_build": latest_build,
+        "version": target_version,
+        "locale": locale,
+        "draft": draft,
+        "metadata": {
+            "title": draft.title if draft else (app.name if app else ""),
+            "subtitle": draft.subtitle if draft else "",
+            "keywords": draft.keywords if draft else "",
+            "promotional_text": draft.promotional_text if draft else "",
+            "description": (
+                draft.description if draft else (latest_build.note if latest_build else "")
+            ),
+            "privacy_policy_url": draft.privacy_policy_url if draft else "",
+            "support_url": draft.support_url if draft else "",
+            "marketing_url": draft.marketing_url if draft else "",
+        },
+        "preflight": preflight,
+        "connector": account_connector(session, account_id),
+        "sync_runs": recent_sync_runs(session, account_id=account_id, app_id=app_id),
+    }
+
+
 def list_notifications(session: Session, *, limit: int | None = None) -> list[Notification]:
     statement = select(Notification).order_by(Notification.created_at.desc())
     if limit is not None:
@@ -211,6 +280,15 @@ def environment_label(value: str) -> str:
 
 def platform_label(value: str) -> str:
     return "iOS" if value == "ios" else "Android"
+
+
+def account_status_label(value: str) -> str:
+    return {
+        "ok": "正常",
+        "renewal_due": "需要续费",
+        "expired": "已过期",
+        "disabled": "已停用",
+    }.get(value, value)
 
 
 def remaining_days(expires_at: datetime) -> int:

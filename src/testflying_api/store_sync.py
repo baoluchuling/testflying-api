@@ -19,6 +19,7 @@ from testflying_api.schema import (
     Build,
     DeveloperAccount,
     DeveloperAccountApp,
+    StoreAppMetadataDraft,
     StoreConnector,
     StorePreflightCheck,
     StoreReleaseNoteDraft,
@@ -27,6 +28,7 @@ from testflying_api.schema import (
 
 PREFLIGHT_TTL = timedelta(minutes=5)
 UPDATE_RELEASE_NOTES = "update_release_notes"
+UPDATE_APP_METADATA = "update_app_metadata"
 DEFAULT_LOCALE = "zh-Hans"
 
 
@@ -60,10 +62,18 @@ class StoreConnectorClient:
         connector: StoreConnector,
         payload: dict[str, object],
     ) -> dict[str, object]:
+        return self.sync_store_operation(connector, payload)
+
+    def sync_store_operation(
+        self,
+        connector: StoreConnector,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
         if connector.base_url.startswith("mock://"):
+            operation = str(payload.get("operation") or UPDATE_RELEASE_NOTES)
             return {
                 "status": "succeeded",
-                "message": "版本说明已同步。",
+                "message": f"{_operation_label(operation)}已同步。",
             }
         return _post_json(connector, "/v1/sync-runs", payload)
 
@@ -76,9 +86,6 @@ def account_apps(session: Session, account_id: str) -> list[App]:
             .order_by(App.added_at.desc(), App.name.asc())
         )
     )
-    if direct_apps:
-        return direct_apps
-
     legacy_app_ids = list(
         session.scalars(
             select(DeveloperAccountApp.app_id).where(
@@ -86,13 +93,19 @@ def account_apps(session: Session, account_id: str) -> list[App]:
             )
         )
     )
-    if not legacy_app_ids:
-        return []
-    return list(
-        session.scalars(
-            select(App).where(App.id.in_(legacy_app_ids)).order_by(App.added_at.desc(), App.name)
+    legacy_apps = (
+        list(
+            session.scalars(
+                select(App)
+                .where(App.id.in_(legacy_app_ids), App.developer_account_id.is_(None))
+                .order_by(App.added_at.desc(), App.name.asc())
+            )
         )
+        if legacy_app_ids
+        else []
     )
+    apps_by_id = {app.id: app for app in [*direct_apps, *legacy_apps]}
+    return sorted(apps_by_id.values(), key=lambda app: (app.added_at, app.name), reverse=True)
 
 
 def account_connector(session: Session, account_id: str) -> StoreConnector | None:
@@ -171,6 +184,26 @@ def draft_for_scope(
     )
 
 
+def metadata_draft_for_scope(
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    platform: str,
+    version: str,
+    locale: str,
+) -> StoreAppMetadataDraft | None:
+    return session.scalar(
+        select(StoreAppMetadataDraft).where(
+            StoreAppMetadataDraft.developer_account_id == account_id,
+            StoreAppMetadataDraft.app_id == app_id,
+            StoreAppMetadataDraft.platform == platform,
+            StoreAppMetadataDraft.version == version,
+            StoreAppMetadataDraft.locale == locale,
+        )
+    )
+
+
 def save_release_note_draft(
     session: Session,
     *,
@@ -210,6 +243,69 @@ def save_release_note_draft(
     return draft
 
 
+def save_app_metadata_draft(
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    version: str,
+    locale: str,
+    title: str,
+    subtitle: str,
+    keywords: str,
+    promotional_text: str,
+    description: str,
+    privacy_policy_url: str,
+    support_url: str,
+    marketing_url: str,
+) -> StoreAppMetadataDraft:
+    app = scoped_app(session, account_id, app_id)
+    if app is None:
+        raise ApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
+    normalized_title = title.strip()
+    normalized_description = description.strip()
+    if not normalized_title:
+        raise ApiError("invalid_metadata", "应用标题不能为空", status_code=422)
+    if not normalized_description:
+        raise ApiError("invalid_metadata", "应用描述不能为空", status_code=422)
+
+    draft = metadata_draft_for_scope(
+        session,
+        account_id=account_id,
+        app_id=app.id,
+        platform=app.platform,
+        version=version,
+        locale=locale,
+    )
+    values = {
+        "title": normalized_title,
+        "subtitle": subtitle.strip(),
+        "keywords": keywords.strip(),
+        "promotional_text": promotional_text.strip(),
+        "description": normalized_description,
+        "privacy_policy_url": privacy_policy_url.strip(),
+        "support_url": support_url.strip(),
+        "marketing_url": marketing_url.strip(),
+    }
+    if draft is None:
+        draft = StoreAppMetadataDraft(
+            id=f"metadata-{uuid4().hex[:12]}",
+            developer_account_id=account_id,
+            app_id=app.id,
+            platform=app.platform,
+            version=version,
+            locale=locale,
+            **values,
+        )
+        session.add(draft)
+    else:
+        for key, value in values.items():
+            setattr(draft, key, value)
+        draft.updated_at = datetime.now(UTC)
+    session.flush()
+    return draft
+
+
 def get_or_refresh_preflight(
     session: Session,
     *,
@@ -217,6 +313,7 @@ def get_or_refresh_preflight(
     app_id: str,
     version: str,
     locale: str,
+    operation: str = UPDATE_RELEASE_NOTES,
     client: StoreConnectorClient | None = None,
 ) -> PreflightState:
     app = scoped_app(session, account_id, app_id)
@@ -239,6 +336,7 @@ def get_or_refresh_preflight(
         account_id=account_id,
         app=app,
         connector=connector,
+        operation=operation,
         version=version,
         locale=locale,
     )
@@ -273,7 +371,7 @@ def get_or_refresh_preflight(
         app_id=app.id,
         connector_id=connector.id,
         platform=app.platform,
-        operation=UPDATE_RELEASE_NOTES,
+        operation=operation,
         version=version,
         locale=locale,
         request_hash=request_hash,
@@ -344,6 +442,7 @@ def sync_release_notes(
         run=run,
         account_id=account_id,
         app=app,
+        operation=UPDATE_RELEASE_NOTES,
         version=version,
         locale=locale,
         release_notes=draft.release_notes,
@@ -370,6 +469,105 @@ def sync_release_notes(
             developer_account_id=account_id,
             actor=actor,
             action="store.release_notes.sync",
+            target_type="store_sync_run",
+            target_id=run.id,
+        )
+    )
+    session.flush()
+    return run
+
+
+def sync_app_metadata(
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    version: str,
+    locale: str,
+    title: str,
+    subtitle: str,
+    keywords: str,
+    promotional_text: str,
+    description: str,
+    privacy_policy_url: str,
+    support_url: str,
+    marketing_url: str,
+    actor: str,
+    client: StoreConnectorClient | None = None,
+) -> StoreSyncRun:
+    app = scoped_app(session, account_id, app_id)
+    if app is None:
+        raise ApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
+    connector = account_connector(session, account_id)
+    if connector is None:
+        raise ApiError("connector_missing", "当前开发者账号还没有配置 connector", status_code=422)
+    draft = save_app_metadata_draft(
+        session,
+        account_id=account_id,
+        app_id=app.id,
+        version=version,
+        locale=locale,
+        title=title,
+        subtitle=subtitle,
+        keywords=keywords,
+        promotional_text=promotional_text,
+        description=description,
+        privacy_policy_url=privacy_policy_url,
+        support_url=support_url,
+        marketing_url=marketing_url,
+    )
+    preflight = get_or_refresh_preflight(
+        session,
+        account_id=account_id,
+        app_id=app.id,
+        version=version,
+        locale=locale,
+        operation=UPDATE_APP_METADATA,
+        client=client,
+    )
+    if not preflight.can_sync:
+        raise ApiError("preflight_failed", preflight.message, status_code=422)
+
+    run = StoreSyncRun(
+        id=f"sync-{uuid4().hex[:12]}",
+        developer_account_id=account_id,
+        app_id=app.id,
+        connector_id=connector.id,
+        metadata_draft_id=draft.id,
+        platform=app.platform,
+        operation=UPDATE_APP_METADATA,
+        version=version,
+        locale=locale,
+        status="running",
+    )
+    session.add(run)
+    session.flush()
+
+    payload = _sync_payload(
+        run=run,
+        account_id=account_id,
+        app=app,
+        operation=UPDATE_APP_METADATA,
+        version=version,
+        locale=locale,
+        metadata=_metadata_payload(draft),
+    )
+    connector_client = client or StoreConnectorClient()
+    try:
+        response = connector_client.sync_store_operation(connector, payload)
+    except ConnectorCallError as error:
+        run.status = "failed"
+        run.error_code = "connector_error"
+        run.error_summary = error.message
+    else:
+        _apply_sync_response(run, response)
+    run.finished_at = datetime.now(UTC)
+    session.add(
+        AuditLog(
+            id=f"audit-{uuid4().hex[:12]}",
+            developer_account_id=account_id,
+            actor=actor,
+            action="store.app_metadata.sync",
             target_type="store_sync_run",
             target_id=run.id,
         )
@@ -428,13 +626,14 @@ def _preflight_payload(
     account_id: str,
     app: App,
     connector: StoreConnector,
+    operation: str,
     version: str,
     locale: str,
 ) -> dict[str, object]:
     return {
         "developerAccountId": account_id,
         "connectorId": connector.id,
-        "operation": UPDATE_RELEASE_NOTES,
+        "operation": operation,
         "platform": app.platform,
         "version": version,
         "locale": locale,
@@ -447,20 +646,26 @@ def _sync_payload(
     run: StoreSyncRun,
     account_id: str,
     app: App,
+    operation: str,
     version: str,
     locale: str,
-    release_notes: str,
+    release_notes: str | None = None,
+    metadata: dict[str, object] | None = None,
 ) -> dict[str, object]:
-    return {
+    payload: dict[str, object] = {
         "runId": run.id,
         "developerAccountId": account_id,
-        "operation": UPDATE_RELEASE_NOTES,
+        "operation": operation,
         "platform": app.platform,
         "version": version,
         "locale": locale,
         "app": _app_payload(app),
-        "releaseNotes": release_notes,
     }
+    if release_notes is not None:
+        payload["releaseNotes"] = release_notes
+    if metadata is not None:
+        payload["metadata"] = metadata
+    return payload
 
 
 def _app_payload(app: App) -> dict[str, object]:
@@ -469,6 +674,19 @@ def _app_payload(app: App) -> dict[str, object]:
         "bundleIdentifier": app.bundle_identifier,
         "storeAppId": app.store_app_id,
         "packageName": app.store_package_name or app.bundle_identifier,
+    }
+
+
+def _metadata_payload(draft: StoreAppMetadataDraft) -> dict[str, object]:
+    return {
+        "title": draft.title,
+        "subtitle": draft.subtitle,
+        "keywords": draft.keywords,
+        "promotionalText": draft.promotional_text,
+        "description": draft.description,
+        "privacyPolicyUrl": draft.privacy_policy_url,
+        "supportUrl": draft.support_url,
+        "marketingUrl": draft.marketing_url,
     }
 
 
@@ -500,11 +718,13 @@ def _post_json(
 
 def _mock_preflight(payload: dict[str, object]) -> dict[str, object]:
     version = str(payload.get("version") or "")
+    operation = str(payload.get("operation") or UPDATE_RELEASE_NOTES)
+    operation_label = _operation_label(operation)
     if not version or "missing" in version.lower():
         return {
             "canSync": False,
             "reasonCode": "store_version_missing",
-            "message": f"商店中还没有创建 {version or '目标'} 版本，暂不能同步版本说明。",
+            "message": f"商店中还没有创建 {version or '目标'} 版本，暂不能同步{operation_label}。",
             "storeState": {
                 "versionExists": False,
                 "editable": False,
@@ -514,13 +734,27 @@ def _mock_preflight(payload: dict[str, object]) -> dict[str, object]:
     return {
         "canSync": True,
         "reasonCode": None,
-        "message": f"商店中已存在 {version} 版本，当前状态允许修改版本说明。",
+        "message": f"商店中已存在 {version} 版本，当前状态允许修改{operation_label}。",
         "storeState": {
             "versionExists": True,
             "editable": True,
             "currentStatus": "prepare_for_submission",
         },
     }
+
+
+def _apply_sync_response(run: StoreSyncRun, response: dict[str, object]) -> None:
+    status = str(response.get("status") or "succeeded")
+    run.status = "succeeded" if status in {"ok", "success", "succeeded"} else status
+    run.error_code = _optional_str(response.get("errorCode"))
+    run.error_summary = _optional_str(response.get("errorSummary") or response.get("message"))
+    if run.status == "succeeded":
+        run.error_code = None
+        run.error_summary = None
+
+
+def _operation_label(operation: str) -> str:
+    return "商店元数据" if operation == UPDATE_APP_METADATA else "版本说明"
 
 
 def _request_hash(payload: dict[str, object]) -> str:

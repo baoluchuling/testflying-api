@@ -5,7 +5,14 @@ from base64 import b64encode
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from testflying_api.schema import StorePreflightCheck, StoreReleaseNoteDraft, StoreSyncRun
+from testflying_api.schema import (
+    App,
+    DeveloperAccount,
+    StoreAppMetadataDraft,
+    StorePreflightCheck,
+    StoreReleaseNoteDraft,
+    StoreSyncRun,
+)
 from testflying_api.seed import seed_demo_catalog
 from tests.fixtures import make_android_apk_bytes
 
@@ -103,7 +110,9 @@ def test_admin_upload_page_uses_auto_metadata_and_progress(client: TestClient) -
     assert "form.dataset.uploading = isUploading ? 'true' : 'false'" in response.text
     assert "submit.disabled = isUploading" in response.text
     assert "name=\"appName\"" in response.text
-    assert "name=\"packageName\"" not in response.text
+    assert "name=\"developerAccountId\"" in response.text
+    assert "name=\"storeAppId\"" in response.text
+    assert "name=\"storePackageName\"" in response.text
     assert "name=\"buildNumber\"" not in response.text
 
 
@@ -133,6 +142,7 @@ def test_admin_upload_android_package_creates_build(client: TestClient) -> None:
     assert "4.5.6" in response.text
     assert "321" in response.text
     assert "downloadUrl" in response.text
+    assert "未绑定" in response.text
 
     builds_response = client.get("/admin/builds", headers=_admin_headers())
     assert builds_response.status_code == 200
@@ -155,7 +165,164 @@ def test_admin_developer_account_detail_renders_store_sync_entry(
     assert "当前开发者账号" in response.text
     assert "Internal Store Connector" in response.text
     assert "Aurora Mobile" in response.text
+    assert "商店元数据" in response.text
     assert "管理版本说明" in response.text
+
+
+def test_admin_can_create_and_edit_developer_account(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    new_page = client.get("/admin/developer-accounts/new", headers=_admin_headers())
+
+    assert new_page.status_code == 200
+    assert "新增开发者账号" in new_page.text
+
+    create_response = client.post(
+        "/admin/developer-accounts",
+        headers=_admin_headers(),
+        data={
+            "accountId": "account-new-team",
+            "teamName": "New Store Team",
+            "expiresAt": "2026-12-31 23:59",
+            "status": "ok",
+            "renewalActionLabel": "去续费",
+        },
+    )
+
+    account = db_session.get(DeveloperAccount, "account-new-team")
+    assert create_response.status_code == 200
+    assert "开发者账号已保存" in create_response.text
+    assert account is not None
+    assert account.team_name == "New Store Team"
+
+    edit_page = client.get(
+        "/admin/developer-accounts/account-new-team/edit",
+        headers=_admin_headers(),
+    )
+    assert edit_page.status_code == 200
+    assert "编辑开发者账号" in edit_page.text
+
+    edit_response = client.post(
+        "/admin/developer-accounts/account-new-team",
+        headers=_admin_headers(),
+        data={
+            "teamName": "Renamed Store Team",
+            "expiresAt": "2027-01-31 23:59",
+            "status": "renewal_due",
+            "renewalActionLabel": "立即续费",
+        },
+    )
+
+    db_session.refresh(account)
+    assert edit_response.status_code == 200
+    assert "开发者账号已更新" in edit_response.text
+    assert account.team_name == "Renamed Store Team"
+    assert account.status == "renewal_due"
+    assert account.renewal_action_label == "立即续费"
+
+
+def test_admin_upload_can_bind_package_to_developer_account(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+
+    response = client.post(
+        "/admin/uploads",
+        headers=_admin_headers(),
+        data={
+            "platform": "android",
+            "environment": "development",
+            "developerAccountId": "account-apple-enterprise",
+            "storePackageName": "com.example.autoparse",
+            "changelog": "绑定账号上传",
+        },
+        files={
+            "file": (
+                "admin.apk",
+                make_android_apk_bytes(),
+                "application/vnd.android.package-archive",
+            )
+        },
+    )
+
+    app = db_session.query(App).filter_by(bundle_identifier="com.example.autoparse").one()
+    assert response.status_code == 200
+    assert "Internal Distribution Team" in response.text
+    assert app.developer_account_id == "account-apple-enterprise"
+    assert app.store_package_name == "com.example.autoparse"
+
+
+def test_admin_account_detail_can_bind_update_and_unbind_app(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+    upload_response = client.post(
+        "/admin/uploads",
+        headers=_admin_headers(),
+        data={
+            "platform": "android",
+            "environment": "development",
+            "changelog": "待绑定 App",
+        },
+        files={
+            "file": (
+                "admin.apk",
+                make_android_apk_bytes(),
+                "application/vnd.android.package-archive",
+            )
+        },
+    )
+    assert upload_response.status_code == 200
+    uploaded_app = db_session.query(App).filter_by(bundle_identifier="com.example.autoparse").one()
+    app_id = uploaded_app.id
+
+    bind_response = client.post(
+        "/admin/developer-accounts/account-apple-enterprise/apps",
+        headers=_admin_headers(),
+        data={
+            "appId": app_id,
+            "storeAppId": "",
+            "storePackageName": "com.example.autoparse",
+        },
+    )
+
+    db_session.expire_all()
+    app = db_session.get(App, app_id)
+    assert bind_response.status_code == 200
+    assert "App 已绑定到账号" in bind_response.text
+    assert app is not None
+    assert app.developer_account_id == "account-apple-enterprise"
+
+    settings_response = client.post(
+        f"/admin/developer-accounts/account-apple-enterprise/apps/{app_id}/settings",
+        headers=_admin_headers(),
+        data={
+            "storeAppId": "9876543210",
+            "storePackageName": "com.example.autoparse.store",
+        },
+    )
+    db_session.expire_all()
+    app = db_session.get(App, app_id)
+    assert app is not None
+    assert settings_response.status_code == 200
+    assert "商店标识已保存" in settings_response.text
+    assert app.store_app_id == "9876543210"
+    assert app.store_package_name == "com.example.autoparse.store"
+
+    unbind_response = client.post(
+        f"/admin/developer-accounts/account-apple-enterprise/apps/{app_id}/unbind",
+        headers=_admin_headers(),
+    )
+    db_session.expire_all()
+    app = db_session.get(App, app_id)
+    assert app is not None
+    assert unbind_response.status_code == 200
+    assert "App 已解绑" in unbind_response.text
+    assert app.developer_account_id is None
+    assert app.store_app_id is None
 
 
 def test_admin_can_update_connector_settings(
@@ -228,3 +395,41 @@ def test_admin_release_notes_save_and_sync_creates_records(
     assert "版本说明已同步" in response.text
     assert draft.release_notes == "修复已知问题，优化安装体验。"
     assert run.status == "succeeded"
+
+
+def test_admin_store_metadata_save_and_sync_creates_records(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+
+    path = (
+        "/admin/developer-accounts/account-apple-enterprise"
+        "/apps/app-aurora-ios/store-metadata/sync"
+    )
+    response = client.post(
+        path,
+        headers=_admin_headers(),
+        data={
+            "version": "2.4.0",
+            "locale": "zh-Hans",
+            "title": "Aurora Mobile",
+            "subtitle": "内部测试分发",
+            "keywords": "internal,test",
+            "promotionalText": "更稳定的测试体验。",
+            "description": "用于内部测试包分发和回归验证。",
+            "privacyPolicyUrl": "https://example.test/privacy",
+            "supportUrl": "https://example.test/support",
+            "marketingUrl": "",
+        },
+    )
+
+    draft = db_session.query(StoreAppMetadataDraft).one()
+    runs = db_session.query(StoreSyncRun).order_by(StoreSyncRun.started_at.asc()).all()
+    assert response.status_code == 200
+    assert "商店元数据已同步" in response.text
+    assert draft.title == "Aurora Mobile"
+    assert draft.description == "用于内部测试包分发和回归验证。"
+    assert runs[-1].operation == "update_app_metadata"
+    assert runs[-1].metadata_draft_id == draft.id
+    assert runs[-1].status == "succeeded"

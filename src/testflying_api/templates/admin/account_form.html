@@ -1,0 +1,60 @@
+{% extends "admin/base.html" %}
+{% block heading %}{{ "编辑开发者账号" if mode == "edit" else "新增开发者账号" }}{% endblock %}
+{% block content %}
+  {% if error %}
+    <div class="alert error"><strong>{{ error }}</strong></div>
+  {% endif %}
+
+  <section class="panel">
+    <div class="panel-header">
+      <h2>账号信息</h2>
+      <a href="/admin/developer-accounts">返回账号列表</a>
+    </div>
+    <form
+      class="form"
+      action="{{ '/admin/developer-accounts/' ~ account.id if mode == 'edit' else '/admin/developer-accounts' }}"
+      method="post"
+    >
+      <div class="form-grid">
+        <label>
+          账号 ID
+          <input
+            name="accountId"
+            value="{{ account.id if account else '' }}"
+            placeholder="account-apple-enterprise"
+            {% if mode == "edit" %}disabled{% endif %}
+            required
+          >
+        </label>
+        <label>
+          Team 名称
+          <input name="teamName" value="{{ account.team_name if account else '' }}" required>
+        </label>
+      </div>
+      <div class="form-grid">
+        <label>
+          到期时间
+          <input
+            name="expiresAt"
+            value="{{ account.expires_at if account else '' }}"
+            placeholder="2026-06-30 23:59"
+            required
+          >
+        </label>
+        <label>
+          状态
+          <select name="status">
+            {% for value in statuses %}
+              <option value="{{ value }}" {% if account and account.status == value %}selected{% endif %}>{{ value|account_status }}</option>
+            {% endfor %}
+          </select>
+        </label>
+      </div>
+      <label>
+        续费动作文案
+        <input name="renewalActionLabel" value="{{ account.renewal_action_label if account else '去续费' }}">
+      </label>
+      <button class="primary-button" type="submit">保存账号</button>
+    </form>
+  </section>
+{% endblock %}

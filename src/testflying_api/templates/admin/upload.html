@@ -36,6 +36,10 @@
           <span>构建号</span>
           <strong>{{ upload_details.build_number }}</strong>
         </div>
+        <div class="metadata-item">
+          <span>开发者账号</span>
+          <strong>{{ upload_details.developer_account }}</strong>
+        </div>
       </div>
     </section>
     <section class="panel">
@@ -79,6 +83,25 @@
             <option value="development">开发环境</option>
             <option value="production">线上环境</option>
           </select>
+        </label>
+      </div>
+      <label>
+        开发者账号
+        <select name="developerAccountId">
+          <option value="">不绑定账号</option>
+          {% for account in accounts %}
+            <option value="{{ account.id }}">{{ account.team_name }} / {{ account.id }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <div class="form-grid">
+        <label>
+          Apple App ID
+          <input name="storeAppId" placeholder="iOS App Store Connect App ID">
+        </label>
+        <label>
+          Google package / 备用包名
+          <input name="storePackageName" placeholder="Android 可填 Google Play package">
         </label>
       </div>
       <label>

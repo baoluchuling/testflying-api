@@ -48,11 +48,15 @@ def health() -> dict[str, str]:
 @app.post("/v1/preflight", response_model=PreflightResponse, dependencies=[Depends(require_token)])
 def preflight(payload: PreflightRequest) -> PreflightResponse:
     validate_account(payload.developer_account_id)
+    operation_label = _operation_label(payload.operation)
     if not payload.version or "missing" in payload.version.lower():
         return PreflightResponse(
             canSync=False,
             reasonCode="store_version_missing",
-            message=f"商店中还没有创建 {payload.version or '目标'} 版本，暂不能同步版本说明。",
+            message=(
+                f"商店中还没有创建 {payload.version or '目标'} 版本，"
+                f"暂不能同步{operation_label}。"
+            ),
             storeState={
                 "versionExists": False,
                 "editable": False,
@@ -62,7 +66,7 @@ def preflight(payload: PreflightRequest) -> PreflightResponse:
     return PreflightResponse(
         canSync=True,
         reasonCode=None,
-        message=f"商店中已存在 {payload.version} 版本，当前状态允许修改版本说明。",
+        message=f"商店中已存在 {payload.version} 版本，当前状态允许修改{operation_label}。",
         storeState={
             "versionExists": True,
             "editable": True,
@@ -74,7 +78,24 @@ def preflight(payload: PreflightRequest) -> PreflightResponse:
 @app.post("/v1/sync-runs", response_model=SyncRunResponse, dependencies=[Depends(require_token)])
 def create_sync_run(payload: SyncRunRequest) -> SyncRunResponse:
     validate_account(payload.developer_account_id)
-    if not payload.release_notes.strip():
+    if payload.operation == "update_app_metadata":
+        if payload.metadata is None or not payload.metadata.title.strip():
+            response = SyncRunResponse(
+                status="failed",
+                message="商店元数据标题不能为空。",
+                errorCode="empty_metadata_title",
+                errorSummary="商店元数据标题不能为空。",
+            )
+        elif not payload.metadata.description.strip():
+            response = SyncRunResponse(
+                status="failed",
+                message="商店元数据描述不能为空。",
+                errorCode="empty_metadata_description",
+                errorSummary="商店元数据描述不能为空。",
+            )
+        else:
+            response = SyncRunResponse(status="succeeded", message="商店元数据已同步。")
+    elif not payload.release_notes.strip():
         response = SyncRunResponse(
             status="failed",
             message="版本说明不能为空。",
@@ -90,6 +111,10 @@ def create_sync_run(payload: SyncRunRequest) -> SyncRunResponse:
         message=response.message,
     )
     return response
+
+
+def _operation_label(operation: str) -> str:
+    return "商店元数据" if operation == "update_app_metadata" else "版本说明"
 
 
 @app.get(

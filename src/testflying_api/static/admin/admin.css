@@ -527,6 +527,35 @@ textarea {
   gap: 10px;
 }
 
+.inline-form {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) minmax(150px, 1fr) auto;
+  gap: 8px;
+  min-width: 420px;
+}
+
+.inline-form input {
+  min-width: 0;
+  padding: 8px 9px;
+  font-size: 13px;
+}
+
+.inline-form .ghost-button {
+  align-self: stretch;
+}
+
+.link-form {
+  margin-top: 6px;
+}
+
+.link-form button {
+  padding: 0;
+  background: transparent;
+  color: var(--red);
+  font: inherit;
+  font-weight: 800;
+}
+
 .preflight-status {
   display: grid;
   gap: 6px;
@@ -672,6 +701,11 @@ textarea {
 
   .link-list {
     grid-template-columns: 1fr;
+  }
+
+  .inline-form {
+    grid-template-columns: 1fr;
+    min-width: 0;
   }
 
   .link-list button {

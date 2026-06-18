@@ -26,9 +26,21 @@ class PreflightResponse(BaseModel):
     store_state: dict[str, object] = Field(default_factory=dict, alias="storeState")
 
 
+class StoreMetadata(BaseModel):
+    title: str
+    subtitle: str = ""
+    keywords: str = ""
+    promotional_text: str = Field(default="", alias="promotionalText")
+    description: str
+    privacy_policy_url: str = Field(default="", alias="privacyPolicyUrl")
+    support_url: str = Field(default="", alias="supportUrl")
+    marketing_url: str = Field(default="", alias="marketingUrl")
+
+
 class SyncRunRequest(PreflightRequest):
     run_id: str = Field(alias="runId")
-    release_notes: str = Field(alias="releaseNotes")
+    release_notes: str = Field(default="", alias="releaseNotes")
+    metadata: StoreMetadata | None = None
 
 
 class SyncRunResponse(BaseModel):

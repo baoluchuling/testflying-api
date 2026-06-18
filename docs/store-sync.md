@@ -6,16 +6,19 @@
 
 ## 项目拆分
 
-- `testflying-server`：中心化后台，负责账号、App、构建、版本说明草稿、预检查缓存、同步记录和审计。
+- `testflying-server`：中心化后台，负责账号、App、构建、版本说明草稿、商店元数据草稿、预检查缓存、同步记录和审计。
 - `testflying-connector`：账号级子项目，每个开发者账号单独部署一份，负责保存该账号商店凭证并调用 Apple / Google 商店 API。
 
 中心后台可以调用 connector 的接口，但不能保存 Apple `.p8`、Google service account JSON 或商店访问 token。
 
 ## 第一版范围
 
-第一版只做版本说明同步：
+第一版支持后台可配置闭环和两类手动同步：
 
-- 后台在开发者账号详情页下进入 App 的版本说明页。
+- 后台可以新增/编辑开发者账号。
+- 上传包时可以选择开发者账号，也可以在账号详情页绑定已有 App。
+- 账号详情页可以维护 App 的 `store_app_id` / `store_package_name`。
+- 后台在开发者账号详情页下进入 App 的 `商店元数据` 或 `管理版本说明` 页面。
 - 页面进入时自动发起预检查。
 - 相同账号、App、平台、版本、语言和操作的预检查结果缓存 5 分钟。
 - 只有预检查通过时才允许同步。
@@ -24,7 +27,6 @@
 
 暂不做：
 
-- App 名称、副标题、描述、关键词同步。
 - 截图上传。
 - 自动提审。
 - 定时同步。
@@ -36,6 +38,7 @@
 - `apps.store_app_id` / `apps.store_package_name`：商店侧 App 标识。
 - `store_connectors`：账号对应 connector 地址和调用 token。
 - `store_release_note_drafts`：版本说明草稿。
+- `store_app_metadata_drafts`：文字类商店元数据草稿，包括标题、副标题、关键词、宣传文本、描述、隐私政策 URL、支持 URL 和营销 URL。
 - `store_preflight_checks`：5 分钟预检查缓存。
 - `store_sync_runs`：同步执行记录。
 - `audit_logs`：后台操作审计。
@@ -94,6 +97,35 @@ Authorization: Bearer <connector-token>
     "packageName": "com.internal.aurora"
   },
   "releaseNotes": "修复已知问题，优化安装体验。"
+}
+```
+
+商店元数据同步使用同一个接口，`operation` 改为 `update_app_metadata`，并传入 `metadata`：
+
+```json
+{
+  "runId": "sync-002",
+  "developerAccountId": "account-apple-enterprise",
+  "operation": "update_app_metadata",
+  "platform": "ios",
+  "version": "2.4.0",
+  "locale": "zh-Hans",
+  "app": {
+    "appId": "app-aurora-ios",
+    "bundleIdentifier": "com.internal.aurora",
+    "storeAppId": "1234567890",
+    "packageName": "com.internal.aurora"
+  },
+  "metadata": {
+    "title": "Aurora Mobile",
+    "subtitle": "内部测试分发",
+    "keywords": "internal,test",
+    "promotionalText": "更稳定的测试体验。",
+    "description": "用于内部测试包分发和回归验证。",
+    "privacyPolicyUrl": "https://example.test/privacy",
+    "supportUrl": "https://example.test/support",
+    "marketingUrl": ""
+  }
 }
 ```
 

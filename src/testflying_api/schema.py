@@ -222,6 +222,36 @@ class StoreReleaseNoteDraft(Base):
     )
 
 
+class StoreAppMetadataDraft(Base):
+    __tablename__ = "store_app_metadata_drafts"
+    __table_args__ = (
+        UniqueConstraint("developer_account_id", "app_id", "platform", "version", "locale"),
+    )
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    developer_account_id: Mapped[str] = mapped_column(
+        ForeignKey("developer_accounts.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    app_id: Mapped[str] = mapped_column(ForeignKey("apps.id", ondelete="CASCADE"), nullable=False)
+    platform: Mapped[str] = mapped_column(String(20), nullable=False)
+    version: Mapped[str] = mapped_column(String(60), nullable=False)
+    locale: Mapped[str] = mapped_column(String(40), nullable=False)
+    title: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    subtitle: Mapped[str] = mapped_column(String(160), nullable=False, default="")
+    keywords: Mapped[str] = mapped_column(String(240), nullable=False, default="")
+    promotional_text: Mapped[str] = mapped_column(String(240), nullable=False, default="")
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    privacy_policy_url: Mapped[str] = mapped_column(String(400), nullable=False, default="")
+    support_url: Mapped[str] = mapped_column(String(400), nullable=False, default="")
+    marketing_url: Mapped[str] = mapped_column(String(400), nullable=False, default="")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+    )
+
+
 class StorePreflightCheck(Base):
     __tablename__ = "store_preflight_checks"
 
@@ -267,6 +297,9 @@ class StoreSyncRun(Base):
     )
     draft_id: Mapped[str | None] = mapped_column(
         ForeignKey("store_release_note_drafts.id", ondelete="SET NULL"),
+    )
+    metadata_draft_id: Mapped[str | None] = mapped_column(
+        ForeignKey("store_app_metadata_drafts.id", ondelete="SET NULL"),
     )
     platform: Mapped[str] = mapped_column(String(20), nullable=False)
     operation: Mapped[str] = mapped_column(String(60), nullable=False)

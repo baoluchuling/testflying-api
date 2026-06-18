@@ -514,25 +514,15 @@
       function syncMetadataEditor(root = document) {
         root.querySelectorAll('[data-metadata-form]').forEach((form) => {
           const fieldView = form.querySelector('[data-field-view]');
-          const languageView = form.querySelector('[data-language-view]');
           const picker = form.querySelector('[data-language-picker]');
-          const activeMode = form.querySelector('[data-metadata-mode].is-active')?.dataset.metadataMode || 'field';
           const activeLocale = picker?.value || form.dataset.sourceLocale;
 
-          form.querySelector('[data-metadata-editor]')?.setAttribute('data-mode', activeMode);
-          if (fieldView) fieldView.hidden = activeMode !== 'field';
-          if (languageView) languageView.hidden = activeMode !== 'language';
+          form.querySelector('[data-metadata-editor]')?.setAttribute('data-mode', 'field');
+          if (fieldView) fieldView.hidden = false;
           syncCollapsibleLocaleGroups(form, activeLocale);
 
           fieldView?.querySelectorAll('input, textarea, select').forEach((input) => {
-            input.disabled = activeMode !== 'field';
-          });
-          languageView?.querySelectorAll('[data-language-block]').forEach((block) => {
-            const isActiveBlock = block.dataset.languageBlock === activeLocale;
-            block.hidden = !isActiveBlock;
-            block.querySelectorAll('input, textarea, select').forEach((input) => {
-              input.disabled = activeMode !== 'language' || !isActiveBlock;
-            });
+            input.disabled = false;
           });
           syncVisibleRequiredFields(form);
           syncContentSetControls(form);
@@ -686,15 +676,6 @@
             item.classList.toggle('is-active', item === filter);
           });
           syncAccountMatrix();
-          return;
-        }
-
-        const metadataMode = event.target.closest('[data-metadata-mode]');
-        if (metadataMode) {
-          metadataMode.closest('.segmented-control')?.querySelectorAll('[data-metadata-mode]').forEach((item) => {
-            item.classList.toggle('is-active', item === metadataMode);
-          });
-          syncMetadataEditor();
           return;
         }
 

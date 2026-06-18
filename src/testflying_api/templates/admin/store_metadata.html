@@ -56,10 +56,6 @@
             <button class="ghost-button" type="button" data-duplicate-content-set>复制当前套</button>
             <span class="content-set-status" data-content-set-status>已打开：{{ content_set_name }}</span>
           </div>
-          <div class="segmented-control" role="group" aria-label="商店内容编辑视图">
-            <button type="button" class="is-active" data-metadata-mode="field">全部语言对照</button>
-            <button type="button" data-metadata-mode="language">单语言编辑</button>
-          </div>
           <label class="language-picker">
             语言
             <select data-language-picker>
@@ -220,106 +216,6 @@
                 </div>
               </section>
             {% endfor %}
-          </div>
-
-          <div class="metadata-language-view" data-language-view hidden>
-            <div class="locale-stack">
-              {% for item in localized_metadata %}
-                <section class="locale-block" data-language-block="{{ item.locale }}" {% if item.locale != locale %}hidden{% endif %}>
-                  <input type="hidden" name="locales" value="{{ item.locale }}" disabled>
-                  <div class="locale-block-header">
-                    <strong>{{ item.locale }}</strong>
-                    {% if item.is_source %}
-                      <span class="badge muted">源文案</span>
-                    {% endif %}
-                  </div>
-                  {% for field in metadata_fields %}
-                    <label>
-                      {{ field.label }}
-                      {% if field.type == "textarea" %}
-                        <textarea
-                          name="{{ field.name }}"
-                          rows="{{ field.rows }}"
-                          placeholder="{{ field.placeholder }}"
-                          data-metadata-input
-                          data-locale="{{ item.locale }}"
-                          data-field="{{ field.key }}"
-                          disabled
-                          data-required-field="{{ 'true' if field.required else 'false' }}"
-                          {% if field.required and item.locale == locale %}required{% endif %}
-                        >{{ item[field.key] }}</textarea>
-                      {% else %}
-                        <input
-                          name="{{ field.name }}"
-                          value="{{ item[field.key] }}"
-                          placeholder="{{ field.placeholder }}"
-                          data-metadata-input
-                          data-locale="{{ item.locale }}"
-                          data-field="{{ field.key }}"
-                          disabled
-                          data-required-field="{{ 'true' if field.required else 'false' }}"
-                          {% if field.required and item.locale == locale %}required{% endif %}
-                        >
-                      {% endif %}
-                    </label>
-                  {% endfor %}
-                  <div class="subsection-title">商店图素材</div>
-                  {% for slot in store_image_slots %}
-                    <div class="language-store-image-field">
-                      <strong>{{ slot.label }}</strong>
-                      {% if slot.key == "note" %}
-                        <textarea
-                          name="{{ slot.name }}"
-                          rows="{{ slot.rows }}"
-                          placeholder="{{ slot.placeholder }}"
-                          data-store-image-input
-                          data-locale="{{ item.locale }}"
-                          data-slot="{{ slot.key }}"
-                          disabled
-                        >{{ item.store_images[slot.key] }}</textarea>
-                      {% else %}
-                        {% set image_slot = item.store_images[slot.key] %}
-                        <input
-                          type="hidden"
-                          name="{{ slot.name }}"
-                          value="{{ image_slot.value }}"
-                          data-store-image-input
-                          data-locale="{{ item.locale }}"
-                          data-slot="{{ slot.key }}"
-                          disabled
-                        >
-                        <div class="store-image-upload" data-store-image-zone data-slot="{{ slot.key }}" data-locale="{{ item.locale }}" data-multiple="{{ 'true' if slot.multiple else 'false' }}">
-                          <input
-                            type="file"
-                            name="storeImageFiles__{{ slot.key }}__{{ item.locale }}"
-                            accept="image/*"
-                            data-store-image-file
-                            data-slot="{{ slot.key }}"
-                            data-locale="{{ item.locale }}"
-                            disabled
-                            {% if slot.multiple %}multiple{% endif %}
-                          >
-                          <strong>拖入{{ item.locale }} {{ slot.label }}</strong>
-                          <small>{{ "支持多张，按文件名排序" if slot.multiple else "支持单张图片" }}</small>
-                          <div class="store-image-file-list" data-store-image-file-list>
-                            {% if image_slot.file_names %}
-                              {{ image_slot.file_names|join(", ") }}
-                            {% else %}
-                              暂无本地图片，可拖拽图片或语言文件夹
-                            {% endif %}
-                          </div>
-                        </div>
-                        <div class="store-image-previews {{ 'screenshots' if slot.multiple else '' }}" data-store-image-preview>
-                          {% for preview_url in image_slot.preview_urls %}
-                            <img alt="{{ item.locale }} {{ slot.label }}预览" src="{{ preview_url }}">
-                          {% endfor %}
-                        </div>
-                      {% endif %}
-                    </div>
-                  {% endfor %}
-                </section>
-              {% endfor %}
-            </div>
           </div>
         </div>
 

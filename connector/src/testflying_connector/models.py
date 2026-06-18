@@ -26,6 +26,10 @@ class PreflightResponse(BaseModel):
     store_state: dict[str, object] = Field(default_factory=dict, alias="storeState")
 
 
+class SupportedLocalesResponse(BaseModel):
+    locales: list[str]
+
+
 class StoreMetadata(BaseModel):
     title: str
     subtitle: str = ""
@@ -48,10 +52,3 @@ class SyncRunResponse(BaseModel):
     message: str
     error_code: str | None = Field(default=None, alias="errorCode")
     error_summary: str | None = Field(default=None, alias="errorSummary")
-
-
-class SyncRunRecord(BaseModel):
-    run_id: str = Field(alias="runId")
-    developer_account_id: str = Field(alias="developerAccountId")
-    status: str
-    message: str

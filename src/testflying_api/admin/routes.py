@@ -654,29 +654,38 @@ def save_store_metadata_page(
     locale: Annotated[str, Form()] = DEFAULT_LOCALE,
     title: Annotated[str, Form()] = "",
     subtitle: Annotated[str, Form()] = "",
-    keywords: Annotated[str, Form()] = "",
-    promotional_text: Annotated[str, Form(alias="promotionalText")] = "",
-    description: Annotated[str, Form()] = "",
+    locales: Annotated[list[str] | None, Form()] = None,
+    keywords: Annotated[list[str] | None, Form()] = None,
+    promotional_text: Annotated[list[str] | None, Form(alias="promotionalText")] = None,
+    description: Annotated[list[str] | None, Form()] = None,
     privacy_policy_url: Annotated[str, Form(alias="privacyPolicyUrl")] = "",
     support_url: Annotated[str, Form(alias="supportUrl")] = "",
     marketing_url: Annotated[str, Form(alias="marketingUrl")] = "",
 ) -> HTMLResponse:
     try:
-        save_app_metadata_draft(
-            session,
-            account_id=account_id,
-            app_id=app_id,
-            version=version,
-            locale=locale,
-            title=title,
-            subtitle=subtitle,
+        metadata_rows = _metadata_rows_from_form(
+            current_locale=locale,
+            locales=locales,
             keywords=keywords,
             promotional_text=promotional_text,
             description=description,
-            privacy_policy_url=privacy_policy_url,
-            support_url=support_url,
-            marketing_url=marketing_url,
         )
+        for row in metadata_rows:
+            save_app_metadata_draft(
+                session,
+                account_id=account_id,
+                app_id=app_id,
+                version=version,
+                locale=row["locale"],
+                title=title,
+                subtitle=subtitle,
+                keywords=row["keywords"],
+                promotional_text=row["promotional_text"],
+                description=row["description"],
+                privacy_policy_url=privacy_policy_url,
+                support_url=support_url,
+                marketing_url=marketing_url,
+            )
         session.commit()
         context = store_metadata_context(
             session,
@@ -692,7 +701,7 @@ def save_store_metadata_page(
             _context(
                 request,
                 active="developer-accounts",
-                success="商店元数据草稿已保存",
+                success=f"商店元数据草稿已保存 {len(metadata_rows)} 个语言",
                 **context,
             ),
         )
@@ -727,30 +736,42 @@ def sync_store_metadata_page(
     locale: Annotated[str, Form()] = DEFAULT_LOCALE,
     title: Annotated[str, Form()] = "",
     subtitle: Annotated[str, Form()] = "",
-    keywords: Annotated[str, Form()] = "",
-    promotional_text: Annotated[str, Form(alias="promotionalText")] = "",
-    description: Annotated[str, Form()] = "",
+    locales: Annotated[list[str] | None, Form()] = None,
+    keywords: Annotated[list[str] | None, Form()] = None,
+    promotional_text: Annotated[list[str] | None, Form(alias="promotionalText")] = None,
+    description: Annotated[list[str] | None, Form()] = None,
     privacy_policy_url: Annotated[str, Form(alias="privacyPolicyUrl")] = "",
     support_url: Annotated[str, Form(alias="supportUrl")] = "",
     marketing_url: Annotated[str, Form(alias="marketingUrl")] = "",
 ) -> HTMLResponse:
     try:
-        sync_run = sync_app_metadata(
-            session,
-            account_id=account_id,
-            app_id=app_id,
-            version=version,
-            locale=locale,
-            title=title,
-            subtitle=subtitle,
+        metadata_rows = _metadata_rows_from_form(
+            current_locale=locale,
+            locales=locales,
             keywords=keywords,
             promotional_text=promotional_text,
             description=description,
-            privacy_policy_url=privacy_policy_url,
-            support_url=support_url,
-            marketing_url=marketing_url,
-            actor="admin",
         )
+        sync_runs = []
+        for row in metadata_rows:
+            sync_runs.append(
+                sync_app_metadata(
+                    session,
+                    account_id=account_id,
+                    app_id=app_id,
+                    version=version,
+                    locale=row["locale"],
+                    title=title,
+                    subtitle=subtitle,
+                    keywords=row["keywords"],
+                    promotional_text=row["promotional_text"],
+                    description=row["description"],
+                    privacy_policy_url=privacy_policy_url,
+                    support_url=support_url,
+                    marketing_url=marketing_url,
+                    actor="admin",
+                )
+            )
         session.commit()
         context = store_metadata_context(
             session,
@@ -760,7 +781,12 @@ def sync_store_metadata_page(
             locale=locale,
         )
         session.commit()
-        message = "商店元数据已同步" if sync_run.status == "succeeded" else "同步已完成"
+        success_count = sum(1 for run in sync_runs if run.status == "succeeded")
+        message = (
+            f"商店元数据已同步 {len(sync_runs)} 个语言"
+            if success_count == len(sync_runs)
+            else f"同步已完成，成功 {success_count}/{len(sync_runs)} 个语言"
+        )
         return templates.TemplateResponse(
             request,
             "admin/store_metadata.html",
@@ -805,6 +831,52 @@ def _account_detail_context(
         base_url_template=request.app.state.settings.connector_base_url_template,
     )
     return context
+
+
+def _metadata_rows_from_form(
+    *,
+    current_locale: str,
+    locales: list[str] | None,
+    keywords: list[str] | None,
+    promotional_text: list[str] | None,
+    description: list[str] | None,
+) -> list[dict[str, str]]:
+    normalized_locales = _unique_non_empty(locales) or [current_locale.strip() or DEFAULT_LOCALE]
+    rows = [
+        {
+            "locale": locale,
+            "keywords": _form_list_value(keywords, index),
+            "promotional_text": _form_list_value(promotional_text, index),
+            "description": _form_list_value(description, index),
+        }
+        for index, locale in enumerate(normalized_locales)
+    ]
+    base_row = next(
+        (row for row in rows if row["locale"] == (current_locale.strip() or DEFAULT_LOCALE)),
+        rows[0],
+    )
+    for row in rows:
+        row["keywords"] = row["keywords"] or base_row["keywords"]
+        row["promotional_text"] = row["promotional_text"] or base_row["promotional_text"]
+        row["description"] = row["description"] or base_row["description"]
+    return rows
+
+
+def _unique_non_empty(values: list[str] | None) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for raw_value in values or []:
+        value = raw_value.strip()
+        if value and value not in seen:
+            result.append(value)
+            seen.add(value)
+    return result
+
+
+def _form_list_value(values: list[str] | None, index: int) -> str:
+    if values is None or index >= len(values):
+        return ""
+    return values[index].strip()
 
 
 def _context(request: Request, *, active: str, **values: object) -> dict[str, object]:

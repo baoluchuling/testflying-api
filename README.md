@@ -21,7 +21,7 @@
 - `GET /v1/test-distribution/developer-accounts/renewals`：读取需要续费提醒的账号。
 - `GET /v1/test-distribution/notifications`：读取服务端通知 feed，支持 `type=build|account|device`。
 - `GET /admin`：内置管理后台，用于上传包、查看应用/构建/设备/账号/通知和复制安装资源链接。
-- 管理后台支持新增/编辑开发者账号、上传时绑定账号、绑定/解绑账号下 App、维护 App 商店标识、配置账号 connector，以及同步版本说明和文字类商店元数据。
+- 管理后台支持新增/编辑开发者账号、上传时绑定账号、绑定/解绑账号下 App、维护 App 商店标识、配置账号 connector，以及同步版本说明和文字类商店元数据。商店元数据的关键词、宣传文本和描述支持多语言编辑。
 - 商店同步页进入时会自动预检查，5 分钟内相同账号、App、平台、版本、语言和操作返回同一个预检查状态。
 - 请求上下文预留 `Authorization`、`X-Device-ID`、`X-Client-Platform`。
 - Docker Compose 默认启动中心后台、connector、PostgreSQL、MinIO。
@@ -197,8 +197,9 @@ open http://localhost:8000/admin
 5. 在账号下维护 App 的 `store_app_id` / `store_package_name`。
 6. 进入 `商店元数据` 或 `管理版本说明`。
 7. 页面进入时自动检查目标商店版本是否存在、是否可编辑。
-8. 5 分钟内相同账号、App、平台、版本、语言和操作返回同一个预检查状态。
-9. `canSync=true` 时可以手动同步草稿。
+8. 商店元数据页会从 connector 拉取支持语言；没有翻译时默认用当前语言内容填充。
+9. 5 分钟内相同账号、App、平台、版本、语言和操作返回同一个预检查状态。
+10. `canSync=true` 时可以手动同步草稿。
 
 运行测试：
 

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from uuid import uuid4
 
@@ -48,6 +49,28 @@ class PreflightState:
 
 
 class StoreConnectorClient:
+    def supported_locales(
+        self,
+        connector: StoreConnector,
+        *,
+        account_id: str,
+        app: App,
+        version: str,
+    ) -> list[str]:
+        if connector.base_url.startswith("mock://"):
+            return _mock_supported_locales(app.platform)
+        query = urlencode(
+            {
+                "developerAccountId": account_id,
+                "platform": app.platform,
+                "version": version,
+                "storeAppId": app.store_app_id or "",
+                "packageName": app.store_package_name or app.bundle_identifier,
+            }
+        )
+        response = _get_json(connector, f"/v1/apps/{app.id}/supported-locales?{query}")
+        return _normalize_locales(response.get("locales"))
+
     def preflight(
         self,
         connector: StoreConnector,
@@ -230,6 +253,25 @@ def metadata_draft_for_scope(
     )
 
 
+def metadata_drafts_for_scope(
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    platform: str,
+    version: str,
+) -> dict[str, StoreAppMetadataDraft]:
+    drafts = session.scalars(
+        select(StoreAppMetadataDraft).where(
+            StoreAppMetadataDraft.developer_account_id == account_id,
+            StoreAppMetadataDraft.app_id == app_id,
+            StoreAppMetadataDraft.platform == platform,
+            StoreAppMetadataDraft.version == version,
+        )
+    )
+    return {draft.locale: draft for draft in drafts}
+
+
 def save_release_note_draft(
     session: Session,
     *,
@@ -267,6 +309,33 @@ def save_release_note_draft(
         draft.updated_at = datetime.now(UTC)
     session.flush()
     return draft
+
+
+def supported_locales_for_app(
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    version: str,
+    fallback_locale: str = DEFAULT_LOCALE,
+    client: StoreConnectorClient | None = None,
+) -> list[str]:
+    app = scoped_app(session, account_id, app_id)
+    connector = account_connector(session, account_id)
+    fallback = _normalize_locales([fallback_locale])
+    if app is None or connector is None or not version:
+        return fallback
+    connector_client = client or StoreConnectorClient()
+    try:
+        locales = connector_client.supported_locales(
+            connector,
+            account_id=account_id,
+            app=app,
+            version=version,
+        )
+    except ConnectorCallError:
+        return fallback
+    return _merge_locales(locales, fallback)
 
 
 def save_app_metadata_draft(
@@ -742,6 +811,29 @@ def _post_json(
         raise ConnectorCallError(f"connector 调用失败: {error}") from error
 
 
+def _get_json(
+    connector: StoreConnector,
+    path: str,
+) -> dict[str, object]:
+    url = connector.base_url.rstrip("/") + path
+    request = Request(
+        url,
+        headers={
+            "Authorization": f"Bearer {connector.auth_token}",
+            "Accept": "application/json",
+        },
+        method="GET",
+    )
+    try:
+        with urlopen(request, timeout=20) as response:  # noqa: S310 - connector URL is admin configured.
+            return json.loads(response.read().decode("utf-8"))
+    except HTTPError as error:
+        body = error.read().decode("utf-8", errors="replace")
+        raise ConnectorCallError(f"connector 返回 HTTP {error.code}: {body[:180]}") from error
+    except (URLError, TimeoutError, json.JSONDecodeError) as error:
+        raise ConnectorCallError(f"connector 调用失败: {error}") from error
+
+
 def _mock_preflight(payload: dict[str, object]) -> dict[str, object]:
     version = str(payload.get("version") or "")
     operation = str(payload.get("operation") or UPDATE_RELEASE_NOTES)
@@ -767,6 +859,27 @@ def _mock_preflight(payload: dict[str, object]) -> dict[str, object]:
             "currentStatus": "prepare_for_submission",
         },
     }
+
+
+def _mock_supported_locales(platform: str) -> list[str]:
+    return ["zh-Hans", "en-US", "ja", "ko"] if platform == "ios" else ["zh-Hans", "en-US"]
+
+
+def _normalize_locales(raw_locales: object) -> list[str]:
+    if not isinstance(raw_locales, list | tuple):
+        return [DEFAULT_LOCALE]
+    locales: list[str] = []
+    seen: set[str] = set()
+    for raw_locale in raw_locales:
+        locale = str(raw_locale or "").strip()
+        if locale and locale not in seen:
+            locales.append(locale)
+            seen.add(locale)
+    return locales or [DEFAULT_LOCALE]
+
+
+def _merge_locales(primary: list[str], fallback: list[str]) -> list[str]:
+    return _normalize_locales([*fallback, *primary])
 
 
 def _apply_sync_response(run: StoreSyncRun, response: dict[str, object]) -> None:

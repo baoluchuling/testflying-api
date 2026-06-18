@@ -454,21 +454,57 @@ def test_admin_store_metadata_save_and_sync_creates_records(
             "locale": "zh-Hans",
             "title": "Aurora Mobile",
             "subtitle": "内部测试分发",
-            "keywords": "internal,test",
-            "promotionalText": "更稳定的测试体验。",
-            "description": "用于内部测试包分发和回归验证。",
+            "locales": ["zh-Hans", "en-US", "ja", "ko"],
+            "keywords": ["internal,test", "", "internal,ja", "internal,ko"],
+            "promotionalText": [
+                "更稳定的测试体验。",
+                "",
+                "より安定したテスト体験。",
+                "더 안정적인 테스트 경험.",
+            ],
+            "description": [
+                "用于内部测试包分发和回归验证。",
+                "",
+                "内部テスト配布と回帰検証に使います。",
+                "내부 테스트 배포와 회귀 검증에 사용합니다.",
+            ],
             "privacyPolicyUrl": "https://example.test/privacy",
             "supportUrl": "https://example.test/support",
             "marketingUrl": "",
         },
     )
 
-    draft = db_session.query(StoreAppMetadataDraft).one()
+    drafts = db_session.query(StoreAppMetadataDraft).order_by(StoreAppMetadataDraft.locale).all()
     runs = db_session.query(StoreSyncRun).order_by(StoreSyncRun.started_at.asc()).all()
     assert response.status_code == 200
-    assert "商店元数据已同步" in response.text
-    assert draft.title == "Aurora Mobile"
-    assert draft.description == "用于内部测试包分发和回归验证。"
-    assert runs[-1].operation == "update_app_metadata"
-    assert runs[-1].metadata_draft_id == draft.id
-    assert runs[-1].status == "succeeded"
+    assert "商店元数据已同步 4 个语言" in response.text
+    assert {draft.locale for draft in drafts} == {"zh-Hans", "en-US", "ja", "ko"}
+    zh_hans_draft = next(draft for draft in drafts if draft.locale == "zh-Hans")
+    en_us_draft = next(draft for draft in drafts if draft.locale == "en-US")
+    assert zh_hans_draft.title == "Aurora Mobile"
+    assert zh_hans_draft.description == "用于内部测试包分发和回归验证。"
+    assert en_us_draft.keywords == "internal,test"
+    assert en_us_draft.promotional_text == "更稳定的测试体验。"
+    assert en_us_draft.description == "用于内部测试包分发和回归验证。"
+    assert [run.operation for run in runs[-4:]] == ["update_app_metadata"] * 4
+    assert {run.locale for run in runs[-4:]} == {"zh-Hans", "en-US", "ja", "ko"}
+    assert {run.status for run in runs[-4:]} == {"succeeded"}
+
+
+def test_admin_store_metadata_page_lists_supported_locales(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+
+    response = client.get(
+        "/admin/developer-accounts/account-apple-enterprise"
+        "/apps/app-aurora-ios/store-metadata",
+        headers=_admin_headers(),
+    )
+
+    assert response.status_code == 200
+    assert 'name="locales" value="zh-Hans"' in response.text
+    assert 'name="locales" value="en-US"' in response.text
+    assert 'name="locales" value="ja"' in response.text
+    assert 'name="locales" value="ko"' in response.text

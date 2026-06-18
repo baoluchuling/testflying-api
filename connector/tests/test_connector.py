@@ -60,12 +60,9 @@ def test_connector_sync_run_succeeds() -> None:
     payload["releaseNotes"] = "修复已知问题。"
 
     response = client.post("/v1/sync-runs", headers=_headers(), json=payload)
-    detail_response = client.get("/v1/sync-runs/sync-001", headers=_headers())
 
     assert response.status_code == 200
     assert response.json()["status"] == "succeeded"
-    assert detail_response.status_code == 200
-    assert detail_response.json()["status"] == "succeeded"
 
 
 def test_connector_metadata_sync_run_succeeds() -> None:
@@ -89,3 +86,20 @@ def test_connector_metadata_sync_run_succeeds() -> None:
     assert response.status_code == 200
     assert response.json()["status"] == "succeeded"
     assert response.json()["message"] == "商店元数据已同步。"
+
+
+def test_connector_lists_supported_locales() -> None:
+    client = TestClient(app)
+
+    response = client.get(
+        "/v1/apps/app-aurora-ios/supported-locales",
+        headers=_headers(),
+        params={
+            "developerAccountId": "account-apple-enterprise",
+            "platform": "ios",
+            "version": "2.4.0",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["locales"] == ["zh-Hans", "en-US", "ja", "ko"]

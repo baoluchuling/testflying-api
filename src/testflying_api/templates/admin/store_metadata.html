@@ -10,7 +10,7 @@
     <div class="context-meta">
       <span>{{ app.platform|platform }}</span>
       <span>版本：{{ version or "-" }}</span>
-      <span>语言：{{ locale }}</span>
+      <span>语言：{{ supported_locales|length }} 个</span>
     </div>
   </section>
 
@@ -31,7 +31,7 @@
             <input name="version" value="{{ version }}" required>
           </label>
           <label>
-            语言
+            当前语言
             <input name="locale" value="{{ locale }}" required>
           </label>
         </div>
@@ -45,18 +45,32 @@
             <input name="subtitle" value="{{ metadata.subtitle }}">
           </label>
         </div>
-        <label>
-          关键词
-          <input name="keywords" value="{{ metadata.keywords }}" placeholder="逗号分隔">
-        </label>
-        <label>
-          宣传文本
-          <textarea name="promotionalText" rows="3">{{ metadata.promotional_text }}</textarea>
-        </label>
-        <label>
-          描述
-          <textarea name="description" rows="8" required>{{ metadata.description }}</textarea>
-        </label>
+        <div class="subsection-title">多语言商店文案</div>
+        <div class="locale-stack">
+          {% for item in localized_metadata %}
+            <section class="locale-block">
+              <input type="hidden" name="locales" value="{{ item.locale }}">
+              <div class="locale-block-header">
+                <strong>{{ item.locale }}</strong>
+                {% if item.locale == locale %}
+                  <span class="badge muted">当前语言</span>
+                {% endif %}
+              </div>
+              <label>
+                关键词
+                <input name="keywords" value="{{ item.keywords }}" placeholder="逗号分隔">
+              </label>
+              <label>
+                宣传文本
+                <textarea name="promotionalText" rows="3">{{ item.promotional_text }}</textarea>
+              </label>
+              <label>
+                描述
+                <textarea name="description" rows="8" required>{{ item.description }}</textarea>
+              </label>
+            </section>
+          {% endfor %}
+        </div>
         <div class="form-grid">
           <label>
             隐私政策 URL

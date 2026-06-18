@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
+from typing import Annotated
+
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
 
 from testflying_connector.config import Settings
 from testflying_connector.models import (
     PreflightRequest,
     PreflightResponse,
-    SyncRunRecord,
+    SupportedLocalesResponse,
     SyncRunRequest,
     SyncRunResponse,
 )
@@ -17,7 +19,6 @@ app = FastAPI(
     description="Account-scoped store sync connector for testflying-server.",
 )
 settings = Settings.from_environment()
-sync_runs: dict[str, SyncRunRecord] = {}
 
 
 def require_token(authorization: str = Header(default="")) -> None:
@@ -75,6 +76,22 @@ def preflight(payload: PreflightRequest) -> PreflightResponse:
     )
 
 
+@app.get(
+    "/v1/apps/{app_id}/supported-locales",
+    response_model=SupportedLocalesResponse,
+    dependencies=[Depends(require_token)],
+)
+def supported_locales(
+    app_id: str,
+    developer_account_id: Annotated[str, Query(alias="developerAccountId")],
+    platform: str = "",
+    version: str = "",
+) -> SupportedLocalesResponse:
+    validate_account(developer_account_id)
+    locales = ["zh-Hans", "en-US", "ja", "ko"] if platform == "ios" else ["zh-Hans", "en-US"]
+    return SupportedLocalesResponse(locales=locales)
+
+
 @app.post("/v1/sync-runs", response_model=SyncRunResponse, dependencies=[Depends(require_token)])
 def create_sync_run(payload: SyncRunRequest) -> SyncRunResponse:
     validate_account(payload.developer_account_id)
@@ -104,27 +121,8 @@ def create_sync_run(payload: SyncRunRequest) -> SyncRunResponse:
         )
     else:
         response = SyncRunResponse(status="succeeded", message="版本说明已同步。")
-    sync_runs[payload.run_id] = SyncRunRecord(
-        runId=payload.run_id,
-        developerAccountId=payload.developer_account_id,
-        status=response.status,
-        message=response.message,
-    )
     return response
 
 
 def _operation_label(operation: str) -> str:
     return "商店元数据" if operation == "update_app_metadata" else "版本说明"
-
-
-@app.get(
-    "/v1/sync-runs/{run_id}",
-    response_model=SyncRunRecord,
-    dependencies=[Depends(require_token)],
-)
-def sync_run(run_id: str, request: Request) -> SyncRunRecord:
-    record = sync_runs.get(run_id)
-    if record is None:
-        raise HTTPException(status_code=404, detail="sync run not found")
-    validate_account(record.developer_account_id)
-    return record

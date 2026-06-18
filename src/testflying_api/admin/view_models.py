@@ -24,7 +24,9 @@ from testflying_api.store_sync import (
     get_or_refresh_preflight,
     latest_build_for_app,
     metadata_draft_for_scope,
+    metadata_drafts_for_scope,
     recent_sync_runs,
+    supported_locales_for_app,
 )
 
 
@@ -211,6 +213,33 @@ def store_metadata_context(
         if app and target_version
         else None
     )
+    drafts_by_locale = (
+        metadata_drafts_for_scope(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            platform=app.platform,
+            version=target_version,
+        )
+        if app and target_version
+        else {}
+    )
+    supported_locales = (
+        supported_locales_for_app(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            version=target_version,
+            fallback_locale=locale,
+        )
+        if app and target_version
+        else [locale]
+    )
+    base_metadata = _store_metadata_defaults(
+        app=app,
+        latest_build=latest_build,
+        draft=draft,
+    )
     preflight = (
         get_or_refresh_preflight(
             session,
@@ -230,22 +259,57 @@ def store_metadata_context(
         "version": target_version,
         "locale": locale,
         "draft": draft,
-        "metadata": {
-            "title": draft.title if draft else (app.name if app else ""),
-            "subtitle": draft.subtitle if draft else "",
-            "keywords": draft.keywords if draft else "",
-            "promotional_text": draft.promotional_text if draft else "",
-            "description": (
-                draft.description if draft else (latest_build.note if latest_build else "")
-            ),
-            "privacy_policy_url": draft.privacy_policy_url if draft else "",
-            "support_url": draft.support_url if draft else "",
-            "marketing_url": draft.marketing_url if draft else "",
-        },
+        "metadata": base_metadata,
+        "supported_locales": supported_locales,
+        "localized_metadata": _localized_metadata(
+            supported_locales=supported_locales,
+            drafts_by_locale=drafts_by_locale,
+            base_metadata=base_metadata,
+        ),
         "preflight": preflight,
         "connector": account_connector(session, account_id),
         "sync_runs": recent_sync_runs(session, account_id=account_id, app_id=app_id),
     }
+
+
+def _store_metadata_defaults(
+    *,
+    app: App | None,
+    latest_build: Build | None,
+    draft: object | None,
+) -> dict[str, str]:
+    return {
+        "title": draft.title if draft else (app.name if app else ""),
+        "subtitle": draft.subtitle if draft else "",
+        "keywords": draft.keywords if draft else "",
+        "promotional_text": draft.promotional_text if draft else "",
+        "description": draft.description if draft else (latest_build.note if latest_build else ""),
+        "privacy_policy_url": draft.privacy_policy_url if draft else "",
+        "support_url": draft.support_url if draft else "",
+        "marketing_url": draft.marketing_url if draft else "",
+    }
+
+
+def _localized_metadata(
+    *,
+    supported_locales: list[str],
+    drafts_by_locale: dict[str, object],
+    base_metadata: dict[str, str],
+) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for locale in supported_locales:
+        draft = drafts_by_locale.get(locale)
+        rows.append(
+            {
+                "locale": locale,
+                "keywords": draft.keywords if draft else base_metadata["keywords"],
+                "promotional_text": (
+                    draft.promotional_text if draft else base_metadata["promotional_text"]
+                ),
+                "description": draft.description if draft else base_metadata["description"],
+            }
+        )
+    return rows
 
 
 def list_notifications(session: Session, *, limit: int | None = None) -> list[Notification]:

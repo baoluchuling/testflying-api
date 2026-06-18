@@ -20,6 +20,7 @@
 - 账号详情页可以维护 App 的 `store_app_id` / `store_package_name`。
 - 后台在开发者账号详情页下进入 App 的 `商店元数据` 或 `管理版本说明` 页面。
 - 页面进入时自动发起预检查。
+- 商店元数据页进入时通过 connector 拉取商店支持语言；关键词、宣传文本和描述支持多语言编辑，缺少翻译时默认使用当前语言内容填充。
 - 相同账号、App、平台、版本、语言和操作的预检查结果缓存 5 分钟。
 - 只有预检查通过时才允许同步。
 - 同步前复用同一套 5 分钟预检查规则。
@@ -38,7 +39,7 @@
 - `apps.store_app_id` / `apps.store_package_name`：商店侧 App 标识。
 - `store_connectors`：账号对应 connector 地址和调用 token。
 - `store_release_note_drafts`：版本说明草稿。
-- `store_app_metadata_drafts`：文字类商店元数据草稿，包括标题、副标题、关键词、宣传文本、描述、隐私政策 URL、支持 URL 和营销 URL。
+- `store_app_metadata_drafts`：文字类商店元数据草稿，包括标题、副标题、关键词、宣传文本、描述、隐私政策 URL、支持 URL 和营销 URL。关键词、宣传文本和描述按 `locale` 分别保存。
 - `store_preflight_checks`：5 分钟预检查缓存。
 - `store_sync_runs`：同步执行记录。
 - `audit_logs`：后台操作审计。
@@ -52,14 +53,28 @@
 ```http
 GET  /health
 POST /v1/preflight
+GET  /v1/apps/{app_id}/supported-locales
 POST /v1/sync-runs
-GET  /v1/sync-runs/{run_id}
 ```
 
-所有写接口都需要：
+所有商店接口都需要：
 
 ```http
 Authorization: Bearer <connector-token>
+```
+
+`GET /v1/apps/{app_id}/supported-locales` 示例：
+
+```http
+GET /v1/apps/app-aurora-ios/supported-locales?developerAccountId=account-apple-enterprise&platform=ios&version=2.4.0
+```
+
+返回：
+
+```json
+{
+  "locales": ["zh-Hans", "en-US", "ja", "ko"]
+}
 ```
 
 `POST /v1/preflight` 示例：
@@ -128,6 +143,8 @@ Authorization: Bearer <connector-token>
   }
 }
 ```
+
+中心后台会按语言多次调用 `POST /v1/sync-runs`，每次请求的 `locale` 和 `metadata` 对应该语言。connector 不提供同步记录查询接口，任务状态以中心后台 `store_sync_runs` 为准。
 
 ## 隔离规则
 

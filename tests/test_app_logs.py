@@ -130,6 +130,7 @@ def test_admin_app_logs_connected_layout_styles(client: TestClient) -> None:
     assert ".app-log-connect-panel.is-compact" in response.text
     assert "position: sticky" in response.text
     assert "--app-log-sticky-offset" in response.text
+    assert "grid-template-columns: minmax(220px, 1fr) auto" in response.text
     assert "grid-template-columns: 240px minmax(0, 1fr)" in response.text
     assert "min-height: calc(100vh - 188px)" in response.text
 

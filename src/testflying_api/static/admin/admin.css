@@ -381,12 +381,12 @@ h2 { font-size: 18px; }
 }
 
 .app-log-stream-header {
-  align-items: flex-start;
+  align-items: center;
   position: sticky;
   top: var(--app-log-sticky-offset, 148px);
   z-index: 20;
-  margin: -18px -18px 14px;
-  padding: 18px 18px 14px;
+  margin: -18px -18px 12px;
+  padding: 12px 14px;
   border-bottom: 1px solid var(--line);
   border-radius: 8px 8px 0 0;
   background: var(--panel);
@@ -395,25 +395,30 @@ h2 { font-size: 18px; }
 
 .app-log-tools {
   display: grid;
-  gap: 10px;
-  min-width: min(560px, 100%);
+  grid-template-columns: minmax(220px, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
 }
 
 .app-log-tools input {
   width: 100%;
+  padding: 8px 10px;
 }
 
 .app-log-levels {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  justify-content: flex-end;
+  gap: 6px;
 }
 
 .app-log-levels label {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 5px 8px;
+  padding: 4px 7px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: #f8fafc;
@@ -2284,10 +2289,19 @@ a.ghost-button {
   .app-log-connect-grid,
   .app-log-connect-panel.is-connected .app-log-connect-form,
   .app-log-connect-panel.is-connected .form-grid,
+  .app-log-tools,
   .app-log-connect-panel.is-connected + .app-log-layout,
   .app-log-layout,
   .app-log-fields {
     grid-template-columns: 1fr;
+  }
+
+  .app-log-stream-header {
+    align-items: flex-start;
+  }
+
+  .app-log-levels {
+    justify-content: flex-start;
   }
 
   .account-filters {

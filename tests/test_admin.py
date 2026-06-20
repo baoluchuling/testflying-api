@@ -904,10 +904,17 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "data-language-view" not in response.text
     assert "翻译所有文案项" in response.text
     assert "requestMetadataTranslation" in response.text
+    assert "syncMetadataWorkspace" in response.text
     assert "未接入翻译服务前" not in response.text
     assert "商店内容套件" in response.text
     assert "新建套件" in response.text
     assert "复制当前套" in response.text
+    assert "metadata-control-strip" in response.text
+    assert "metadata-focus-workspace" in response.text
+    assert "metadata-sync-rail" in response.text
+    assert "data-sync-item-select" in response.text
+    assert "data-sync-item-panel" in response.text
+    assert "metadata-side-status" in response.text
     assert "商店图素材" in response.text
     assert "App Store Connect 同步" in response.text
     assert "Keywords（关键词）" in response.text

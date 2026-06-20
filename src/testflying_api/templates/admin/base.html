@@ -341,6 +341,20 @@
         if (status) status.textContent = `已打开：${name}`;
       }
 
+      function syncMetadataPreflightForm(form) {
+        const preflight = document.querySelector('#metadata-preflight-form');
+        if (!form || !preflight) return;
+        const version = form.querySelector('[name="version"]')?.value || '';
+        const locale = form.querySelector('[name="locale"]')?.value || form.dataset.sourceLocale || '';
+        const contentSetId = form.querySelector('[name="contentSetId"]')?.value || '';
+        const versionInput = preflight.querySelector('[data-preflight-version]');
+        const localeInput = preflight.querySelector('[data-preflight-locale]');
+        const contentSetInput = preflight.querySelector('[data-preflight-content-set]');
+        if (versionInput) versionInput.value = version;
+        if (localeInput) localeInput.value = locale;
+        if (contentSetInput) contentSetInput.value = contentSetId;
+      }
+
       function addContentSetOption(form, id, name, existing = true) {
         const picker = form?.querySelector('[data-content-set-picker]');
         if (!picker || !id || !name) return;
@@ -471,6 +485,66 @@
           }
         });
         return changed;
+      }
+
+      function hasStoreImageSlotValue(form, locale, slot) {
+        const value = storeImageValue(form, locale, slot).trim();
+        const fileInput = form?.querySelector(`[data-store-image-file][data-slot="${slot}"][data-locale="${locale}"]`);
+        const preview = form?.querySelector(`[data-store-image-zone][data-slot="${slot}"][data-locale="${locale}"]`)
+          ?.parentElement?.querySelector('[data-store-image-preview] img');
+        return Boolean(value || fileInput?.files?.length || preview);
+      }
+
+      function syncItemProgress(form, item) {
+        const locales = storeImageLocales(form);
+        const key = item.dataset.field || item.dataset.slot || item.dataset.syncItemKey;
+        const filled = locales.filter((locale) => (
+          item.dataset.syncItemType === 'store-image'
+            ? hasStoreImageSlotValue(form, locale, key)
+            : metadataValue(form, locale, key).trim()
+        )).length;
+        return { filled, total: locales.length };
+      }
+
+      function progressLabel(progress) {
+        return `${progress.filled}/${progress.total} 语言`;
+      }
+
+      function progressStatus(progress) {
+        if (!progress.total || progress.filled === 0) return '未填写';
+        if (progress.filled < progress.total) return '待补全';
+        return '已填写';
+      }
+
+      function syncMetadataWorkspace(form, activeLocale) {
+        const items = Array.from(form.querySelectorAll('[data-sync-item-select]'));
+        if (!items.length) return;
+        const selected = items.find((item) => item.dataset.syncItemKey === form.dataset.selectedSyncItem)
+          || items.find((item) => item.dataset.defaultFocus === 'true')
+          || items[0];
+        const selectedKey = selected.dataset.syncItemKey;
+        form.dataset.selectedSyncItem = selectedKey;
+
+        items.forEach((item) => {
+          const progress = syncItemProgress(form, item);
+          const status = progressStatus(progress);
+          item.classList.toggle('is-selected', item.dataset.syncItemKey === selectedKey);
+          item.dataset.state = status === '已填写' ? 'complete' : (status === '未填写' ? 'empty' : 'partial');
+          item.querySelector('[data-sync-item-count]')?.replaceChildren(document.createTextNode(progressLabel(progress)));
+          item.querySelector('[data-sync-item-status]')?.replaceChildren(document.createTextNode(status));
+          const panel = form.querySelector(`[data-sync-item-panel="${item.dataset.syncItemKey}"]`);
+          const focusCompletion = panel?.querySelector('[data-focus-completion]');
+          if (focusCompletion) focusCompletion.textContent = `${progressLabel(progress)} · ${status}`;
+        });
+
+        form.querySelectorAll('[data-sync-item-panel]').forEach((panel) => {
+          const isSelected = panel.dataset.syncItemPanel === selectedKey;
+          panel.hidden = !isSelected;
+          panel.classList.toggle('is-focused', isSelected);
+          panel.querySelectorAll('[data-current-locale-label]').forEach((label) => {
+            label.textContent = activeLocale;
+          });
+        });
       }
 
       function flashButtonText(button, message) {
@@ -652,13 +726,17 @@
       }
 
       function syncMetadataEditor(root = document) {
-        root.querySelectorAll('[data-metadata-form]').forEach((form) => {
+        const forms = root.matches?.('[data-metadata-form]')
+          ? [root]
+          : Array.from(root.querySelectorAll('[data-metadata-form]'));
+        forms.forEach((form) => {
           const fieldView = form.querySelector('[data-field-view]');
           const picker = form.querySelector('[data-language-picker]');
           const activeLocale = picker?.value || form.dataset.sourceLocale;
 
           form.querySelector('[data-metadata-editor]')?.setAttribute('data-mode', 'field');
           if (fieldView) fieldView.hidden = false;
+          syncMetadataWorkspace(form, activeLocale);
           syncCollapsibleLocaleGroups(form, activeLocale);
 
           fieldView?.querySelectorAll('input, textarea, select').forEach((input) => {
@@ -666,6 +744,7 @@
           });
           syncVisibleRequiredFields(form);
           syncContentSetControls(form);
+          syncMetadataPreflightForm(form);
         });
       }
 
@@ -1023,6 +1102,7 @@
             metadataInput.dataset.field,
             metadataInput.value
           );
+          syncMetadataEditor(form);
         }
         const storeImageInput = event.target.closest('[data-store-image-input]');
         if (storeImageInput) {
@@ -1033,6 +1113,10 @@
             storeImageInput.dataset.slot,
             storeImageInput.value
           );
+          syncMetadataEditor(form);
+        }
+        if (event.target.closest('[data-metadata-version], [data-metadata-source-locale]')) {
+          syncMetadataPreflightForm(event.target.closest('[data-metadata-form]'));
         }
       });
 
@@ -1065,6 +1149,7 @@
         if (contentSetPicker) {
           const form = contentSetPicker.closest('[data-metadata-form]');
           syncContentSetControls(form);
+          syncMetadataPreflightForm(form);
           const selected = contentSetPicker.selectedOptions?.[0];
           if (selected?.dataset.existing === 'true') {
             const url = new URL(window.location.href);
@@ -1079,6 +1164,7 @@
         const storeImageFile = event.target.closest('[data-store-image-file]');
         if (storeImageFile) {
           renderStoreImagePreview(storeImageFile);
+          syncMetadataEditor(storeImageFile.closest('[data-metadata-form]'));
         }
         const bulkFiles = event.target.closest('[data-store-image-bulk-files], [data-store-image-folder]');
         if (bulkFiles) {
@@ -1091,6 +1177,7 @@
             bulkDrop?.dataset.locale || ''
           );
           bulkFiles.value = '';
+          syncMetadataEditor(form);
         }
       });
 
@@ -1146,6 +1233,16 @@
             item.classList.toggle('is-active', item === filter);
           });
           syncAccountMatrix();
+          return;
+        }
+
+        const syncItem = event.target.closest('[data-sync-item-select]');
+        if (syncItem) {
+          const form = syncItem.closest('[data-metadata-form]');
+          if (form) {
+            form.dataset.selectedSyncItem = syncItem.dataset.syncItemKey;
+            syncMetadataEditor(form);
+          }
           return;
         }
 

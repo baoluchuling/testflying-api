@@ -21,218 +21,86 @@
     <div class="alert error"><strong>{{ error }}</strong></div>
   {% endif %}
 
-  <div class="split-grid">
-    <section class="panel store-metadata-panel">
-      <div class="panel-header"><h2>元数据草稿</h2><a href="/admin/developer-accounts/{{ account.id }}">返回账号</a></div>
-      <form class="form" action="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata" method="post" enctype="multipart/form-data" data-metadata-form data-source-locale="{{ source_locale }}">
-        <div class="form-grid">
+  <section class="panel store-metadata-panel store-metadata-workspace-panel">
+    <div class="panel-header">
+      <div>
+        <h2>元数据草稿</h2>
+        <span>选中一个同步项后，在中间区域集中编辑。</span>
+      </div>
+      <a href="/admin/developer-accounts/{{ account.id }}">返回账号</a>
+    </div>
+
+    <form id="metadata-preflight-form" action="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata/preflight" method="post" hidden>
+      <input type="hidden" name="version" value="{{ version }}" data-preflight-version>
+      <input type="hidden" name="locale" value="{{ source_locale }}" data-preflight-locale>
+      <input type="hidden" name="contentSetId" value="{{ content_set_id }}" data-preflight-content-set>
+    </form>
+
+    <form
+      class="form store-metadata-form"
+      action="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata"
+      method="post"
+      enctype="multipart/form-data"
+      data-metadata-form
+      data-source-locale="{{ source_locale }}"
+    >
+      <div data-field-locales hidden>
+        {% for item in localized_metadata %}
+          <input type="hidden" name="locales" value="{{ item.locale }}">
+        {% endfor %}
+      </div>
+
+      <div class="metadata-control-strip">
+        <div class="metadata-version-controls">
           <label>
             目标版本
-            <input name="version" value="{{ version }}" required>
+            <input name="version" value="{{ version }}" required data-metadata-version>
           </label>
           <label>
             源文案语言
-            <input name="locale" value="{{ source_locale }}" required readonly>
+            <input name="locale" value="{{ source_locale }}" required readonly data-metadata-source-locale>
           </label>
         </div>
 
-        <div class="metadata-toolbar">
-          <div class="content-set-switcher">
-            <label class="language-picker content-set-picker">
-              商店内容套件
-              <select name="contentSetId" data-content-set-picker>
-                {% for content_set in content_sets %}
-                  <option
-                    value="{{ content_set.id }}"
-                    data-name="{{ content_set.name }}"
-                    data-existing="true"
-                    {% if content_set.id == content_set_id %}selected{% endif %}
-                  >{{ content_set.name }}</option>
-                {% endfor %}
-              </select>
-            </label>
-            <input type="hidden" name="contentSetName" value="{{ content_set_name }}" data-content-set-name>
-            <button class="ghost-button" type="button" data-create-content-set>新建套件</button>
-            <button class="ghost-button" type="button" data-duplicate-content-set>复制当前套</button>
-            <span class="content-set-status" data-content-set-status>已打开：{{ content_set_name }}</span>
-          </div>
+        <div class="metadata-content-controls">
+          <label class="language-picker content-set-picker">
+            商店内容套件
+            <select name="contentSetId" data-content-set-picker>
+              {% for content_set in content_sets %}
+                <option
+                  value="{{ content_set.id }}"
+                  data-name="{{ content_set.name }}"
+                  data-existing="true"
+                  {% if content_set.id == content_set_id %}selected{% endif %}
+                >{{ content_set.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <input type="hidden" name="contentSetName" value="{{ content_set_name }}" data-content-set-name>
+          <button class="ghost-button compact" type="button" data-create-content-set>新建套件</button>
+          <button class="ghost-button compact" type="button" data-duplicate-content-set>复制当前套</button>
+          <span class="content-set-status" data-content-set-status>已打开：{{ content_set_name }}</span>
+        </div>
+
+        <div class="metadata-action-strip">
           <label class="language-picker">
-            语言
+            当前语言
             <select data-language-picker>
               {% for item in localized_metadata %}
                 <option value="{{ item.locale }}" {% if item.locale == locale %}selected{% endif %}>{{ item.locale }}</option>
               {% endfor %}
             </select>
           </label>
-          <button class="ghost-button" type="button" data-translate-metadata>翻译所有文案项</button>
-        </div>
-
-        <div class="metadata-source-note">
-          <strong>{{ source_locale }}</strong>
-          <span>作为源文案；翻译按钮会调用已配置的翻译服务生成其他语言文案。</span>
-        </div>
-
-        <div class="metadata-editor" data-metadata-editor data-mode="field">
-          <div class="metadata-field-view" data-field-view>
-            <div data-field-locales hidden>
-              {% for item in localized_metadata %}
-                <input type="hidden" name="locales" value="{{ item.locale }}">
-              {% endfor %}
-            </div>
-            {% for field in metadata_fields %}
-              <section class="metadata-field-block" data-field="{{ field.key }}" data-locale-group>
-                <div class="locale-block-header">
-                  <div class="metadata-field-title">
-                    <strong>{{ field.label }}</strong>
-                    <span>当前语言：<b data-current-locale-label>{{ locale }}</b></span>
-                  </div>
-                  <div class="locale-block-actions">
-                    <button class="ghost-button compact subtle" type="button" data-translate-field data-field="{{ field.key }}">
-                      生成该项多语言
-                    </button>
-                    <button class="ghost-button compact subtle" type="button" data-locale-group-toggle>
-                      展开多语言
-                    </button>
-                  </div>
-                </div>
-                <div class="metadata-locale-grid">
-                  {% for item in localized_metadata %}
-                    <label class="metadata-locale-input" data-locale="{{ item.locale }}" data-locale-row {% if item.locale != locale %}hidden{% endif %}>
-                      <span>
-                        {{ item.locale }}
-                        {% if item.is_source %}
-                          <small>源文案</small>
-                        {% endif %}
-                      </span>
-                      {% if field.type == "textarea" %}
-                        <textarea
-                          name="{{ field.name }}"
-                          rows="{{ field.rows }}"
-                          placeholder="{{ field.placeholder }}"
-                          data-metadata-input
-                          data-locale="{{ item.locale }}"
-                          data-field="{{ field.key }}"
-                          data-required-field="{{ 'true' if field.required else 'false' }}"
-                          {% if field.required and item.locale == locale %}required{% endif %}
-                        >{{ item[field.key] }}</textarea>
-                      {% else %}
-                        <input
-                          name="{{ field.name }}"
-                          value="{{ item[field.key] }}"
-                          placeholder="{{ field.placeholder }}"
-                          data-metadata-input
-                          data-locale="{{ item.locale }}"
-                          data-field="{{ field.key }}"
-                          data-required-field="{{ 'true' if field.required else 'false' }}"
-                          {% if field.required and item.locale == locale %}required{% endif %}
-                        >
-                      {% endif %}
-                    </label>
-                  {% endfor %}
-                </div>
-              </section>
-            {% endfor %}
-            <div class="store-image-section-header">
-              <div>
-                <p class="subsection-title">商店图素材</p>
-                <span>每个商店图项支持独立拖拽图片或语言文件夹；文件夹会按 en-US、zh-Hant 等语言目录自动归类。</span>
-              </div>
-            </div>
-            {% for slot in store_image_slots %}
-              <section class="metadata-field-block store-image-field-block" data-store-image-slot="{{ slot.key }}" data-locale-group>
-                <div class="locale-block-header">
-                  <div class="metadata-field-title">
-                    <strong>{{ slot.label }}</strong>
-                    {% if slot.hint %}
-                      <span>{{ slot.hint }}</span>
-                    {% endif %}
-                    <span>当前语言：<b data-current-locale-label>{{ locale }}</b></span>
-                  </div>
-                  <div class="locale-block-actions">
-                    <button class="ghost-button compact subtle" type="button" data-translate-store-image data-slot="{{ slot.key }}">
-                      生成该项多语言
-                    </button>
-                    <button class="ghost-button compact subtle" type="button" data-locale-group-toggle>
-                      展开多语言
-                    </button>
-                  </div>
-                </div>
-                <div class="store-image-bulk-drop compact-bulk item-bulk" data-store-image-bulk-drop data-slot="{{ slot.key }}">
-                  <input type="file" accept="image/*" multiple data-store-image-bulk-files>
-                  <input type="file" multiple webkitdirectory directory data-store-image-folder>
-                  <div>
-                    <strong>批量上传 {{ slot.label }}</strong>
-                    <span>拖图片或语言文件夹，只归类到当前项；例如 en-US/01.png、zh-Hant/02.png。</span>
-                  </div>
-                  <div class="store-image-bulk-actions">
-                    <button class="ghost-button compact" type="button" data-store-image-folder-button>选择文件夹</button>
-                    <button class="ghost-button compact" type="button" data-store-image-files-button>选择图片</button>
-                  </div>
-                  <small data-store-image-bulk-status>还没有导入本地图片</small>
-                </div>
-                <div class="metadata-locale-grid">
-                  {% for item in localized_metadata %}
-                    <div class="metadata-locale-input" data-locale="{{ item.locale }}" data-locale-row {% if item.locale != locale %}hidden{% endif %}>
-                      <span>
-                        {{ item.locale }}
-                        {% if item.is_source %}
-                          <small>源文案</small>
-                        {% endif %}
-                      </span>
-                      {% if slot.key == "note" %}
-                        <textarea
-                          name="{{ slot.name }}"
-                          rows="{{ slot.rows }}"
-                          placeholder="{{ slot.placeholder }}"
-                          data-store-image-input
-                          data-locale="{{ item.locale }}"
-                          data-slot="{{ slot.key }}"
-                        >{{ item.store_images[slot.key] }}</textarea>
-                      {% else %}
-                        {% set image_slot = item.store_images[slot.key] %}
-                        <input
-                          type="hidden"
-                          name="{{ slot.name }}"
-                          value="{{ image_slot.value }}"
-                          data-store-image-input
-                          data-locale="{{ item.locale }}"
-                          data-slot="{{ slot.key }}"
-                        >
-                        <div class="store-image-upload" data-store-image-zone data-slot="{{ slot.key }}" data-locale="{{ item.locale }}" data-multiple="{{ 'true' if slot.multiple else 'false' }}">
-                          <input
-                            type="file"
-                            name="storeImageFiles__{{ slot.key }}__{{ item.locale }}"
-                            accept="image/*"
-                            data-store-image-file
-                            data-slot="{{ slot.key }}"
-                            data-locale="{{ item.locale }}"
-                            {% if slot.multiple %}multiple{% endif %}
-                          >
-                          <strong>拖入{{ item.locale }} {{ slot.label }}</strong>
-                          <small>{{ "支持多张，按文件名排序" if slot.multiple else "支持单张图片" }}</small>
-                          <div class="store-image-file-list" data-store-image-file-list>
-                            {% if image_slot.file_names %}
-                              {{ image_slot.file_names|join(", ") }}
-                            {% else %}
-                              暂无本地图片，可拖拽图片或语言文件夹
-                            {% endif %}
-                          </div>
-                        </div>
-                        <div class="store-image-previews {{ 'screenshots' if slot.multiple else '' }}" data-store-image-preview>
-                          {% for preview_url in image_slot.preview_urls %}
-                            <img alt="{{ item.locale }} {{ slot.label }}预览" src="{{ preview_url }}">
-                          {% endfor %}
-                        </div>
-                      {% endif %}
-                    </div>
-                  {% endfor %}
-                </div>
-              </section>
-            {% endfor %}
+          <div class="metadata-preflight-chip {{ 'ok' if preflight and preflight.can_sync else 'blocked' }}">
+            <span>{{ "可同步" if preflight and preflight.can_sync else "需检查" }}</span>
+            <strong>
+              {% if preflight %}
+                {{ preflight|preflight_title }}
+              {% else %}
+                {{ none|preflight_title }}
+              {% endif %}
+            </strong>
           </div>
-        </div>
-
-        <div class="form-actions">
           <button class="primary-button" type="submit">保存草稿</button>
           <button
             class="primary-button secondary"
@@ -240,77 +108,312 @@
             type="submit"
             {% if not preflight or not preflight.can_sync %}disabled{% endif %}
           >同步到商店</button>
+          <button class="ghost-button compact" type="submit" form="metadata-preflight-form">实时查询</button>
         </div>
-      </form>
-    </section>
-
-    <aside class="panel">
-      <div class="panel-header">
-        <h2>商店状态检查</h2>
-        <form action="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata/preflight" method="post">
-          <input type="hidden" name="version" value="{{ version }}">
-          <input type="hidden" name="locale" value="{{ source_locale }}">
-          <input type="hidden" name="contentSetId" value="{{ content_set_id }}">
-          <button class="ghost-button compact" type="submit">实时查询</button>
-        </form>
       </div>
-      {% if preflight %}
-        <div class="preflight-status {{ 'ok' if preflight.can_sync else 'blocked' }}">
-          <span class="preflight-status-mark" aria-hidden="true">{{ "OK" if preflight.can_sync else "!" }}</span>
-          <div class="preflight-status-body">
-            <span class="preflight-kicker">{{ "检查通过" if preflight.can_sync else "需要处理" }}</span>
-            <strong>{{ preflight|preflight_title }}</strong>
-            <span class="preflight-summary">{{ preflight|preflight_summary }}</span>
-            <span class="preflight-next-step">{{ preflight|preflight_action(app.platform) }}</span>
-          </div>
-        </div>
-        <dl class="detail-list">
-          <dt>后台构建</dt>
-          <dd>{{ "已存在" if latest_build else "未找到" }}</dd>
-          <dt>商店版本</dt>
-          <dd>{{ "已创建" if preflight.can_sync else "未确认" }}</dd>
-          <dt>检查时间</dt>
-          <dd>{{ preflight.checked_at|datetime }}</dd>
-          <dt>缓存剩余</dt>
-          <dd>{{ preflight.remaining_seconds }} 秒</dd>
-          <dt>来源</dt>
-          <dd>{{ preflight.source_label }}</dd>
-          <dt>原因码</dt>
-          <dd>{{ preflight.reason_code or "-" }}</dd>
-        </dl>
-      {% else %}
-        <div class="preflight-status blocked">
-          <span class="preflight-status-mark" aria-hidden="true">!</span>
-          <div class="preflight-status-body">
-            <span class="preflight-kicker">等待检查</span>
-            <strong>{{ none|preflight_title }}</strong>
-            <span class="preflight-summary">{{ none|preflight_summary }}</span>
-            <span class="preflight-next-step">{{ none|preflight_action(app.platform) }}</span>
-          </div>
-        </div>
-      {% endif %}
-      {% if connector %}
-        <div class="subsection-title">Connector</div>
-        <dl class="detail-list">
-          <dt>名称</dt>
-          <dd>{{ connector.name }}</dd>
-          <dt>状态</dt>
-          <dd>{{ connector.status }}</dd>
-        </dl>
-      {% endif %}
-      <div class="subsection-title">内容套件</div>
-      <dl class="detail-list">
-        <dt>当前打开</dt>
-        <dd>{{ content_set_name }}</dd>
-        <dt>内容范围</dt>
-        <dd>文案、商店图</dd>
-        <dt>同步目标</dt>
-        <dd>当前套件</dd>
-      </dl>
-    </aside>
-  </div>
 
-  <section class="panel">
+      <div class="metadata-source-note">
+        <strong>{{ source_locale }}</strong>
+        <span>作为源文案；选中同步项后，可以只生成当前项的多语言内容。</span>
+        <button class="ghost-button compact subtle" type="button" data-translate-metadata>翻译所有文案项</button>
+      </div>
+
+      <div class="metadata-focus-workspace" data-metadata-editor data-mode="field">
+        <aside class="metadata-sync-rail">
+          <div class="metadata-rail-header">
+            <strong>同步项</strong>
+            <span>{{ localized_metadata|length }} 个语言</span>
+          </div>
+
+          <div class="metadata-sync-group">
+            <span>文案</span>
+            {% for field in metadata_fields %}
+              <button
+                class="metadata-sync-item {% if field.key == 'description' %}is-selected{% endif %}"
+                type="button"
+                data-sync-item-select
+                data-sync-item-key="{{ field.key }}"
+                data-sync-item-type="field"
+                data-field="{{ field.key }}"
+                {% if field.key == "description" %}data-default-focus="true"{% endif %}
+              >
+                <strong>{{ field.label }}</strong>
+                <span data-sync-item-count>{{ localized_metadata|length }}/{{ localized_metadata|length }} 语言</span>
+                <small data-sync-item-status>待检查</small>
+              </button>
+            {% endfor %}
+          </div>
+
+          <div class="metadata-sync-group">
+            <span>商店图素材</span>
+            {% for slot in store_image_slots %}
+              <button
+                class="metadata-sync-item"
+                type="button"
+                data-sync-item-select
+                data-sync-item-key="{{ slot.key }}"
+                data-sync-item-type="store-image"
+                data-slot="{{ slot.key }}"
+              >
+                <strong>{{ slot.label }}</strong>
+                <span data-sync-item-count>{{ localized_metadata|length }}/{{ localized_metadata|length }} 语言</span>
+                <small data-sync-item-status>待检查</small>
+              </button>
+            {% endfor %}
+          </div>
+        </aside>
+
+        <section class="metadata-focus-panel" data-field-view>
+          {% for field in metadata_fields %}
+            <section
+              class="metadata-field-block metadata-focus-card"
+              data-field="{{ field.key }}"
+              data-sync-item-panel="{{ field.key }}"
+              data-locale-group
+              {% if field.key != "description" %}hidden{% endif %}
+            >
+              <div class="metadata-focus-card-header">
+                <div>
+                  <p class="eyebrow">文案项</p>
+                  <h2>{{ field.label }}</h2>
+                  <span>当前语言：<b data-current-locale-label>{{ locale }}</b></span>
+                </div>
+                <div class="locale-block-actions">
+                  <span class="metadata-focus-completion" data-focus-completion>待检查</span>
+                  <button class="ghost-button compact subtle" type="button" data-translate-field data-field="{{ field.key }}">
+                    生成该项多语言
+                  </button>
+                  <button class="ghost-button compact subtle" type="button" data-locale-group-toggle>
+                    展开多语言
+                  </button>
+                </div>
+              </div>
+
+              <div class="metadata-locale-grid metadata-focus-locale-grid">
+                {% for item in localized_metadata %}
+                  <label class="metadata-locale-input metadata-focus-locale-row" data-locale="{{ item.locale }}" data-locale-row {% if item.locale != locale %}hidden{% endif %}>
+                    <span>
+                      {{ item.locale }}
+                      {% if item.is_source %}
+                        <small>源文案</small>
+                      {% endif %}
+                    </span>
+                    {% if field.type == "textarea" %}
+                      <textarea
+                        name="{{ field.name }}"
+                        rows="{{ field.rows }}"
+                        placeholder="{{ field.placeholder }}"
+                        data-metadata-input
+                        data-locale="{{ item.locale }}"
+                        data-field="{{ field.key }}"
+                        data-required-field="{{ 'true' if field.required else 'false' }}"
+                        {% if field.required and item.locale == locale %}required{% endif %}
+                      >{{ item[field.key] }}</textarea>
+                    {% else %}
+                      <input
+                        name="{{ field.name }}"
+                        value="{{ item[field.key] }}"
+                        placeholder="{{ field.placeholder }}"
+                        data-metadata-input
+                        data-locale="{{ item.locale }}"
+                        data-field="{{ field.key }}"
+                        data-required-field="{{ 'true' if field.required else 'false' }}"
+                        {% if field.required and item.locale == locale %}required{% endif %}
+                      >
+                    {% endif %}
+                  </label>
+                {% endfor %}
+              </div>
+            </section>
+          {% endfor %}
+
+          {% for slot in store_image_slots %}
+            <section
+              class="metadata-field-block metadata-focus-card store-image-field-block"
+              data-store-image-slot="{{ slot.key }}"
+              data-sync-item-panel="{{ slot.key }}"
+              data-locale-group
+              hidden
+            >
+              <div class="metadata-focus-card-header">
+                <div>
+                  <p class="eyebrow">商店图</p>
+                  <h2>{{ slot.label }}</h2>
+                  {% if slot.hint %}
+                    <span>{{ slot.hint }}</span>
+                  {% endif %}
+                  <span>当前语言：<b data-current-locale-label>{{ locale }}</b></span>
+                </div>
+                <div class="locale-block-actions">
+                  <span class="metadata-focus-completion" data-focus-completion>待检查</span>
+                  <button class="ghost-button compact subtle" type="button" data-translate-store-image data-slot="{{ slot.key }}">
+                    生成该项多语言
+                  </button>
+                  <button class="ghost-button compact subtle" type="button" data-locale-group-toggle>
+                    展开多语言
+                  </button>
+                </div>
+              </div>
+
+              <div class="store-image-bulk-drop compact-bulk item-bulk" data-store-image-bulk-drop data-slot="{{ slot.key }}">
+                <input type="file" accept="image/*" multiple data-store-image-bulk-files>
+                <input type="file" multiple webkitdirectory directory data-store-image-folder>
+                <div>
+                  <strong>批量上传 {{ slot.label }}</strong>
+                  <span>拖图片或语言文件夹，只归类到当前项；例如 en-US/01.png、zh-Hant/02.png。</span>
+                </div>
+                <div class="store-image-bulk-actions">
+                  <button class="ghost-button compact" type="button" data-store-image-folder-button>选择文件夹</button>
+                  <button class="ghost-button compact" type="button" data-store-image-files-button>选择图片</button>
+                </div>
+                <small data-store-image-bulk-status>还没有导入本地图片</small>
+              </div>
+
+              <div class="metadata-locale-grid metadata-focus-locale-grid">
+                {% for item in localized_metadata %}
+                  <div class="metadata-locale-input metadata-focus-locale-row" data-locale="{{ item.locale }}" data-locale-row {% if item.locale != locale %}hidden{% endif %}>
+                    <span>
+                      {{ item.locale }}
+                      {% if item.is_source %}
+                        <small>源文案</small>
+                      {% endif %}
+                    </span>
+                    {% set image_slot = item.store_images[slot.key] %}
+                    <input
+                      type="hidden"
+                      name="{{ slot.name }}"
+                      value="{{ image_slot.value }}"
+                      data-store-image-input
+                      data-locale="{{ item.locale }}"
+                      data-slot="{{ slot.key }}"
+                    >
+                    <div class="store-image-upload" data-store-image-zone data-slot="{{ slot.key }}" data-locale="{{ item.locale }}" data-multiple="{{ 'true' if slot.multiple else 'false' }}">
+                      <input
+                        type="file"
+                        name="storeImageFiles__{{ slot.key }}__{{ item.locale }}"
+                        accept="image/*"
+                        data-store-image-file
+                        data-slot="{{ slot.key }}"
+                        data-locale="{{ item.locale }}"
+                        {% if slot.multiple %}multiple{% endif %}
+                      >
+                      <strong>拖入{{ item.locale }} {{ slot.label }}</strong>
+                      <small>{{ "支持多张，按文件名排序" if slot.multiple else "支持单张图片" }}</small>
+                      <div class="store-image-file-list" data-store-image-file-list>
+                        {% if image_slot.file_names %}
+                          {{ image_slot.file_names|join(", ") }}
+                        {% else %}
+                          暂无本地图片，可拖拽图片或语言文件夹
+                        {% endif %}
+                      </div>
+                    </div>
+                    <div class="store-image-previews {{ 'screenshots' if slot.multiple else '' }}" data-store-image-preview>
+                      {% for preview_url in image_slot.preview_urls %}
+                        <img alt="{{ item.locale }} {{ slot.label }}预览" src="{{ preview_url }}">
+                      {% endfor %}
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+            </section>
+          {% endfor %}
+        </section>
+
+        <aside class="metadata-side-status">
+          <div class="metadata-side-section">
+            <div class="metadata-side-heading">
+              <strong>同步前检查</strong>
+              <span>{{ "检查通过" if preflight and preflight.can_sync else "需要处理" }}</span>
+            </div>
+            {% if preflight %}
+              <div class="preflight-status {{ 'ok' if preflight.can_sync else 'blocked' }}">
+                <span class="preflight-status-mark" aria-hidden="true">{{ "OK" if preflight.can_sync else "!" }}</span>
+                <div class="preflight-status-body">
+                  <span class="preflight-kicker">{{ "检查通过" if preflight.can_sync else "需要处理" }}</span>
+                  <strong>{{ preflight|preflight_title }}</strong>
+                  <span class="preflight-summary">{{ preflight|preflight_summary }}</span>
+                  <span class="preflight-next-step">{{ preflight|preflight_action(app.platform) }}</span>
+                </div>
+              </div>
+              <dl class="detail-list compact">
+                <dt>后台构建</dt>
+                <dd>{{ "已存在" if latest_build else "未找到" }}</dd>
+                <dt>商店版本</dt>
+                <dd>{{ "已创建" if preflight.can_sync else "未确认" }}</dd>
+                <dt>检查时间</dt>
+                <dd>{{ preflight.checked_at|datetime }}</dd>
+                <dt>缓存剩余</dt>
+                <dd>{{ preflight.remaining_seconds }} 秒</dd>
+                <dt>来源</dt>
+                <dd>{{ preflight.source_label }}</dd>
+              </dl>
+            {% else %}
+              <div class="preflight-status blocked">
+                <span class="preflight-status-mark" aria-hidden="true">!</span>
+                <div class="preflight-status-body">
+                  <span class="preflight-kicker">等待检查</span>
+                  <strong>{{ none|preflight_title }}</strong>
+                  <span class="preflight-summary">{{ none|preflight_summary }}</span>
+                  <span class="preflight-next-step">{{ none|preflight_action(app.platform) }}</span>
+                </div>
+              </div>
+            {% endif %}
+          </div>
+
+          {% if connector %}
+            <div class="metadata-side-section">
+              <div class="metadata-side-heading">
+                <strong>Connector</strong>
+                <span>{{ connector.status }}</span>
+              </div>
+              <dl class="detail-list compact">
+                <dt>名称</dt>
+                <dd>{{ connector.name }}</dd>
+                <dt>状态</dt>
+                <dd>{{ connector.status }}</dd>
+              </dl>
+            </div>
+          {% endif %}
+
+          <div class="metadata-side-section">
+            <div class="metadata-side-heading">
+              <strong>内容套件</strong>
+              <span>当前打开</span>
+            </div>
+            <dl class="detail-list compact">
+              <dt>名称</dt>
+              <dd>{{ content_set_name }}</dd>
+              <dt>内容范围</dt>
+              <dd>文案、商店图</dd>
+              <dt>同步目标</dt>
+              <dd>当前套件</dd>
+            </dl>
+          </div>
+
+          <div class="metadata-side-section">
+            <div class="metadata-side-heading">
+              <strong>最近同步</strong>
+              <span>当前 App</span>
+            </div>
+            <div class="metadata-mini-sync-list">
+              {% for run in sync_runs[:3] %}
+                <div class="metadata-mini-sync-row">
+                  <span>{{ run.started_at|datetime }}</span>
+                  <strong>{{ run.operation }}</strong>
+                  <small>{{ run.version }} / {{ run.locale }}</small>
+                  <b class="badge {{ 'success' if run.status == 'succeeded' else 'danger' }}">{{ run.status }}</b>
+                </div>
+              {% else %}
+                <div class="empty">暂无同步记录</div>
+              {% endfor %}
+            </div>
+          </div>
+        </aside>
+      </div>
+    </form>
+  </section>
+
+  <section class="panel metadata-sync-history-panel">
     <div class="panel-header"><h2>同步记录</h2><span>当前 App</span></div>
     <table>
       <thead><tr><th>时间</th><th>操作</th><th>版本</th><th>语言</th><th>状态</th><th>错误摘要</th></tr></thead>

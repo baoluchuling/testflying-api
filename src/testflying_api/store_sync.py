@@ -995,7 +995,7 @@ def _post_json(
     except HTTPError as error:
         body = error.read().decode("utf-8", errors="replace")
         raise ConnectorCallError(f"connector 返回 HTTP {error.code}: {body[:180]}") from error
-    except (URLError, TimeoutError, json.JSONDecodeError) as error:
+    except (URLError, TimeoutError, OSError, json.JSONDecodeError) as error:
         raise ConnectorCallError(f"connector 调用失败: {error}") from error
 
 
@@ -1021,7 +1021,7 @@ def _get_json(
     except HTTPError as error:
         body = error.read().decode("utf-8", errors="replace")
         raise ConnectorCallError(f"connector 返回 HTTP {error.code}: {body[:180]}") from error
-    except (URLError, TimeoutError, json.JSONDecodeError) as error:
+    except (URLError, TimeoutError, OSError, json.JSONDecodeError) as error:
         raise ConnectorCallError(f"connector 调用失败: {error}") from error
 
 

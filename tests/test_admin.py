@@ -1030,6 +1030,31 @@ def test_supported_locales_use_connector_app_languages_only(db_session: Session)
     assert "zh-Hans" not in locales
 
 
+def test_supported_locales_falls_back_when_connector_resets(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seed_demo_catalog(db_session)
+    connector = db_session.query(StoreConnector).one()
+    connector.base_url = "http://connector.test"
+    db_session.commit()
+
+    def reset_connection(*_args: object, **_kwargs: object) -> None:
+        raise ConnectionResetError(104, "Connection reset by peer")
+
+    monkeypatch.setattr("testflying_api.store_sync.urlopen", reset_connection)
+
+    locales = supported_locales_for_app(
+        db_session,
+        account_id="account-apple-enterprise",
+        app_id="app-aurora-ios",
+        version="2.4.0",
+        fallback_locale="en-US",
+    )
+
+    assert locales == ["en-US"]
+
+
 def test_admin_store_metadata_realtime_preflight_is_throttled(
     client: TestClient,
     db_session: Session,

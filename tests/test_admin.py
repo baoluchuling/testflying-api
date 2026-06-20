@@ -999,6 +999,7 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "data-store-image-zone" in response.text
     assert "data-store-image-bulk-drop" in response.text
     assert "展开所有语言" in response.text
+    assert "row.hidden = !expanded && !isActiveLocale" in response.text
     assert 'data-locale="zh-Hans" data-locale-row' in response.text
     assert 'data-locale="en-US" data-locale-row' in response.text
     assert response.text.index("商店图") < response.text.index("data-store-image-bulk-drop")

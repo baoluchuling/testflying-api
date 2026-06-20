@@ -84,6 +84,7 @@ def main() -> int:
         "preview-grid",
         "data-sync-item-select",
         "data-sync-item-panel",
+        "row.hidden = !expanded && !isActiveLocale",
     ):
         require(marker in html, f"page is missing {marker}", failures)
     for label in ("关键词", "宣传文本", "描述", "手机截图", "平板截图"):

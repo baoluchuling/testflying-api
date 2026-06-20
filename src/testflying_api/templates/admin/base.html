@@ -784,7 +784,8 @@
             label.textContent = activeLocale;
           });
           group.querySelectorAll('[data-locale-row]').forEach((row) => {
-            row.hidden = false;
+            const isActiveLocale = row.dataset.locale === activeLocale;
+            row.hidden = !expanded && !isActiveLocale;
             row.dataset.activeLocale = row.dataset.locale === activeLocale ? 'true' : 'false';
           });
           const toggle = group.querySelector('[data-locale-group-toggle]');

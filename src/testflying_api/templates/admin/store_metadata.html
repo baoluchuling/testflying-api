@@ -2,16 +2,16 @@
 {% block main_class %}store-metadata-main{% endblock %}
 {% block heading %}商店元数据{% endblock %}
 {% block content %}
-  <section class="context-banner metadata-context-banner">
+  <section class="card context-card context-banner metadata-context-banner">
     <div>
       <p class="eyebrow">{{ store_label }} 同步</p>
       <h2>{{ app.name }}</h2>
       <small>{{ app.bundle_identifier }}</small>
     </div>
     <div class="context-meta">
-      <span class="context-pill blue">{{ app.platform|platform }}</span>
-      <span class="context-pill">版本：{{ version or "-" }}</span>
-      <span class="context-pill">语言：{{ supported_locales|length }} 个</span>
+      <span class="pill context-pill blue">{{ app.platform|platform }}</span>
+      <span class="pill context-pill">版本：{{ version or "-" }}</span>
+      <span class="pill context-pill">语言：{{ supported_locales|length }} 个</span>
     </div>
   </section>
 
@@ -53,9 +53,9 @@
         </label>
       </div>
 
-      <div class="metadata-control-strip">
+      <div class="card toolbar metadata-control-strip">
         <div class="metadata-toolbar-left">
-          <label class="language-picker content-set-picker">
+          <label class="button ghost select-button language-picker content-set-picker">
             <span class="visually-hidden">商店内容套件</span>
             <select name="contentSetId" data-content-set-picker>
               {% for content_set in content_sets %}
@@ -73,7 +73,7 @@
             <button class="ghost-button compact subtle" type="button" data-create-content-set>新建套件</button>
             <button class="ghost-button compact subtle" type="button" data-duplicate-content-set>复制当前套</button>
           </span>
-          <label class="language-picker">
+          <label class="button ghost select-button language-picker">
             <span class="visually-hidden">当前语言</span>
             <select data-language-picker>
               {% for item in localized_metadata %}
@@ -82,7 +82,7 @@
             </select>
           </label>
           <span class="content-set-status" data-content-set-status>已打开：{{ content_set_name }}</span>
-          <div class="metadata-preflight-chip {{ 'ok' if preflight and preflight.can_sync else 'blocked' }}">
+          <div class="pill green metadata-preflight-chip {{ 'ok' if preflight and preflight.can_sync else 'blocked' }}">
             <span>{{ "可同步" if preflight and preflight.can_sync else "需检查" }}</span>
             <strong>
               {% if preflight %}
@@ -93,15 +93,15 @@
             </strong>
           </div>
         </div>
-        <div class="metadata-action-strip">
-          <button class="primary-button" type="submit">保存草稿</button>
+        <div class="toolbar-right metadata-action-strip">
+          <button class="button ghost primary-button" type="submit">保存草稿</button>
           <button
-            class="primary-button secondary"
+            class="button primary primary-button secondary"
             formaction="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata/sync"
             type="submit"
             {% if not preflight or not preflight.can_sync %}disabled{% endif %}
           >同步到商店</button>
-          <button class="ghost-button compact metadata-refresh-button" type="submit" form="metadata-preflight-form">
+          <button class="button ghost ghost-button compact metadata-refresh-button" type="submit" form="metadata-preflight-form">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.8-3.8"/><path d="M5 3v4.5h4.5"/><path d="M4 13a8 8 0 0 0 14.8 3.8"/><path d="M19 21v-4.5h-4.5"/></svg>
             <span>实时查询</span>
           </button>
@@ -114,18 +114,18 @@
         <button class="ghost-button compact subtle" type="button" data-translate-metadata>翻译所有文案项</button>
       </div>
 
-      <div class="metadata-focus-workspace" data-metadata-editor data-mode="field">
-        <aside class="metadata-sync-rail">
-          <div class="metadata-rail-header">
+      <div class="workspace metadata-focus-workspace" data-metadata-editor data-mode="field">
+        <aside class="card rail metadata-sync-rail">
+          <div class="rail-header metadata-rail-header">
             <strong>同步项</strong>
             <span>{{ localized_metadata|length }} 个语言</span>
           </div>
 
-          <div class="metadata-sync-group">
-            <span>文案</span>
+          <div class="rail-section metadata-sync-group">
+            <span class="rail-section-title">文案</span>
             {% for field in metadata_fields %}
               <button
-                class="metadata-sync-item {% if field.key == 'description' %}is-selected{% endif %}"
+                class="sync-item metadata-sync-item {% if field.key == 'description' %}active is-selected{% endif %}"
                 type="button"
                 data-sync-item-select
                 data-sync-item-key="{{ field.key }}"
@@ -133,7 +133,7 @@
                 data-field="{{ field.key }}"
                 {% if field.key == "description" %}data-default-focus="true"{% endif %}
               >
-                <span class="metadata-sync-icon" aria-hidden="true">
+                <span class="sync-icon metadata-sync-icon" aria-hidden="true">
                   {% if field.key == "keywords" %}
                     <svg viewBox="0 0 24 24"><path d="M20 10v8a2 2 0 0 1-2 2H9L4 15V6a2 2 0 0 1 2-2h8Z"/><path d="M14 4v6h6"/><path d="M8 10h3"/></svg>
                   {% elif field.key == "promotional_text" %}
@@ -142,34 +142,34 @@
                     <svg viewBox="0 0 24 24"><path d="M7 3.5h7l4 4V21H7Z"/><path d="M14 3.5v5h5"/><path d="M10 13h5"/><path d="M10 17h5"/></svg>
                   {% endif %}
                 </span>
-                <strong>{{ field.short_label or field.label }}</strong>
-                <span class="metadata-sync-dot" aria-hidden="true"></span>
-                <span data-sync-item-count>{{ localized_metadata|length }}/{{ localized_metadata|length }} 语言</span>
+                <span class="sync-copy"><strong>{{ field.short_label or field.label }}</strong></span>
+                <span class="progress-dot metadata-sync-dot" aria-hidden="true"></span>
+                <span class="sync-count" data-sync-item-count>{{ localized_metadata|length }}/{{ localized_metadata|length }} 语言</span>
                 <small data-sync-item-status>待检查</small>
-                <span class="metadata-chevron right" aria-hidden="true"></span>
+                <span class="chevron metadata-chevron right" aria-hidden="true"></span>
               </button>
             {% endfor %}
           </div>
 
-          <div class="metadata-sync-group">
-            <span>商店图素材</span>
+          <div class="rail-section metadata-sync-group">
+            <span class="rail-section-title">商店图</span>
             {% for slot in store_image_slots %}
               <button
-                class="metadata-sync-item"
+                class="sync-item metadata-sync-item"
                 type="button"
                 data-sync-item-select
                 data-sync-item-key="{{ slot.key }}"
                 data-sync-item-type="store-image"
                 data-slot="{{ slot.key }}"
               >
-                <span class="metadata-sync-icon" aria-hidden="true">
+                <span class="sync-icon metadata-sync-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="m5 16 4.2-4.2 3.8 3.8 2-2L20 18"/><circle cx="16" cy="9" r="1.2"/></svg>
                 </span>
-                <strong>{{ slot.short_label or slot.label }}</strong>
-                <span class="metadata-sync-dot" aria-hidden="true"></span>
-                <span data-sync-item-count>{{ localized_metadata|length }}/{{ localized_metadata|length }} 语言</span>
+                <span class="sync-copy"><strong>{{ slot.short_label or slot.label }}</strong></span>
+                <span class="progress-dot metadata-sync-dot" aria-hidden="true"></span>
+                <span class="sync-count" data-sync-item-count>{{ localized_metadata|length }}/{{ localized_metadata|length }} 语言</span>
                 <small data-sync-item-status>待检查</small>
-                <span class="metadata-chevron right" aria-hidden="true"></span>
+                <span class="chevron metadata-chevron right" aria-hidden="true"></span>
               </button>
             {% endfor %}
           </div>
@@ -178,16 +178,16 @@
         <section class="metadata-focus-panel" data-field-view>
           {% for field in metadata_fields %}
             <section
-              class="metadata-field-block metadata-focus-card"
+              class="card editor metadata-field-block metadata-focus-card"
               data-field="{{ field.key }}"
               data-sync-item-panel="{{ field.key }}"
               data-locale-group
               {% if field.key != "description" %}hidden{% endif %}
             >
-              <div class="metadata-focus-card-header">
+              <div class="editor-head metadata-focus-card-header">
                 <div>
-                  <div class="metadata-focus-title-row">
-                    <span class="metadata-title-icon" aria-hidden="true">
+                  <div class="title-row metadata-focus-title-row">
+                    <span class="title-icon metadata-title-icon" aria-hidden="true">
                       {% if field.key == "keywords" %}
                         <svg viewBox="0 0 24 24"><path d="M20 10v8a2 2 0 0 1-2 2H9L4 15V6a2 2 0 0 1 2-2h8Z"/><path d="M14 4v6h6"/><path d="M8 10h3"/></svg>
                       {% elif field.key == "promotional_text" %}
@@ -201,19 +201,20 @@
                       <h2>{{ field.short_label or field.label }}</h2>
                     </div>
                   </div>
-                  <span class="metadata-current-locale">当前语言：<b data-current-locale-label>{{ locale }}</b></span>
+                  <span class="current-locale metadata-current-locale">当前语言：<b data-current-locale-label>{{ locale }}</b></span>
                 </div>
-                <div class="locale-block-actions">
+                <div class="editor-actions locale-block-actions">
                   <span class="metadata-focus-completion" data-focus-completion>待检查</span>
-                  <button class="ghost-button compact subtle" type="button" data-translate-field data-field="{{ field.key }}">
+                  <button class="button small ghost ghost-button compact subtle" type="button" data-translate-field data-field="{{ field.key }}">
                     生成该项多语言
                   </button>
-                  <button class="ghost-button compact subtle" type="button" data-locale-group-toggle>
+                  <button class="button small ghost ghost-button compact subtle" type="button" data-locale-group-toggle>
                     展开多语言
                   </button>
                 </div>
               </div>
 
+              <div class="editor-body">
               {% set current_field = namespace(value="") %}
               {% for item in localized_metadata %}
                 {% if item.locale == locale %}
@@ -223,6 +224,7 @@
               <div class="metadata-current-editor" data-current-field-editor data-field="{{ field.key }}">
                 {% if field.type == "textarea" %}
                   <textarea
+                    class="main-input"
                     rows="{{ field.rows }}"
                     placeholder="{{ field.placeholder }}"
                     data-current-metadata-editor
@@ -230,6 +232,7 @@
                   >{{ current_field.value }}</textarea>
                 {% else %}
                   <input
+                    class="main-input"
                     value="{{ current_field.value }}"
                     placeholder="{{ field.placeholder }}"
                     data-current-metadata-editor
@@ -238,21 +241,18 @@
                 {% endif %}
               </div>
 
-              <h3 class="metadata-languages-title">所有语言（{{ localized_metadata|length }}）</h3>
-              <div class="metadata-locale-grid metadata-focus-locale-grid">
+              <h3 class="languages-title metadata-languages-title">所有语言（{{ localized_metadata|length }}）</h3>
+              <div class="locale-list metadata-locale-grid metadata-focus-locale-grid">
                 {% for item in localized_metadata %}
-                  <label class="metadata-locale-input metadata-focus-locale-row" data-locale="{{ item.locale }}" data-locale-row>
-                    <span>
-                      {{ item.locale }}
-                      {% if item.is_source %}
-                        <small>源文案</small>
-                      {% endif %}
-                    </span>
-                    <b class="metadata-locale-tag {{ 'warn' if not item[field.key] else '' }}" data-locale-status>
+                  <label class="locale-row metadata-locale-input metadata-focus-locale-row" data-locale="{{ item.locale }}" data-locale-row>
+                    <span class="drag" aria-hidden="true">⁝</span>
+                    <strong class="locale-code">{{ item.locale }}</strong>
+                    <b class="tag metadata-locale-tag {{ 'warn' if not item[field.key] else '' }}" data-locale-status>
                       {{ "待填写" if not item[field.key] else "已填写" }}
                     </b>
                     {% if field.type == "textarea" %}
                       <textarea
+                        class="locale-preview"
                         name="{{ field.name }}"
                         rows="{{ field.rows }}"
                         placeholder="{{ field.placeholder }}"
@@ -264,6 +264,7 @@
                       >{{ item[field.key] }}</textarea>
                     {% else %}
                       <input
+                        class="locale-preview"
                         name="{{ field.name }}"
                         value="{{ item[field.key] }}"
                         placeholder="{{ field.placeholder }}"
@@ -274,25 +275,26 @@
                         {% if field.required and item.locale == locale %}required{% endif %}
                       >
                     {% endif %}
-                    <span class="metadata-chevron down" aria-hidden="true"></span>
+                    <span class="chevron metadata-chevron down" aria-hidden="true"></span>
                   </label>
                 {% endfor %}
+              </div>
               </div>
             </section>
           {% endfor %}
 
           {% for slot in store_image_slots %}
             <section
-              class="metadata-field-block metadata-focus-card store-image-field-block"
+              class="card editor metadata-field-block metadata-focus-card store-image-field-block"
               data-store-image-slot="{{ slot.key }}"
               data-sync-item-panel="{{ slot.key }}"
               data-locale-group
               hidden
             >
-              <div class="metadata-focus-card-header">
+              <div class="editor-head metadata-focus-card-header">
                 <div>
-                  <div class="metadata-focus-title-row">
-                    <span class="metadata-title-icon" aria-hidden="true">
+                  <div class="title-row metadata-focus-title-row">
+                    <span class="title-icon metadata-title-icon" aria-hidden="true">
                       <svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="m5 16 4.2-4.2 3.8 3.8 2-2L20 18"/><circle cx="16" cy="9" r="1.2"/></svg>
                     </span>
                     <div>
@@ -303,19 +305,20 @@
                   {% if slot.hint %}
                     <span class="metadata-field-hint">{{ slot.hint }}</span>
                   {% endif %}
-                  <span class="metadata-current-locale">当前语言：<b data-current-locale-label>{{ locale }}</b></span>
+                  <span class="current-locale metadata-current-locale">当前语言：<b data-current-locale-label>{{ locale }}</b></span>
                 </div>
-                <div class="locale-block-actions">
+                <div class="editor-actions locale-block-actions">
                   <span class="metadata-focus-completion" data-focus-completion>待检查</span>
-                  <button class="ghost-button compact subtle" type="button" data-translate-store-image data-slot="{{ slot.key }}">
+                  <button class="button small ghost ghost-button compact subtle" type="button" data-translate-store-image data-slot="{{ slot.key }}">
                     生成该项多语言
                   </button>
-                  <button class="ghost-button compact subtle" type="button" data-locale-group-toggle>
+                  <button class="button small ghost ghost-button compact subtle" type="button" data-locale-group-toggle>
                     展开多语言
                   </button>
                 </div>
               </div>
 
+              <div class="editor-body">
               <div class="store-image-bulk-drop compact-bulk item-bulk" data-store-image-bulk-drop data-slot="{{ slot.key }}">
                 <input type="file" accept="image/*" multiple data-store-image-bulk-files>
                 <input type="file" multiple webkitdirectory directory data-store-image-folder>
@@ -324,22 +327,18 @@
                   <span>拖图片或语言文件夹，只归类到当前项；例如 en-US/01.png、zh-Hant/02.png。</span>
                 </div>
                 <div class="store-image-bulk-actions">
-                  <button class="ghost-button compact" type="button" data-store-image-folder-button>选择文件夹</button>
-                  <button class="ghost-button compact" type="button" data-store-image-files-button>选择图片</button>
+                  <button class="button small ghost ghost-button compact" type="button" data-store-image-folder-button>选择文件夹</button>
+                  <button class="button small ghost ghost-button compact" type="button" data-store-image-files-button>选择图片</button>
                 </div>
                 <small data-store-image-bulk-status>还没有导入本地图片</small>
               </div>
 
-              <h3 class="metadata-languages-title">所有语言（{{ localized_metadata|length }}）</h3>
-              <div class="metadata-locale-grid metadata-focus-locale-grid">
+              <h3 class="languages-title metadata-languages-title">所有语言（{{ localized_metadata|length }}）</h3>
+              <div class="locale-list metadata-locale-grid metadata-focus-locale-grid">
                 {% for item in localized_metadata %}
-                  <div class="metadata-locale-input metadata-focus-locale-row store-image-locale-row" data-locale="{{ item.locale }}" data-locale-row {% if item.locale != locale %}hidden{% endif %}>
-                    <span class="metadata-locale-name">
-                      {{ item.locale }}
-                      {% if item.is_source %}
-                        <small>源文案</small>
-                      {% endif %}
-                    </span>
+                  <div class="locale-row metadata-locale-input metadata-focus-locale-row store-image-locale-row" data-locale="{{ item.locale }}" data-locale-row {% if item.locale != locale %}hidden{% endif %}>
+                    <span class="drag" aria-hidden="true">⁝</span>
+                    <strong class="locale-code metadata-locale-name">{{ item.locale }}</strong>
                     {% set image_slot = item.store_images[slot.key] %}
                     <input
                       type="hidden"
@@ -383,17 +382,18 @@
                       {% endif %}
                     </div>
                     <span class="store-image-count" data-store-image-count>{{ image_slot.count }} 张</span>
-                    <span class="metadata-chevron down" aria-hidden="true"></span>
+                    <span class="chevron metadata-chevron down" aria-hidden="true"></span>
                   </div>
                 {% endfor %}
+              </div>
               </div>
             </section>
           {% endfor %}
         </section>
 
-        <aside class="metadata-side-status">
-          <div class="metadata-side-section metadata-side-summary-card">
-            <div class="metadata-side-heading">
+        <aside class="side metadata-side-status">
+          <div class="card side-card metadata-side-section metadata-side-summary-card">
+            <div class="side-head metadata-side-heading">
               <strong>同步前检查</strong>
               <span>{{ "检查通过" if preflight and preflight.can_sync else "需要处理" }}</span>
             </div>

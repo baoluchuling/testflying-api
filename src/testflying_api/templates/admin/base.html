@@ -566,6 +566,7 @@
           const progress = syncItemProgress(form, item);
           const status = progressStatus(progress);
           item.classList.toggle('is-selected', item.dataset.syncItemKey === selectedKey);
+          item.classList.toggle('active', item.dataset.syncItemKey === selectedKey);
           item.dataset.state = status === '已填写' ? 'complete' : (status === '未填写' ? 'empty' : 'partial');
           item.querySelector('[data-sync-item-count]')?.replaceChildren(document.createTextNode(progressLabel(progress)));
           item.querySelector('[data-sync-item-status]')?.replaceChildren(document.createTextNode(status));

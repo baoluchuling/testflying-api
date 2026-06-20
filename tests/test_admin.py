@@ -947,7 +947,12 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "metadata-side-summary-card" in response.text
     assert "metadata-check-list" in response.text
     assert "最近同步记录" in response.text
-    assert "商店图素材" in response.text
+    assert "workspace metadata-focus-workspace" in response.text
+    assert "card rail metadata-sync-rail" in response.text
+    assert "sync-item metadata-sync-item" in response.text
+    assert "card editor metadata-field-block metadata-focus-card" in response.text
+    assert "locale-row metadata-locale-input metadata-focus-locale-row" in response.text
+    assert "商店图" in response.text
     assert "App Store Connect 同步" in response.text
     assert "关键词" in response.text
     assert "宣传文本" in response.text
@@ -975,7 +980,7 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "展开多语言" in response.text
     assert 'data-locale="zh-Hans" data-locale-row' in response.text
     assert 'data-locale="en-US" data-locale-row hidden' in response.text
-    assert response.text.index("商店图素材") < response.text.index("data-store-image-bulk-drop")
+    assert response.text.index("商店图") < response.text.index("data-store-image-bulk-drop")
     assert "后台构建" in response.text
     assert "商店版本" in response.text
     assert "内容范围" not in response.text

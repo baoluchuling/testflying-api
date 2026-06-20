@@ -65,15 +65,21 @@ def main() -> int:
     for marker in (
         "store-metadata-main",
         "metadata-control-strip",
+        "card toolbar metadata-control-strip",
         "metadata-toolbar-left",
         "metadata-refresh-button",
         "metadata-focus-workspace",
+        "workspace metadata-focus-workspace",
         "metadata-sync-rail",
+        "card rail metadata-sync-rail",
+        "sync-item metadata-sync-item",
         "metadata-focus-panel",
         "metadata-current-editor",
         "data-current-metadata-editor",
         "metadata-locale-tag",
+        "locale-row metadata-locale-input metadata-focus-locale-row",
         "metadata-side-status",
+        "side metadata-side-status",
         "metadata-side-summary-card",
         "metadata-check-list",
         "最近同步记录",
@@ -105,15 +111,21 @@ def main() -> int:
             r"\.metadata-focus-card\s*\{[^}]*align-content:\s*start"
         ),
         "current editor stays in first viewport": (
-            r"\.metadata-current-editor\s*>\s*input,\s*"
-            r"\.metadata-current-editor\s*>\s*textarea\s*\{[^}]*min-height:\s*168px"
+            r"\.store-metadata-main\s+\.main-input\s*\{[^}]*min-height:\s*168px"
         ),
         "locale rows remain compact": (
-            r"\.metadata-locale-input\s*>\s*input,\s*"
-            r"\.metadata-locale-input\s*>\s*textarea\s*\{[^}]*max-height:\s*44px"
+            r"\.store-metadata-main\s+\.locale-preview\s*\{[^}]*max-height:\s*22px"
         ),
         "right side uses one summary card": (
             r"\.metadata-side-summary-card\s*\{[^}]*display:\s*grid"
+        ),
+        "demo workspace columns are the source of truth": (
+            r"\.store-metadata-main\s+\.workspace\s*\{[^}]*grid-template-columns:"
+            r"\s*244px\s+minmax\(520px,\s*1fr\)\s*278px"
+        ),
+        "demo sync item class is styled": (
+            r"\.store-metadata-main\s+\.sync-item\s*\{[^}]*grid-template-columns:"
+            r"\s*26px\s+minmax\(0,\s*1fr\)\s*8px\s*auto\s*14px"
         ),
         "store image rows expose image count": (
             r"\.store-image-count\s*\{[^}]*grid-column:\s*5"

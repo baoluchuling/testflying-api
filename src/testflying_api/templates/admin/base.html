@@ -802,6 +802,15 @@
               toggle.textContent = expanded ? '收起多语言' : '展开所有语言';
             }
             toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+            if (toggle.dataset.localeToggleBound !== 'true') {
+              toggle.dataset.localeToggleBound = 'true';
+              toggle.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                group.dataset.expanded = group.dataset.expanded === 'true' ? 'false' : 'true';
+                syncMetadataEditor(form);
+              });
+            }
           }
         });
       }
@@ -1362,7 +1371,7 @@
         }
 
         const localeToggle = event.target.closest('[data-locale-group-toggle]');
-        if (localeToggle) {
+        if (localeToggle && localeToggle.dataset.localeToggleBound !== 'true') {
           const group = localeToggle.closest('[data-locale-group]');
           if (group) {
             group.dataset.expanded = group.dataset.expanded === 'true' ? 'false' : 'true';

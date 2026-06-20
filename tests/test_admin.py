@@ -1001,6 +1001,10 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "展开所有语言" in response.text
     assert "row.hidden = false" in response.text
     assert "row.dataset.expanded = expanded ? 'true' : 'false'" in response.text
+    assert "toggle.addEventListener('click'" in response.text
+    assert "toggle.dataset.localeToggleBound = 'true'" in response.text
+    assert "event.stopPropagation()" in response.text
+    assert "syncMetadataEditor(form)" in response.text
     assert "data-locale-detail-input" in response.text
     assert 'data-locale="zh-Hans" data-locale-row' in response.text
     assert 'data-locale="en-US" data-locale-row' in response.text

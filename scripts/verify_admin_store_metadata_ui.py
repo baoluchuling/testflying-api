@@ -86,6 +86,10 @@ def main() -> int:
         "data-sync-item-panel",
         "row.hidden = false",
         "row.dataset.expanded = expanded ? 'true' : 'false'",
+        "toggle.addEventListener('click'",
+        "toggle.dataset.localeToggleBound = 'true'",
+        "event.stopPropagation()",
+        "syncMetadataEditor(form)",
         "data-locale-detail-input",
     ):
         require(marker in html, f"page is missing {marker}", failures)

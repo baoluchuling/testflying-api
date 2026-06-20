@@ -579,8 +579,13 @@
           const row = input.closest('[data-locale-row]');
           const status = row?.querySelector('[data-locale-status]');
           const preview = row?.querySelector('[data-locale-preview]');
+          const detail = row?.querySelector('[data-locale-detail-input]');
           if (preview) {
             preview.textContent = input.value.trim() || input.placeholder || '';
+          }
+          if (detail && detail !== document.activeElement) {
+            detail.value = input.value || '';
+            detail.placeholder = input.placeholder || detail.placeholder || '';
           }
           if (!status) return;
           const filled = Boolean(input.value.trim());
@@ -784,13 +789,18 @@
             label.textContent = activeLocale;
           });
           group.querySelectorAll('[data-locale-row]').forEach((row) => {
-            const isActiveLocale = row.dataset.locale === activeLocale;
-            row.hidden = !expanded && !isActiveLocale;
+            row.hidden = false;
+            row.dataset.expanded = expanded ? 'true' : 'false';
             row.dataset.activeLocale = row.dataset.locale === activeLocale ? 'true' : 'false';
           });
           const toggle = group.querySelector('[data-locale-group-toggle]');
           if (toggle) {
-            toggle.textContent = expanded ? '收起多语言' : '展开所有语言';
+            const label = toggle.querySelector('[data-locale-group-toggle-label]');
+            if (label) {
+              label.textContent = expanded ? '收起多语言' : '展开所有语言';
+            } else {
+              toggle.textContent = expanded ? '收起多语言' : '展开所有语言';
+            }
             toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
           }
         });
@@ -1206,6 +1216,17 @@
             storeImageInput.dataset.locale,
             storeImageInput.dataset.slot,
             storeImageInput.value
+          );
+          syncMetadataEditor(form);
+        }
+        const localeDetailInput = event.target.closest('[data-locale-detail-input]');
+        if (localeDetailInput) {
+          const form = localeDetailInput.closest('[data-metadata-form]');
+          setMetadataValue(
+            form,
+            localeDetailInput.dataset.locale,
+            localeDetailInput.dataset.field,
+            localeDetailInput.value
           );
           syncMetadataEditor(form);
         }

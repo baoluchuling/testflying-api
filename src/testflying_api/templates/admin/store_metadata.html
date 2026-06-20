@@ -212,7 +212,7 @@
                 </button>
                 <button class="button small ghost" type="button" data-locale-group-toggle>
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/></svg>
-                  展开所有语言
+                  <span data-locale-group-toggle-label>展开所有语言</span>
                 </button>
               </div>
             </div>
@@ -238,6 +238,14 @@
                     <p class="locale-preview" data-locale-preview>
                       {{ item[field.key] if item[field.key] else field.placeholder }}
                     </p>
+                    <textarea
+                      class="locale-detail-input"
+                      rows="{{ 4 if field.key == 'description' else 2 }}"
+                      placeholder="{{ field.placeholder }}"
+                      data-locale-detail-input
+                      data-locale="{{ item.locale }}"
+                      data-field="{{ field.key }}"
+                    >{{ item[field.key] }}</textarea>
                     <input
                       type="hidden"
                       name="{{ field.name }}"
@@ -288,7 +296,7 @@
                 </button>
                 <button class="button small ghost" type="button" data-locale-group-toggle>
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/></svg>
-                  展开所有语言
+                  <span data-locale-group-toggle-label>展开所有语言</span>
                 </button>
               </div>
             </div>

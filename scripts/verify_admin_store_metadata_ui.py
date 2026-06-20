@@ -84,7 +84,9 @@ def main() -> int:
         "preview-grid",
         "data-sync-item-select",
         "data-sync-item-panel",
-        "row.hidden = !expanded && !isActiveLocale",
+        "row.hidden = false",
+        "row.dataset.expanded = expanded ? 'true' : 'false'",
+        "data-locale-detail-input",
     ):
         require(marker in html, f"page is missing {marker}", failures)
     for label in ("关键词", "宣传文本", "描述", "手机截图", "平板截图"):
@@ -119,7 +121,15 @@ def main() -> int:
             r"[^}]*min-height:\s*168px"
         ),
         "locale rows keep demo height": (
-            r"\.store-metadata-main\s+\.locale-row\s*\{[^}]*height:\s*64px"
+            r"\.store-metadata-main\s+\.locale-row:not\(\[data-expanded=\"true\"\]\)\s*\{"
+            r"[^}]*height:\s*64px"
+        ),
+        "expanded locale rows can show details": (
+            r"\.store-metadata-main\s+\.locale-row\[data-expanded=\"true\"\]\s*\{"
+            r"[^}]*height:\s*auto"
+        ),
+        "locale detail input is available": (
+            r"\.store-metadata-main\s+\.locale-detail-input\s*\{[^}]*grid-column:\s*2\s*/\s*-2"
         ),
         "locale rows remain compact": (
             r"\.store-metadata-main\s+\.locale-preview\s*\{[^}]*white-space:\s*nowrap"

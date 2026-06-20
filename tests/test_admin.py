@@ -133,14 +133,36 @@ def test_admin_store_metadata_focus_layout_css_contract(client: TestClient) -> N
     assert ".store-metadata-main .toolbar" in response.text
     assert "justify-content: space-between" in response.text
     assert ".store-metadata-main .content-set-picker" in response.text
+    assert "flex: 0 0 184px" in response.text
     assert "width: 184px" in response.text
+    assert "max-width: 184px" in response.text
+    assert ".store-metadata-main .language-picker" in response.text
+    assert "flex: 0 0 138px" in response.text
     assert ".store-metadata-main .sync-item" in response.text
     assert "grid-template-columns: 26px minmax(0, 1fr) 8px auto 14px" in response.text
     assert ".store-metadata-main .editor" in response.text
     assert "min-height: 608px" in response.text
+    assert "height: 168px" in response.text
     assert ".store-metadata-main .locale-row" in response.text
+    assert "height: 64px" in response.text
     assert ".metadata-sync-history-panel" in response.text
     assert ".store-metadata-main .image-locale-row" in response.text
+    assert ".store-metadata-main .history-link" in response.text
+    assert "grid-template-columns: 26px minmax(0, 1fr) 24px" in response.text
+    assert "white-space: nowrap" in response.text
+
+    final_guard_index = response.text.rfind("Store metadata final conflict guards")
+    assert final_guard_index != -1
+    for selector in (
+        ".store-metadata-main .toolbar-left",
+        ".store-metadata-main .content-set-picker",
+        ".store-metadata-main .language-picker",
+        ".store-metadata-main .metadata-preflight-chip.blocked",
+        ".store-metadata-main .main-input",
+        ".store-metadata-main .locale-row",
+        ".store-metadata-main .history-link",
+    ):
+        assert response.text.rfind(selector) > final_guard_index
 
 
 def test_admin_resource_pages_render_seeded_catalog(

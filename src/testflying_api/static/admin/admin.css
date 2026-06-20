@@ -4933,7 +4933,32 @@ a.ghost-button {
 }
 
 /* Store metadata final conflict guards. Keep this as the last CSS block. */
+.store-metadata-main .toolbar-left {
+  flex: 0 1 auto;
+}
+
+.store-metadata-main .content-set-picker {
+  flex: 0 0 184px;
+  width: 184px;
+  max-width: 184px;
+  overflow: hidden;
+}
+
+.store-metadata-main .language-picker {
+  flex: 0 0 138px;
+  width: 138px;
+  max-width: 138px;
+  overflow: hidden;
+}
+
+.store-metadata-main .native-select {
+  box-sizing: border-box;
+  justify-content: flex-start;
+}
+
 .store-metadata-main .native-select select {
+  flex: 1 1 auto;
+  min-width: 0;
   border: 0;
   background: transparent;
   box-shadow: none;
@@ -4953,12 +4978,50 @@ a.ghost-button {
 }
 
 .store-metadata-main .metadata-preflight-chip.blocked {
+  max-width: 132px;
   background: #fff4e5;
   color: #b45309;
+}
+
+.store-metadata-main .editor-head {
+  padding: 22px 22px 14px;
+}
+
+.store-metadata-main .main-input {
+  height: 168px;
+  min-height: 168px;
+  max-height: 220px;
+}
+
+.store-metadata-main .locale-row {
+  height: 64px;
+  min-height: 64px;
+  max-height: 64px;
 }
 
 .store-metadata-main .image-locale-row {
   display: grid;
   grid-template-columns: 22px 72px 68px minmax(160px, 1fr) 42px 24px;
   align-items: center;
+}
+
+.store-metadata-main .rail-footer {
+  padding: 16px 18px;
+}
+
+.store-metadata-main .history-link {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) 24px;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  color: #384456;
+  font-size: 15px;
+  font-weight: 680;
+  white-space: nowrap;
+}
+
+.store-metadata-main .history-link > span:nth-child(2) {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

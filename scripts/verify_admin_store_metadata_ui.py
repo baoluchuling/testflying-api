@@ -99,7 +99,12 @@ def main() -> int:
             r"\.store-metadata-main\s+\.toolbar\s*\{[^}]*justify-content:\s*space-between"
         ),
         "content set picker is demo sized": (
-            r"\.store-metadata-main\s+\.content-set-picker\s*\{[^}]*width:\s*184px"
+            r"\.store-metadata-main\s+\.content-set-picker\s*\{[^}]*flex:\s*0\s+0\s+184px"
+            r"[^}]*width:\s*184px[^}]*max-width:\s*184px"
+        ),
+        "language picker is demo sized": (
+            r"\.store-metadata-main\s+\.language-picker\s*\{[^}]*flex:\s*0\s+0\s+138px"
+            r"[^}]*width:\s*138px[^}]*max-width:\s*138px"
         ),
         "sync item keeps title readable": (
             r"\.store-metadata-main\s+\.sync-item\s*\{[^}]*grid-template-columns:"
@@ -109,7 +114,11 @@ def main() -> int:
             r"\.store-metadata-main\s+\.editor\s*\{[^}]*min-height:\s*608px"
         ),
         "current editor stays in first viewport": (
-            r"\.store-metadata-main\s+\.main-input\s*\{[^}]*min-height:\s*168px"
+            r"\.store-metadata-main\s+\.main-input\s*\{[^}]*height:\s*168px"
+            r"[^}]*min-height:\s*168px"
+        ),
+        "locale rows keep demo height": (
+            r"\.store-metadata-main\s+\.locale-row\s*\{[^}]*height:\s*64px"
         ),
         "locale rows remain compact": (
             r"\.store-metadata-main\s+\.locale-preview\s*\{[^}]*white-space:\s*nowrap"
@@ -128,9 +137,31 @@ def main() -> int:
         "store image rows expose image count": (
             r"\.store-metadata-main\s+\.image-locale-row\s*\{[^}]*grid-template-columns:"
         ),
+        "rail history link stays one row": (
+            r"\.store-metadata-main\s+\.history-link\s*\{[^}]*display:\s*grid"
+            r"[^}]*grid-template-columns:\s*26px\s+minmax\(0,\s*1fr\)\s*24px"
+            r"[^}]*white-space:\s*nowrap"
+        ),
     }
     for label, pattern in css_contracts.items():
         require(re.search(pattern, css, flags=re.S) is not None, label, failures)
+
+    final_guard_index = css.rfind("Store metadata final conflict guards")
+    require(final_guard_index != -1, "final conflict guard block is missing", failures)
+    for selector in (
+        ".store-metadata-main .toolbar-left",
+        ".store-metadata-main .content-set-picker",
+        ".store-metadata-main .language-picker",
+        ".store-metadata-main .metadata-preflight-chip.blocked",
+        ".store-metadata-main .main-input",
+        ".store-metadata-main .locale-row",
+        ".store-metadata-main .history-link",
+    ):
+        require(
+            css.rfind(selector) > final_guard_index,
+            f"{selector} is not guarded after demo contract rules",
+            failures,
+        )
 
     if failures:
         print("UI verification failed:")

@@ -938,10 +938,15 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "复制当前套" in response.text
     assert "metadata-control-strip" in response.text
     assert "metadata-focus-workspace" in response.text
+    assert "metadata-current-editor" in response.text
+    assert "data-current-metadata-editor" in response.text
     assert "metadata-sync-rail" in response.text
     assert "data-sync-item-select" in response.text
     assert "data-sync-item-panel" in response.text
     assert "metadata-side-status" in response.text
+    assert "metadata-side-summary-card" in response.text
+    assert "metadata-check-list" in response.text
+    assert "最近同步记录" in response.text
     assert "商店图素材" in response.text
     assert "App Store Connect 同步" in response.text
     assert "关键词" in response.text
@@ -973,7 +978,7 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert response.text.index("商店图素材") < response.text.index("data-store-image-bulk-drop")
     assert "后台构建" in response.text
     assert "商店版本" in response.text
-    assert "文案、商店图" in response.text
+    assert "内容范围" not in response.text
     assert "文案、链接、商店图" not in response.text
 
 

@@ -336,6 +336,19 @@
         });
       }
 
+      function syncCurrentMetadataEditors(form, activeLocale) {
+        form?.querySelectorAll('[data-current-field-editor]').forEach((wrapper) => {
+          const editor = wrapper.querySelector('[data-current-metadata-editor]');
+          const field = wrapper.dataset.field || editor?.dataset.field;
+          const target = metadataInputs(form, activeLocale, field)[0];
+          if (!editor || !target) return;
+          if (editor !== document.activeElement) {
+            editor.value = target.value || '';
+          }
+          editor.placeholder = target.placeholder || editor.placeholder || '';
+        });
+      }
+
       function storeImageInputs(form, locale, slot) {
         if (!form) return [];
         return Array.from(form.querySelectorAll('[data-store-image-input]')).filter((input) => (
@@ -561,6 +574,15 @@
           if (focusCompletion) focusCompletion.textContent = `${progressLabel(progress)} · ${status}`;
         });
 
+        form.querySelectorAll('[data-metadata-input]').forEach((input) => {
+          const row = input.closest('[data-locale-row]');
+          const status = row?.querySelector('[data-locale-status]');
+          if (!status) return;
+          const filled = Boolean(input.value.trim());
+          status.textContent = filled ? '已填写' : '待填写';
+          status.classList.toggle('warn', !filled);
+        });
+
         form.querySelectorAll('[data-sync-item-panel]').forEach((panel) => {
           const isSelected = panel.dataset.syncItemPanel === selectedKey;
           panel.hidden = !isSelected;
@@ -569,6 +591,7 @@
             label.textContent = activeLocale;
           });
         });
+        syncCurrentMetadataEditors(form, activeLocale);
       }
 
       function flashButtonText(button, message) {
@@ -737,11 +760,12 @@
             label.textContent = activeLocale;
           });
           group.querySelectorAll('[data-locale-row]').forEach((row) => {
-            row.hidden = !expanded && row.dataset.locale !== activeLocale;
+            row.hidden = false;
+            row.dataset.activeLocale = row.dataset.locale === activeLocale ? 'true' : 'false';
           });
           const toggle = group.querySelector('[data-locale-group-toggle]');
           if (toggle) {
-            toggle.textContent = expanded ? '收起多语言' : '展开多语言';
+            toggle.textContent = expanded ? '收起多语言' : '展开所有语言';
             toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
           }
         });
@@ -1129,6 +1153,19 @@
             metadataInput.dataset.locale,
             metadataInput.dataset.field,
             metadataInput.value
+          );
+          syncMetadataEditor(form);
+        }
+        const currentMetadataInput = event.target.closest('[data-current-metadata-editor]');
+        if (currentMetadataInput) {
+          const form = currentMetadataInput.closest('[data-metadata-form]');
+          const picker = form?.querySelector('[data-language-picker]');
+          const activeLocale = picker?.value || form?.dataset.sourceLocale;
+          setMetadataValue(
+            form,
+            activeLocale,
+            currentMetadataInput.dataset.field,
+            currentMetadataInput.value
           );
           syncMetadataEditor(form);
         }

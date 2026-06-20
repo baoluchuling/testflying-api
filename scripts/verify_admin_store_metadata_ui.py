@@ -70,7 +70,13 @@ def main() -> int:
         "metadata-focus-workspace",
         "metadata-sync-rail",
         "metadata-focus-panel",
+        "metadata-current-editor",
+        "data-current-metadata-editor",
+        "metadata-locale-tag",
         "metadata-side-status",
+        "metadata-side-summary-card",
+        "metadata-check-list",
+        "最近同步记录",
         "store-image-count",
         "data-sync-item-select",
         "data-sync-item-panel",
@@ -98,8 +104,16 @@ def main() -> int:
         "focus card aligns content to top": (
             r"\.metadata-focus-card\s*\{[^}]*align-content:\s*start"
         ),
-        "selected text area stays in first viewport": (
-            r"textarea\s*\{[^}]*min-height:\s*168px"
+        "current editor stays in first viewport": (
+            r"\.metadata-current-editor\s*>\s*input,\s*"
+            r"\.metadata-current-editor\s*>\s*textarea\s*\{[^}]*min-height:\s*168px"
+        ),
+        "locale rows remain compact": (
+            r"\.metadata-locale-input\s*>\s*input,\s*"
+            r"\.metadata-locale-input\s*>\s*textarea\s*\{[^}]*max-height:\s*44px"
+        ),
+        "right side uses one summary card": (
+            r"\.metadata-side-summary-card\s*\{[^}]*display:\s*grid"
         ),
         "store image rows expose image count": (
             r"\.store-image-count\s*\{[^}]*grid-column:\s*5"

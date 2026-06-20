@@ -214,16 +214,43 @@
                 </div>
               </div>
 
+              {% set current_field = namespace(value="") %}
+              {% for item in localized_metadata %}
+                {% if item.locale == locale %}
+                  {% set current_field.value = item[field.key] %}
+                {% endif %}
+              {% endfor %}
+              <div class="metadata-current-editor" data-current-field-editor data-field="{{ field.key }}">
+                {% if field.type == "textarea" %}
+                  <textarea
+                    rows="{{ field.rows }}"
+                    placeholder="{{ field.placeholder }}"
+                    data-current-metadata-editor
+                    data-field="{{ field.key }}"
+                  >{{ current_field.value }}</textarea>
+                {% else %}
+                  <input
+                    value="{{ current_field.value }}"
+                    placeholder="{{ field.placeholder }}"
+                    data-current-metadata-editor
+                    data-field="{{ field.key }}"
+                  >
+                {% endif %}
+              </div>
+
               <h3 class="metadata-languages-title">所有语言（{{ localized_metadata|length }}）</h3>
               <div class="metadata-locale-grid metadata-focus-locale-grid">
                 {% for item in localized_metadata %}
-                  <label class="metadata-locale-input metadata-focus-locale-row" data-locale="{{ item.locale }}" data-locale-row {% if item.locale != locale %}hidden{% endif %}>
+                  <label class="metadata-locale-input metadata-focus-locale-row" data-locale="{{ item.locale }}" data-locale-row>
                     <span>
                       {{ item.locale }}
                       {% if item.is_source %}
                         <small>源文案</small>
                       {% endif %}
                     </span>
+                    <b class="metadata-locale-tag {{ 'warn' if not item[field.key] else '' }}" data-locale-status>
+                      {{ "待填写" if not item[field.key] else "已填写" }}
+                    </b>
                     {% if field.type == "textarea" %}
                       <textarea
                         name="{{ field.name }}"
@@ -247,6 +274,7 @@
                         {% if field.required and item.locale == locale %}required{% endif %}
                       >
                     {% endif %}
+                    <span class="metadata-chevron down" aria-hidden="true"></span>
                   </label>
                 {% endfor %}
               </div>
@@ -364,10 +392,45 @@
         </section>
 
         <aside class="metadata-side-status">
-          <div class="metadata-side-section">
+          <div class="metadata-side-section metadata-side-summary-card">
             <div class="metadata-side-heading">
               <strong>同步前检查</strong>
               <span>{{ "检查通过" if preflight and preflight.can_sync else "需要处理" }}</span>
+            </div>
+            <div class="metadata-check-list">
+              <div class="metadata-check-item {{ 'ok' if preflight and preflight.can_sync else 'blocked' }}">
+                <span class="metadata-check-mark" aria-hidden="true">{{ "✓" if preflight and preflight.can_sync else "!" }}</span>
+                <div>
+                  <strong>商店版本</strong>
+                  <small>
+                    {% if preflight and preflight.can_sync %}
+                      已创建（{{ version or "-" }}）
+                    {% else %}
+                      {{ preflight|preflight_title if preflight else none|preflight_title }}
+                    {% endif %}
+                  </small>
+                </div>
+              </div>
+              <div class="metadata-check-item {{ 'ok' if connector and connector.status == 'ok' else 'blocked' }}">
+                <span class="metadata-check-mark" aria-hidden="true">{{ "✓" if connector and connector.status == 'ok' else "!" }}</span>
+                <div>
+                  <strong>Connector 连接</strong>
+                  <small>{{ "正常" if connector and connector.status == "ok" else "未确认" }}</small>
+                </div>
+              </div>
+              <div class="metadata-check-item {{ 'ok' if preflight else 'blocked' }}">
+                <span class="metadata-check-mark" aria-hidden="true">{{ "✓" if preflight else "!" }}</span>
+                <div>
+                  <strong>缓存状态</strong>
+                  <small>
+                    {% if preflight %}
+                      剩余 {{ preflight.remaining_seconds }} 秒
+                    {% else %}
+                      等待实时查询
+                    {% endif %}
+                  </small>
+                </div>
+              </div>
             </div>
             {% if preflight %}
               <div class="preflight-status {{ 'ok' if preflight.can_sync else 'blocked' }}">
@@ -379,7 +442,7 @@
                   <span class="preflight-next-step">{{ preflight|preflight_action(app.platform) }}</span>
                 </div>
               </div>
-              <dl class="detail-list compact">
+              <dl class="detail-list compact metadata-preflight-details">
                 <dt>后台构建</dt>
                 <dd>{{ "已存在" if latest_build else "未找到" }}</dd>
                 <dt>商店版本</dt>
@@ -402,42 +465,10 @@
                 </div>
               </div>
             {% endif %}
-          </div>
 
-          {% if connector %}
-            <div class="metadata-side-section">
-              <div class="metadata-side-heading">
-                <strong>Connector</strong>
-                <span>{{ connector.status }}</span>
-              </div>
-              <dl class="detail-list compact">
-                <dt>名称</dt>
-                <dd>{{ connector.name }}</dd>
-                <dt>状态</dt>
-                <dd>{{ connector.status }}</dd>
-              </dl>
-            </div>
-          {% endif %}
-
-          <div class="metadata-side-section">
-            <div class="metadata-side-heading">
-              <strong>内容套件</strong>
-              <span>当前打开</span>
-            </div>
-            <dl class="detail-list compact">
-              <dt>名称</dt>
-              <dd>{{ content_set_name }}</dd>
-              <dt>内容范围</dt>
-              <dd>文案、商店图</dd>
-              <dt>同步目标</dt>
-              <dd>当前套件</dd>
-            </dl>
-          </div>
-
-          <div class="metadata-side-section">
-            <div class="metadata-side-heading">
-              <strong>最近同步</strong>
-              <span>当前 App</span>
+            <div class="metadata-side-divider"></div>
+            <div class="metadata-side-heading metadata-history-heading">
+              <strong>最近同步记录</strong>
             </div>
             <div class="metadata-mini-sync-list">
               {% for run in sync_runs[:3] %}

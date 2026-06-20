@@ -781,14 +781,40 @@
         )).join('');
       }
 
+      function activeMetadataLocale(form) {
+        const picker = form?.querySelector('[data-language-picker]');
+        return picker?.value || form?.dataset.sourceLocale || '';
+      }
+
+      function setLocaleGroupExpanded(group, expanded) {
+        group.dataset.expanded = expanded ? 'true' : 'false';
+        if (!expanded) {
+          group.querySelectorAll('[data-locale-row]').forEach((row) => {
+            row.dataset.rowExpanded = 'false';
+          });
+        }
+      }
+
+      function toggleLocaleRow(row) {
+        const form = row.closest('[data-metadata-form]');
+        const group = row.closest('[data-locale-group]');
+        if (!form || !group) return;
+        const expanded = row.dataset.expanded !== 'true';
+        group.dataset.expanded = 'false';
+        row.dataset.rowExpanded = expanded ? 'true' : 'false';
+        syncCollapsibleLocaleGroups(form, activeMetadataLocale(form));
+        syncVisibleRequiredFields(form);
+      }
+
       function syncCollapsibleLocaleGroups(form, activeLocale) {
         form.querySelectorAll('[data-locale-group]').forEach((group) => {
-          const expanded = group.dataset.expanded === 'true';
-          group.classList.toggle('is-expanded', expanded);
+          const groupExpanded = group.dataset.expanded === 'true';
+          group.classList.toggle('is-expanded', groupExpanded);
           group.querySelectorAll('[data-current-locale-label]').forEach((label) => {
             label.textContent = activeLocale;
           });
           group.querySelectorAll('[data-locale-row]').forEach((row) => {
+            const expanded = groupExpanded || row.dataset.rowExpanded === 'true';
             row.hidden = false;
             row.dataset.expanded = expanded ? 'true' : 'false';
             row.dataset.activeLocale = row.dataset.locale === activeLocale ? 'true' : 'false';
@@ -797,17 +823,17 @@
           if (toggle) {
             const label = toggle.querySelector('[data-locale-group-toggle-label]');
             if (label) {
-              label.textContent = expanded ? '收起多语言' : '展开所有语言';
+              label.textContent = groupExpanded ? '收起多语言' : '展开所有语言';
             } else {
-              toggle.textContent = expanded ? '收起多语言' : '展开所有语言';
+              toggle.textContent = groupExpanded ? '收起多语言' : '展开所有语言';
             }
-            toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+            toggle.setAttribute('aria-expanded', groupExpanded ? 'true' : 'false');
             if (toggle.dataset.localeToggleBound !== 'true') {
               toggle.dataset.localeToggleBound = 'true';
               toggle.addEventListener('click', (event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                group.dataset.expanded = group.dataset.expanded === 'true' ? 'false' : 'true';
+                setLocaleGroupExpanded(group, group.dataset.expanded !== 'true');
                 syncMetadataEditor(form);
               });
             }
@@ -1374,9 +1400,19 @@
         if (localeToggle && localeToggle.dataset.localeToggleBound !== 'true') {
           const group = localeToggle.closest('[data-locale-group]');
           if (group) {
-            group.dataset.expanded = group.dataset.expanded === 'true' ? 'false' : 'true';
+            setLocaleGroupExpanded(group, group.dataset.expanded !== 'true');
             syncMetadataEditor();
           }
+          return;
+        }
+
+        const localeRow = event.target.closest('[data-locale-row]');
+        if (
+          localeRow
+          && localeRow.closest('[data-metadata-form]')
+          && !event.target.closest('a, button, input, select, textarea, [data-store-image-zone], [data-store-image-bulk-drop]')
+        ) {
+          toggleLocaleRow(localeRow);
           return;
         }
 

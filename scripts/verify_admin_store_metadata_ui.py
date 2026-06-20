@@ -90,6 +90,10 @@ def main() -> int:
         "toggle.dataset.localeToggleBound = 'true'",
         "event.stopPropagation()",
         "syncMetadataEditor(form)",
+        "label.textContent = groupExpanded ? '收起多语言' : '展开所有语言'",
+        "function toggleLocaleRow(row)",
+        "const localeRow = event.target.closest('[data-locale-row]')",
+        "row.dataset.rowExpanded = expanded ? 'true' : 'false'",
         "data-locale-detail-input",
     ):
         require(marker in html, f"page is missing {marker}", failures)

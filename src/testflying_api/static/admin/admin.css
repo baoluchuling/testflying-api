@@ -766,45 +766,52 @@ textarea {
 
 .metadata-control-strip {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
-  padding: 12px;
+  padding: 12px 16px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #f8fafc;
+  background: #fbfcfe;
 }
 
 .metadata-version-controls,
 .metadata-content-controls,
 .metadata-action-strip {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
+  align-items: end;
   gap: 10px;
 }
 
+.metadata-version-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+}
+
 .metadata-version-controls label {
-  flex: 1 1 180px;
   min-width: 0;
   font-size: 12px;
 }
 
 .metadata-content-controls {
-  padding: 10px;
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) auto auto auto;
+  padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: white;
 }
 
 .metadata-action-strip {
-  justify-content: flex-end;
+  display: grid;
+  grid-template-columns: minmax(150px, 190px) minmax(160px, 220px) auto auto auto;
+  justify-content: end;
 }
 
 .metadata-preflight-chip {
   display: grid;
   gap: 2px;
   min-width: 148px;
-  min-height: 38px;
-  padding: 7px 10px;
+  min-height: 36px;
+  padding: 6px 10px;
   border: 1px solid #fed7aa;
   border-radius: 8px;
   background: #fff7ed;
@@ -913,7 +920,7 @@ textarea {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 9px 12px;
   border: 1px solid #bfdbfe;
   border-radius: 8px;
   background: #eff6ff;
@@ -1037,7 +1044,9 @@ textarea {
 }
 
 .metadata-focus-card {
-  min-height: 620px;
+  display: grid;
+  align-content: start;
+  min-height: 560px;
   padding: 18px;
   border-color: #bfdbfe;
   background: white;
@@ -1053,7 +1062,7 @@ textarea {
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  padding-bottom: 14px;
+  padding-bottom: 12px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -1082,7 +1091,9 @@ textarea {
 }
 
 .metadata-focus-locale-grid {
+  align-content: start;
   gap: 12px;
+  margin-top: 12px;
 }
 
 .metadata-focus-card.is-focused .metadata-focus-locale-row:not([hidden]) {
@@ -1091,7 +1102,7 @@ textarea {
 }
 
 .metadata-focus-card.is-focused .metadata-focus-locale-row:not([hidden]) textarea {
-  min-height: 220px;
+  min-height: 168px;
 }
 
 .metadata-side-status {
@@ -2525,6 +2536,9 @@ a.ghost-button {
 
   .content-set-switcher,
   .metadata-control-strip,
+  .metadata-version-controls,
+  .metadata-content-controls,
+  .metadata-action-strip,
   .metadata-locale-input {
     grid-template-columns: 1fr;
   }

@@ -124,6 +124,22 @@ def test_admin_connector_deploy_commands_are_readable(client: TestClient) -> Non
     assert "color: inherit" in response.text
 
 
+def test_admin_store_metadata_focus_layout_css_contract(client: TestClient) -> None:
+    response = client.get("/static/admin/admin.css")
+
+    assert response.status_code == 200
+    assert ".metadata-control-strip" in response.text
+    assert "grid-template-columns: minmax(0, 1fr)" in response.text
+    assert ".metadata-version-controls" in response.text
+    assert "grid-template-columns: repeat(2, minmax(180px, 1fr))" in response.text
+    assert "grid-template-columns: minmax(280px, 1fr) auto auto auto" in response.text
+    assert ".metadata-focus-card" in response.text
+    assert "align-content: start" in response.text
+    assert "min-height: 560px" in response.text
+    assert ".metadata-focus-locale-grid" in response.text
+    assert "margin-top: 12px" in response.text
+
+
 def test_admin_resource_pages_render_seeded_catalog(
     client: TestClient,
     db_session: Session,

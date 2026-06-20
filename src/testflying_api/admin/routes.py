@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import re
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
@@ -64,6 +65,8 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 SessionDep = Annotated[Session, Depends(get_db_session)]
 AdminDep = Annotated[None, Depends(require_admin)]
 CONNECTOR_AUTO_CHECK_TTL = timedelta(minutes=5)
+ADMIN_CSS_PATH = Path(__file__).parents[1] / "static" / "admin" / "admin.css"
+ADMIN_ASSET_VERSION = hashlib.sha256(ADMIN_CSS_PATH.read_bytes()).hexdigest()[:12]
 
 
 def preflight_title_label(preflight: object | None) -> str:
@@ -1343,6 +1346,7 @@ def _context(request: Request, *, active: str, **values: object) -> dict[str, ob
     return {
         "request": request,
         "active": active,
+        "admin_asset_version": ADMIN_ASSET_VERSION,
         "nav_items": [
             ("dashboard", "/admin", "总览"),
             ("uploads", "/admin/uploads", "上传"),

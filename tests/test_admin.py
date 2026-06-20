@@ -67,6 +67,13 @@ def test_admin_shell_supports_inline_navigation_and_upload_dock(client: TestClie
     assert "beforeunload" in response.text
 
 
+def test_admin_shell_versions_static_css(client: TestClient) -> None:
+    response = client.get("/admin", headers=_admin_headers())
+
+    assert response.status_code == 200
+    assert 'href="/static/admin/admin.css?v=' in response.text
+
+
 def test_admin_inline_script_has_valid_syntax(client: TestClient, tmp_path) -> None:
     node = shutil.which("node")
     if not node:

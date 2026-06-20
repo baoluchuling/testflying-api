@@ -128,16 +128,20 @@ def test_admin_store_metadata_focus_layout_css_contract(client: TestClient) -> N
     response = client.get("/static/admin/admin.css")
 
     assert response.status_code == 200
+    assert ".store-metadata-main" in response.text
+    assert "max-width: 1262px" in response.text
     assert ".metadata-control-strip" in response.text
-    assert "grid-template-columns: minmax(0, 1fr)" in response.text
-    assert ".metadata-version-controls" in response.text
-    assert "grid-template-columns: repeat(2, minmax(180px, 1fr))" in response.text
-    assert "grid-template-columns: minmax(280px, 1fr) auto auto auto" in response.text
+    assert "justify-content: space-between" in response.text
+    assert ".metadata-toolbar-left .content-set-picker" in response.text
+    assert "width: 184px" in response.text
+    assert ".metadata-sync-item" in response.text
+    assert "grid-template-columns: 26px minmax(74px, 1fr) 8px auto 14px" in response.text
     assert ".metadata-focus-card" in response.text
     assert "align-content: start" in response.text
-    assert "min-height: 560px" in response.text
+    assert "min-height: 608px" in response.text
     assert ".metadata-focus-locale-grid" in response.text
-    assert "margin-top: 12px" in response.text
+    assert ".metadata-sync-history-panel" in response.text
+    assert ".store-image-count" in response.text
 
 
 def test_admin_resource_pages_render_seeded_catalog(
@@ -940,14 +944,14 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "metadata-side-status" in response.text
     assert "商店图素材" in response.text
     assert "App Store Connect 同步" in response.text
-    assert "Keywords（关键词）" in response.text
-    assert "Promotional Text（宣传文本）" in response.text
-    assert "Description（描述）" in response.text
+    assert "关键词" in response.text
+    assert "宣传文本" in response.text
+    assert "描述" in response.text
     assert "data-translate-field" in response.text
     assert "data-translate-store-image" in response.text
     assert "replaceContentSetUrl" in response.text
-    assert "批量上传 iPhone screenshots（iPhone 屏幕快照）" in response.text
-    assert "批量上传 iPad screenshots（iPad 屏幕快照）" in response.text
+    assert "批量上传手机截图" in response.text
+    assert "批量上传平板截图" in response.text
     assert "标题" not in response.text
     assert "副标题" not in response.text
     assert "隐私政策 URL" not in response.text
@@ -955,8 +959,8 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "营销 URL" not in response.text
     assert "App 图标" not in response.text
     assert "素材备注" not in response.text
-    assert "iPhone screenshots（iPhone 屏幕快照）" in response.text
-    assert "iPad screenshots（iPad 屏幕快照）" in response.text
+    assert "手机截图" in response.text
+    assert "平板截图" in response.text
     assert "Feature graphic" not in response.text
     assert "Google Play Console 同步" not in response.text
     assert "宣传图" not in response.text
@@ -991,10 +995,10 @@ def test_admin_store_metadata_page_uses_google_play_terms_for_android(
 
     assert response.status_code == 200
     assert "Google Play Console 同步" in response.text
-    assert "Full description（完整描述）" in response.text
-    assert "Feature graphic（功能宣传图）" in response.text
-    assert "Phone screenshots（手机截图）" in response.text
-    assert "Tablet screenshots（平板截图）" in response.text
+    assert "完整描述" in response.text
+    assert "功能宣传图" in response.text
+    assert "手机截图" in response.text
+    assert "平板截图" in response.text
     assert "Keywords（关键词）" not in response.text
     assert "Promotional Text（宣传文本）" not in response.text
     assert "App Store Connect 同步" not in response.text

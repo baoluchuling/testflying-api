@@ -63,38 +63,46 @@ def main() -> int:
     require(bool(css_href and "?v=" in css_href), "admin css link is not versioned", failures)
 
     for marker in (
+        "store-metadata-main",
         "metadata-control-strip",
+        "metadata-toolbar-left",
+        "metadata-refresh-button",
         "metadata-focus-workspace",
         "metadata-sync-rail",
         "metadata-focus-panel",
         "metadata-side-status",
+        "store-image-count",
         "data-sync-item-select",
         "data-sync-item-panel",
     ):
         require(marker in html, f"page is missing {marker}", failures)
+    for label in ("关键词", "宣传文本", "描述", "手机截图", "平板截图"):
+        require(label in html, f"page is missing short label {label}", failures)
 
     css_url = urljoin(args.url, css_href or "/static/admin/admin.css")
     css = fetch_text(css_url, args.username, args.password)
     css_contracts = {
-        "control strip uses compact grid": (
-            r"\.metadata-control-strip\s*\{[^}]*grid-template-columns:"
-            r"\s*minmax\(0,\s*1fr\)"
+        "store metadata main width matches demo frame": (
+            r"\.store-metadata-main\s*\{[^}]*max-width:\s*1262px"
         ),
-        "version controls are two columns": (
-            r"\.metadata-version-controls\s*\{[^}]*repeat"
-            r"\(2,\s*minmax\(180px,\s*1fr\)\)"
+        "control strip is a left-right toolbar": (
+            r"\.metadata-control-strip\s*\{[^}]*justify-content:\s*space-between"
         ),
-        "content set row is compact": (
-            r"grid-template-columns:\s*minmax\(280px,\s*1fr\)\s*auto\s*auto\s*auto"
+        "content set picker is demo sized": (
+            r"\.metadata-toolbar-left\s+\.content-set-picker\s*\{[^}]*width:\s*184px"
+        ),
+        "sync item keeps title readable": (
+            r"\.metadata-sync-item\s*\{[^}]*grid-template-columns:"
+            r"\s*26px\s+minmax\(74px,\s*1fr\)\s*8px\s*auto\s*14px"
         ),
         "focus card aligns content to top": (
             r"\.metadata-focus-card\s*\{[^}]*align-content:\s*start"
         ),
-        "focus locale rows start near header": (
-            r"\.metadata-focus-locale-grid\s*\{[^}]*margin-top:\s*12px"
-        ),
         "selected text area stays in first viewport": (
             r"textarea\s*\{[^}]*min-height:\s*168px"
+        ),
+        "store image rows expose image count": (
+            r"\.store-image-count\s*\{[^}]*grid-column:\s*5"
         ),
     }
     for label, pattern in css_contracts.items():

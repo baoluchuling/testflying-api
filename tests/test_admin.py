@@ -130,18 +130,17 @@ def test_admin_store_metadata_focus_layout_css_contract(client: TestClient) -> N
     assert response.status_code == 200
     assert ".store-metadata-main" in response.text
     assert "max-width: 1262px" in response.text
-    assert ".metadata-control-strip" in response.text
+    assert ".store-metadata-main .toolbar" in response.text
     assert "justify-content: space-between" in response.text
-    assert ".metadata-toolbar-left .content-set-picker" in response.text
+    assert ".store-metadata-main .content-set-picker" in response.text
     assert "width: 184px" in response.text
-    assert ".metadata-sync-item" in response.text
-    assert "grid-template-columns: 26px minmax(74px, 1fr) 8px auto 14px" in response.text
-    assert ".metadata-focus-card" in response.text
-    assert "align-content: start" in response.text
+    assert ".store-metadata-main .sync-item" in response.text
+    assert "grid-template-columns: 26px minmax(0, 1fr) 8px auto 14px" in response.text
+    assert ".store-metadata-main .editor" in response.text
     assert "min-height: 608px" in response.text
-    assert ".metadata-focus-locale-grid" in response.text
+    assert ".store-metadata-main .locale-row" in response.text
     assert ".metadata-sync-history-panel" in response.text
-    assert ".store-image-count" in response.text
+    assert ".store-metadata-main .image-locale-row" in response.text
 
 
 def test_admin_resource_pages_render_seeded_catalog(
@@ -936,22 +935,22 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "商店内容套件" in response.text
     assert "新建套件" in response.text
     assert "复制当前套" in response.text
-    assert "metadata-control-strip" in response.text
-    assert "metadata-focus-workspace" in response.text
-    assert "metadata-current-editor" in response.text
+    assert "card toolbar" in response.text
+    assert "workspace" in response.text
+    assert "main-input" in response.text
     assert "data-current-metadata-editor" in response.text
-    assert "metadata-sync-rail" in response.text
+    assert "card rail" in response.text
     assert "data-sync-item-select" in response.text
     assert "data-sync-item-panel" in response.text
-    assert "metadata-side-status" in response.text
-    assert "metadata-side-summary-card" in response.text
-    assert "metadata-check-list" in response.text
+    assert "class=\"side\"" in response.text
+    assert "class=\"checks\"" in response.text
+    assert "class=\"check" in response.text
     assert "最近同步记录" in response.text
-    assert "workspace metadata-focus-workspace" in response.text
-    assert "card rail metadata-sync-rail" in response.text
-    assert "sync-item metadata-sync-item" in response.text
-    assert "card editor metadata-field-block metadata-focus-card" in response.text
-    assert "locale-row metadata-locale-input metadata-focus-locale-row" in response.text
+    assert "class=\"card rail\"" in response.text
+    assert "class=\"sync-item" in response.text
+    assert "class=\"card editor\"" in response.text
+    assert "class=\"locale-row\"" in response.text
+    assert "class=\"image-locale-row store-image-locale-row\"" in response.text
     assert "商店图" in response.text
     assert "App Store Connect 同步" in response.text
     assert "关键词" in response.text
@@ -977,11 +976,10 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "data-store-image-input" in response.text
     assert "data-store-image-zone" in response.text
     assert "data-store-image-bulk-drop" in response.text
-    assert "展开多语言" in response.text
+    assert "展开所有语言" in response.text
     assert 'data-locale="zh-Hans" data-locale-row' in response.text
-    assert 'data-locale="en-US" data-locale-row hidden' in response.text
+    assert 'data-locale="en-US" data-locale-row' in response.text
     assert response.text.index("商店图") < response.text.index("data-store-image-bulk-drop")
-    assert "后台构建" in response.text
     assert "商店版本" in response.text
     assert "内容范围" not in response.text
     assert "文案、链接、商店图" not in response.text

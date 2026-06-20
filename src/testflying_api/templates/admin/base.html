@@ -578,10 +578,33 @@
         form.querySelectorAll('[data-metadata-input]').forEach((input) => {
           const row = input.closest('[data-locale-row]');
           const status = row?.querySelector('[data-locale-status]');
+          const preview = row?.querySelector('[data-locale-preview]');
+          if (preview) {
+            preview.textContent = input.value.trim() || input.placeholder || '';
+          }
           if (!status) return;
           const filled = Boolean(input.value.trim());
           status.textContent = filled ? '已填写' : '待填写';
           status.classList.toggle('warn', !filled);
+        });
+
+        form.querySelectorAll('[data-store-image-input]').forEach((input) => {
+          const row = input.closest('[data-locale-row]');
+          const status = row?.querySelector('[data-store-image-status]');
+          const count = row?.querySelector('[data-store-image-count]');
+          const slot = input.dataset.slot;
+          const locale = input.dataset.locale;
+          const fileInput = form.querySelector(`[data-store-image-file][data-slot="${slot}"][data-locale="${locale}"]`);
+          const previewCount = row?.querySelectorAll('[data-store-image-preview] img').length || 0;
+          const fileCount = fileInput?.files?.length || 0;
+          const filled = hasStoreImageSlotValue(form, locale, slot);
+          if (status) {
+            status.textContent = filled ? '已上传' : '待上传';
+            status.classList.toggle('warn', !filled);
+          }
+          if (count && (fileCount || previewCount)) {
+            count.textContent = `${fileCount || previewCount} 张`;
+          }
         });
 
         form.querySelectorAll('[data-sync-item-panel]').forEach((panel) => {
@@ -774,6 +797,10 @@
 
       function syncVisibleRequiredFields(form) {
         form.querySelectorAll('[data-required-field="true"]').forEach((input) => {
+          if (input.dataset.backingInput === 'true') {
+            input.required = false;
+            return;
+          }
           input.required = !input.disabled && !input.closest('[hidden]');
         });
       }
@@ -1417,13 +1444,17 @@
 
         const folderButton = event.target.closest('[data-store-image-folder-button]');
         if (folderButton) {
-          folderButton.closest('[data-store-image-bulk-drop]')?.querySelector('[data-store-image-folder]')?.click();
+          const scope = folderButton.closest('[data-store-image-bulk-drop]')
+            || folderButton.closest('[data-sync-item-panel]')?.querySelector('[data-store-image-bulk-drop]');
+          scope?.querySelector('[data-store-image-folder]')?.click();
           return;
         }
 
         const filesButton = event.target.closest('[data-store-image-files-button]');
         if (filesButton) {
-          filesButton.closest('[data-store-image-bulk-drop]')?.querySelector('[data-store-image-bulk-files]')?.click();
+          const scope = filesButton.closest('[data-store-image-bulk-drop]')
+            || filesButton.closest('[data-sync-item-panel]')?.querySelector('[data-store-image-bulk-drop]');
+          scope?.querySelector('[data-store-image-bulk-files]')?.click();
           return;
         }
 

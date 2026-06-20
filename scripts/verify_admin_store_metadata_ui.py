@@ -64,26 +64,24 @@ def main() -> int:
 
     for marker in (
         "store-metadata-main",
-        "metadata-control-strip",
-        "card toolbar metadata-control-strip",
-        "metadata-toolbar-left",
+        "card toolbar",
+        "toolbar-left",
+        "toolbar-right",
         "metadata-refresh-button",
-        "metadata-focus-workspace",
-        "workspace metadata-focus-workspace",
-        "metadata-sync-rail",
-        "card rail metadata-sync-rail",
-        "sync-item metadata-sync-item",
-        "metadata-focus-panel",
-        "metadata-current-editor",
+        "class=\"workspace\"",
+        "card rail",
+        "class=\"sync-item",
+        "class=\"card editor\"",
+        "class=\"main-input\"",
         "data-current-metadata-editor",
-        "metadata-locale-tag",
-        "locale-row metadata-locale-input metadata-focus-locale-row",
-        "metadata-side-status",
-        "side metadata-side-status",
-        "metadata-side-summary-card",
-        "metadata-check-list",
+        "class=\"locale-row\"",
+        "class=\"image-locale-row store-image-locale-row\"",
+        "class=\"side\"",
+        "class=\"checks\"",
         "最近同步记录",
-        "store-image-count",
+        "image-count",
+        "asset-uploader",
+        "preview-grid",
         "data-sync-item-select",
         "data-sync-item-panel",
     ):
@@ -97,38 +95,38 @@ def main() -> int:
         "store metadata main width matches demo frame": (
             r"\.store-metadata-main\s*\{[^}]*max-width:\s*1262px"
         ),
-        "control strip is a left-right toolbar": (
-            r"\.metadata-control-strip\s*\{[^}]*justify-content:\s*space-between"
+        "toolbar is left-right aligned": (
+            r"\.store-metadata-main\s+\.toolbar\s*\{[^}]*justify-content:\s*space-between"
         ),
         "content set picker is demo sized": (
-            r"\.metadata-toolbar-left\s+\.content-set-picker\s*\{[^}]*width:\s*184px"
+            r"\.store-metadata-main\s+\.content-set-picker\s*\{[^}]*width:\s*184px"
         ),
         "sync item keeps title readable": (
-            r"\.metadata-sync-item\s*\{[^}]*grid-template-columns:"
-            r"\s*26px\s+minmax\(74px,\s*1fr\)\s*8px\s*auto\s*14px"
+            r"\.store-metadata-main\s+\.sync-item\s*\{[^}]*grid-template-columns:"
+            r"\s*26px\s+minmax\(0,\s*1fr\)\s*8px\s*auto\s*14px"
         ),
-        "focus card aligns content to top": (
-            r"\.metadata-focus-card\s*\{[^}]*align-content:\s*start"
+        "editor card keeps demo height": (
+            r"\.store-metadata-main\s+\.editor\s*\{[^}]*min-height:\s*608px"
         ),
         "current editor stays in first viewport": (
             r"\.store-metadata-main\s+\.main-input\s*\{[^}]*min-height:\s*168px"
         ),
         "locale rows remain compact": (
-            r"\.store-metadata-main\s+\.locale-preview\s*\{[^}]*max-height:\s*22px"
+            r"\.store-metadata-main\s+\.locale-preview\s*\{[^}]*white-space:\s*nowrap"
         ),
         "right side uses one summary card": (
-            r"\.metadata-side-summary-card\s*\{[^}]*display:\s*grid"
+            r"\.store-metadata-main\s+\.side-card\s*\{[^}]*padding:\s*20px\s*16px"
         ),
         "demo workspace columns are the source of truth": (
             r"\.store-metadata-main\s+\.workspace\s*\{[^}]*grid-template-columns:"
             r"\s*244px\s+minmax\(520px,\s*1fr\)\s*278px"
         ),
-        "demo sync item class is styled": (
-            r"\.store-metadata-main\s+\.sync-item\s*\{[^}]*grid-template-columns:"
-            r"\s*26px\s+minmax\(0,\s*1fr\)\s*8px\s*auto\s*14px"
+        "store image previews use real preview grid": (
+            r"\.store-metadata-main\s+\.preview-grid\s*\{[^}]*grid-template-columns:"
+            r"\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)"
         ),
         "store image rows expose image count": (
-            r"\.store-image-count\s*\{[^}]*grid-column:\s*5"
+            r"\.store-metadata-main\s+\.image-locale-row\s*\{[^}]*grid-template-columns:"
         ),
     }
     for label, pattern in css_contracts.items():

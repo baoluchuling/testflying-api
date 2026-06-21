@@ -1,7 +1,9 @@
 package connector
 
 import (
+	"encoding/json"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -17,6 +19,7 @@ type Settings struct {
 	ConnectorToken     string
 	StoreMode          string
 	ListenAddr         string
+	CenterURL          string
 
 	AppleIssuerID       string
 	AppleKeyID          string
@@ -37,30 +40,189 @@ type Settings struct {
 	AppleRateLimitSafetyRatio  float64
 }
 
+type FileConfig struct {
+	AccountID          string `json:"accountId"`
+	DeveloperAccountID string `json:"developerAccountId"`
+	ConnectorToken     string `json:"connectorToken"`
+	Token              string `json:"token"`
+	StoreMode          string `json:"storeMode"`
+	ListenAddr         string `json:"listenAddr"`
+	CenterURL          string `json:"centerUrl"`
+	Apple              struct {
+		IssuerID       string `json:"issuerId"`
+		KeyID          string `json:"keyId"`
+		PrivateKeyPath string `json:"privateKeyPath"`
+		PrivateKey     string `json:"privateKey"`
+		APIBaseURL     string `json:"apiBaseUrl"`
+	} `json:"apple"`
+	Google struct {
+		ServiceAccountJSONPath string `json:"serviceAccountJsonPath"`
+		ServiceAccountJSON     string `json:"serviceAccountJson"`
+		DeveloperID            string `json:"developerId"`
+		TokenURL               string `json:"tokenUrl"`
+		APIBaseURL             string `json:"apiBaseUrl"`
+	} `json:"google"`
+}
+
+func LoadSettings() (Settings, error) {
+	settings := defaultSettings()
+	configPath := connectorConfigPath()
+	if configPath != "" {
+		loaded, err := LoadSettingsFromFile(configPath, settings)
+		if err != nil {
+			return Settings{}, err
+		}
+		settings = loaded
+	}
+	applyEnvOverrides(&settings)
+	return settings, nil
+}
+
 func LoadSettingsFromEnv() Settings {
+	settings, err := LoadSettings()
+	if err != nil {
+		settings = defaultSettings()
+		applyEnvOverrides(&settings)
+	}
+	return settings
+}
+
+func LoadSettingsFromFile(path string, base Settings) (Settings, error) {
+	data, err := os.ReadFile(path) // noqa: G304 - connector config path is local operator configured.
+	if err != nil {
+		return Settings{}, err
+	}
+	var config FileConfig
+	if err := json.Unmarshal(data, &config); err != nil {
+		return Settings{}, err
+	}
+	settings := base
+	if value := strings.TrimSpace(config.AccountID); value != "" {
+		settings.DeveloperAccountID = value
+	}
+	if value := strings.TrimSpace(config.DeveloperAccountID); value != "" {
+		settings.DeveloperAccountID = value
+	}
+	if value := strings.TrimSpace(config.ConnectorToken); value != "" {
+		settings.ConnectorToken = value
+	}
+	if value := strings.TrimSpace(config.Token); value != "" {
+		settings.ConnectorToken = value
+	}
+	if value := strings.TrimSpace(config.StoreMode); value != "" {
+		settings.StoreMode = normalizeStoreMode(value)
+	}
+	if value := strings.TrimSpace(config.ListenAddr); value != "" {
+		settings.ListenAddr = value
+	}
+	if value := strings.TrimSpace(config.CenterURL); value != "" {
+		settings.CenterURL = strings.TrimRight(value, "/")
+	}
+	if value := strings.TrimSpace(config.Apple.IssuerID); value != "" {
+		settings.AppleIssuerID = value
+	}
+	if value := strings.TrimSpace(config.Apple.KeyID); value != "" {
+		settings.AppleKeyID = value
+	}
+	if value := strings.TrimSpace(config.Apple.PrivateKeyPath); value != "" {
+		settings.ApplePrivateKeyPath = value
+	}
+	if value := strings.TrimSpace(config.Apple.PrivateKey); value != "" {
+		settings.ApplePrivateKeyPEM = value
+	}
+	if value := strings.TrimSpace(config.Apple.APIBaseURL); value != "" {
+		settings.AppleAPIBaseURL = strings.TrimRight(value, "/")
+	}
+	if value := strings.TrimSpace(config.Google.ServiceAccountJSONPath); value != "" {
+		settings.GoogleServiceAccountJSONPath = value
+	}
+	if value := strings.TrimSpace(config.Google.ServiceAccountJSON); value != "" {
+		settings.GoogleServiceAccountJSON = value
+	}
+	if value := strings.TrimSpace(config.Google.DeveloperID); value != "" {
+		settings.GoogleDeveloperID = value
+	}
+	if value := strings.TrimSpace(config.Google.TokenURL); value != "" {
+		settings.GoogleTokenURL = value
+	}
+	if value := strings.TrimSpace(config.Google.APIBaseURL); value != "" {
+		settings.GoogleAPIBaseURL = strings.TrimRight(value, "/")
+	}
+	return settings, nil
+}
+
+func defaultSettings() Settings {
 	return Settings{
-		DeveloperAccountID: strings.TrimSpace(env("TESTFLYING_CONNECTOR_DEVELOPER_ACCOUNT_ID", "account-apple-enterprise")),
-		ConnectorToken:     env("TESTFLYING_CONNECTOR_TOKEN", "dev-connector-token"),
-		StoreMode:          normalizeStoreMode(env("TESTFLYING_CONNECTOR_STORE_MODE", StoreModeMock)),
-		ListenAddr:         env("TESTFLYING_CONNECTOR_LISTEN_ADDR", ":8100"),
+		DeveloperAccountID: "account-apple-enterprise",
+		ConnectorToken:     "dev-connector-token",
+		StoreMode:          StoreModeMock,
+		ListenAddr:         ":8100",
+		AppleAPIBaseURL:    "https://api.appstoreconnect.apple.com",
 
-		AppleIssuerID:       strings.TrimSpace(os.Getenv("TESTFLYING_CONNECTOR_APPLE_ISSUER_ID")),
-		AppleKeyID:          strings.TrimSpace(os.Getenv("TESTFLYING_CONNECTOR_APPLE_KEY_ID")),
-		ApplePrivateKeyPath: strings.TrimSpace(os.Getenv("TESTFLYING_CONNECTOR_APPLE_PRIVATE_KEY_PATH")),
-		ApplePrivateKeyPEM:  strings.TrimSpace(os.Getenv("TESTFLYING_CONNECTOR_APPLE_PRIVATE_KEY")),
-		AppleAPIBaseURL:     strings.TrimRight(env("TESTFLYING_CONNECTOR_APPLE_API_BASE_URL", "https://api.appstoreconnect.apple.com"), "/"),
+		GoogleTokenURL:    "https://oauth2.googleapis.com/token",
+		GoogleAPIBaseURL:  "https://androidpublisher.googleapis.com",
+		GoogleDeveloperID: "",
 
-		GoogleServiceAccountJSONPath: strings.TrimSpace(os.Getenv("TESTFLYING_CONNECTOR_GOOGLE_SERVICE_ACCOUNT_JSON_PATH")),
-		GoogleServiceAccountJSON:     strings.TrimSpace(os.Getenv("TESTFLYING_CONNECTOR_GOOGLE_SERVICE_ACCOUNT_JSON")),
-		GoogleDeveloperID:            strings.TrimSpace(os.Getenv("TESTFLYING_CONNECTOR_GOOGLE_DEVELOPER_ID")),
-		GoogleTokenURL:               env("TESTFLYING_CONNECTOR_GOOGLE_TOKEN_URL", "https://oauth2.googleapis.com/token"),
-		GoogleAPIBaseURL:             strings.TrimRight(env("TESTFLYING_CONNECTOR_GOOGLE_API_BASE_URL", "https://androidpublisher.googleapis.com"), "/"),
+		GoogleRateLimitMaxRequests: 200,
+		GoogleRateLimitWindow:      time.Minute,
+		AppleRateLimitFallbackMax:  2880,
+		AppleRateLimitWindow:       time.Hour,
+		AppleRateLimitSafetyRatio:  0.8,
+	}
+}
 
-		GoogleRateLimitMaxRequests: intFromEnv("TESTFLYING_CONNECTOR_GOOGLE_RATE_LIMIT_MAX_REQUESTS", 200),
-		GoogleRateLimitWindow:      secondsFromEnv("TESTFLYING_CONNECTOR_GOOGLE_RATE_LIMIT_WINDOW_SECONDS", 60),
-		AppleRateLimitFallbackMax:  intFromEnv("TESTFLYING_CONNECTOR_APPLE_RATE_LIMIT_FALLBACK_MAX_REQUESTS", 2880),
-		AppleRateLimitWindow:       secondsFromEnv("TESTFLYING_CONNECTOR_APPLE_RATE_LIMIT_WINDOW_SECONDS", 3600),
-		AppleRateLimitSafetyRatio:  floatFromEnv("TESTFLYING_CONNECTOR_APPLE_RATE_LIMIT_SAFETY_RATIO", 0.8),
+func applyEnvOverrides(settings *Settings) {
+	overrideString(&settings.DeveloperAccountID, "TESTFLYING_CONNECTOR_DEVELOPER_ACCOUNT_ID")
+	overrideString(&settings.ConnectorToken, "TESTFLYING_CONNECTOR_TOKEN")
+	if value := strings.TrimSpace(os.Getenv("TESTFLYING_CONNECTOR_STORE_MODE")); value != "" {
+		settings.StoreMode = normalizeStoreMode(value)
+	}
+	overrideString(&settings.ListenAddr, "TESTFLYING_CONNECTOR_LISTEN_ADDR")
+	overrideURL(&settings.CenterURL, "TESTFLYING_CONNECTOR_CENTER_URL")
+
+	overrideString(&settings.AppleIssuerID, "TESTFLYING_CONNECTOR_APPLE_ISSUER_ID")
+	overrideString(&settings.AppleKeyID, "TESTFLYING_CONNECTOR_APPLE_KEY_ID")
+	overrideString(&settings.ApplePrivateKeyPath, "TESTFLYING_CONNECTOR_APPLE_PRIVATE_KEY_PATH")
+	overrideString(&settings.ApplePrivateKeyPEM, "TESTFLYING_CONNECTOR_APPLE_PRIVATE_KEY")
+	overrideURL(&settings.AppleAPIBaseURL, "TESTFLYING_CONNECTOR_APPLE_API_BASE_URL")
+
+	overrideString(&settings.GoogleServiceAccountJSONPath, "TESTFLYING_CONNECTOR_GOOGLE_SERVICE_ACCOUNT_JSON_PATH")
+	overrideString(&settings.GoogleServiceAccountJSON, "TESTFLYING_CONNECTOR_GOOGLE_SERVICE_ACCOUNT_JSON")
+	overrideString(&settings.GoogleDeveloperID, "TESTFLYING_CONNECTOR_GOOGLE_DEVELOPER_ID")
+	overrideString(&settings.GoogleTokenURL, "TESTFLYING_CONNECTOR_GOOGLE_TOKEN_URL")
+	overrideURL(&settings.GoogleAPIBaseURL, "TESTFLYING_CONNECTOR_GOOGLE_API_BASE_URL")
+
+	settings.GoogleRateLimitMaxRequests = intFromEnv("TESTFLYING_CONNECTOR_GOOGLE_RATE_LIMIT_MAX_REQUESTS", settings.GoogleRateLimitMaxRequests)
+	settings.GoogleRateLimitWindow = secondsFromEnv("TESTFLYING_CONNECTOR_GOOGLE_RATE_LIMIT_WINDOW_SECONDS", int(settings.GoogleRateLimitWindow.Seconds()))
+	settings.AppleRateLimitFallbackMax = intFromEnv("TESTFLYING_CONNECTOR_APPLE_RATE_LIMIT_FALLBACK_MAX_REQUESTS", settings.AppleRateLimitFallbackMax)
+	settings.AppleRateLimitWindow = secondsFromEnv("TESTFLYING_CONNECTOR_APPLE_RATE_LIMIT_WINDOW_SECONDS", int(settings.AppleRateLimitWindow.Seconds()))
+	settings.AppleRateLimitSafetyRatio = floatFromEnv("TESTFLYING_CONNECTOR_APPLE_RATE_LIMIT_SAFETY_RATIO", settings.AppleRateLimitSafetyRatio)
+}
+
+func connectorConfigPath() string {
+	if path := strings.TrimSpace(os.Getenv("TESTFLYING_CONNECTOR_CONFIG_PATH")); path != "" {
+		return path
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	candidate := filepath.Join(filepath.Dir(executable), "config.json")
+	if _, err := os.Stat(candidate); err == nil {
+		return candidate
+	}
+	return ""
+}
+
+func overrideString(target *string, envName string) {
+	if value := strings.TrimSpace(os.Getenv(envName)); value != "" {
+		*target = value
+	}
+}
+
+func overrideURL(target *string, envName string) {
+	if value := strings.TrimSpace(os.Getenv(envName)); value != "" {
+		*target = strings.TrimRight(value, "/")
 	}
 }
 

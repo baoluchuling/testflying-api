@@ -145,6 +145,54 @@
           <button class="primary-button" type="submit">{{ "保存修改" if connector else "保存 Connector" }}</button>
         </form>
 
+        <form
+          class="connector-package-form"
+          action="/admin/developer-accounts/{{ account.id }}/connector/windows-package"
+          method="post"
+          enctype="multipart/form-data"
+        >
+          <div class="connector-package-heading">
+            <div>
+              <h3>生成 Windows 一次性安装包</h3>
+              <span>安装包会内置本次上传的商店凭据，Windows 端只需要解压后运行 install.ps1。</span>
+            </div>
+            <span class="badge muted">active connector</span>
+          </div>
+          <div class="connector-package-grid">
+            {% if account_store_platform in ["ios", "mixed"] %}
+              <fieldset>
+                <legend>App Store Connect</legend>
+                <label>
+                  Issuer ID
+                  <input name="appleIssuerId" placeholder="App Store Connect Issuer ID" {% if account_store_platform == "ios" %}required{% endif %}>
+                </label>
+                <label>
+                  Key ID
+                  <input name="appleKeyId" placeholder="可从 AuthKey_XXXX.p8 自动识别">
+                </label>
+                <label>
+                  API Key (.p8)
+                  <input name="applePrivateKey" type="file" accept=".p8" {% if account_store_platform == "ios" %}required{% endif %}>
+                </label>
+              </fieldset>
+            {% endif %}
+            {% if account_store_platform in ["android", "mixed"] %}
+              <fieldset>
+                <legend>Google Play Console</legend>
+                <label>
+                  Service Account JSON
+                  <input name="googleServiceAccount" type="file" accept=".json,application/json" {% if account_store_platform == "android" %}required{% endif %}>
+                </label>
+                <p>使用 Google Cloud service account JSON，应用仍然按 package name 关联。</p>
+              </fieldset>
+            {% endif %}
+          </div>
+          <div class="connector-package-actions">
+            <button class="primary-button" type="submit">生成并下载安装包</button>
+            <span>生成后会把当前账号切换为 <code>active://{{ account.id }}</code>。</span>
+          </div>
+        </form>
+
         <details class="connector-deploy-guide">
           <summary>
             <span>Connector 部署说明</span>

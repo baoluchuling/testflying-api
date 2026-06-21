@@ -9,6 +9,11 @@
 - `mock`：默认模式，用于本地开发和无商店凭据测试，返回可预测的示例结果。
 - `live`：生产模式，读取 Apple / Google 凭据并调用真实商店 API。
 
+## 连接方式
+
+- HTTP 模式：connector 监听本机端口，中心后台直接访问 `http://<connector-host>:8100`。适合有固定内网/VPN/公网入口的机器。
+- Active 模式：connector 不监听公网端口，而是主动请求中心后台 `/connector-agent/v1/poll` 领取任务，再把结果回传 `/connector-agent/v1/results`。Windows 一次性安装包默认使用这种方式，不需要 SSH 反向隧道，也不需要在 Windows 上开放入站端口。
+
 生产环境必须显式设置：
 
 ```bash
@@ -26,6 +31,64 @@ go run ./cmd/testflying-connector
 ```
 
 默认监听 `:8100`，可用 `TESTFLYING_CONNECTOR_LISTEN_ADDR` 覆盖。
+
+## Windows 一次性安装包
+
+推荐在中心后台的开发者账号详情页生成 Windows 安装包：
+
+1. 打开 `开发者账号`，进入目标账号。
+2. 在 `Connector 配置` 中找到 `生成 Windows 一次性安装包`。
+3. 上传当前账号需要的凭据：
+   - iOS / App Store Connect：`Issuer ID`、`Key ID`、`.p8` 文件。
+   - Android / Google Play：service account JSON。
+4. 下载 zip 后复制到 Windows，解压。
+5. 用管理员 PowerShell 执行：
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+安装包会把文件复制到：
+
+```text
+C:\ProgramData\TestFlying\connectors\<account_id>
+```
+
+并注册计划任务：
+
+```text
+testflying-connector-<account_id>
+```
+
+手动重启：
+
+```powershell
+schtasks /Run /TN testflying-connector-<account_id>
+```
+
+查看日志：
+
+```text
+C:\ProgramData\TestFlying\connectors\<account_id>\logs\connector.log
+```
+
+安装包内的 `config.json` 会配置 active 模式：
+
+```json
+{
+  "accountId": "account-a",
+  "connectorToken": "<generated-token>",
+  "storeMode": "live",
+  "centerUrl": "http://47.90.163.122:8000",
+  "apple": {
+    "issuerId": "<issuer-id>",
+    "keyId": "<key-id>",
+    "privateKeyPath": "C:\\ProgramData\\TestFlying\\connectors\\account-a\\secrets\\apple\\AuthKey_XXXX.p8"
+  }
+}
+```
+
+中心后台会同步把该账号的 connector 地址改为 `active://<account_id>`。Apple `.p8` 和 Google service account JSON 只写入下载包和 Windows 本机目录，后台不会长期保存这些文件。
 
 ## Windows 单机部署
 
@@ -69,6 +132,8 @@ Invoke-RestMethod http://127.0.0.1:8100/health
 ```
 
 中心后台里的 Connector 地址要填这台 Windows 机器对中心后台可访问的地址，例如 `http://192.168.1.20:8100`；调用 Token 要和 `TESTFLYING_CONNECTOR_TOKEN` 一致。
+
+如果使用 active 模式，则不需要填写 Windows 机器地址；中心后台 connector 地址使用 `active://<account_id>`。
 
 ## Docker
 

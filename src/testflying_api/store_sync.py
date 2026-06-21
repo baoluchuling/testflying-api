@@ -13,6 +13,7 @@ from uuid import uuid4
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from testflying_api.active_connector import ActiveConnectorTimeoutError, active_connector_hub
 from testflying_api.errors import ApiError
 from testflying_api.schema import (
     App,
@@ -72,6 +73,8 @@ class StoreConnectorClient:
                 "status": "ok",
                 "developerAccountId": connector.developer_account_id,
             }
+        if _is_active_connector(connector):
+            return _active_request_json(connector, "GET", "/health", include_auth=False, timeout=3)
         return _get_json(connector, "/health", include_auth=False, timeout=3)
 
     def supported_locales(
@@ -93,7 +96,12 @@ class StoreConnectorClient:
                 "packageName": app.store_package_name or app.bundle_identifier,
             }
         )
-        response = _get_json(connector, f"/v1/apps/{app.id}/supported-locales?{query}")
+        path = f"/v1/apps/{app.id}/supported-locales?{query}"
+        response = (
+            _active_request_json(connector, "GET", path)
+            if _is_active_connector(connector)
+            else _get_json(connector, path)
+        )
         return _normalize_connector_locales(response.get("locales"))
 
     def preflight(
@@ -103,6 +111,8 @@ class StoreConnectorClient:
     ) -> dict[str, object]:
         if connector.base_url.startswith("mock://"):
             return _mock_preflight(payload)
+        if _is_active_connector(connector):
+            return _active_request_json(connector, "POST", "/v1/preflight", payload)
         return _post_json(connector, "/v1/preflight", payload)
 
     def sync_release_notes(
@@ -123,6 +133,8 @@ class StoreConnectorClient:
                 "status": "succeeded",
                 "message": f"{_operation_label(operation)}已同步。",
             }
+        if _is_active_connector(connector):
+            return _active_request_json(connector, "POST", "/v1/sync-runs", payload)
         return _post_json(connector, "/v1/sync-runs", payload)
 
 
@@ -832,6 +844,10 @@ class ConnectorCallError(RuntimeError):
         self.message = message
 
 
+def _is_active_connector(connector: StoreConnector) -> bool:
+    return connector.base_url.startswith("active://")
+
+
 def _preflight_payload(
     *,
     account_id: str,
@@ -1006,6 +1022,40 @@ def _post_json(
         raise ConnectorCallError(f"connector 返回 HTTP {error.code}: {body[:180]}") from error
     except (URLError, TimeoutError, OSError, json.JSONDecodeError) as error:
         raise ConnectorCallError(f"connector 调用失败: {error}") from error
+
+
+def _active_request_json(
+    connector: StoreConnector,
+    method: str,
+    path: str,
+    payload: dict[str, object] | None = None,
+    *,
+    include_auth: bool = True,
+    timeout: int = 20,
+) -> dict[str, object]:
+    headers = {"Accept": "application/json"}
+    if payload is not None:
+        headers["Content-Type"] = "application/json"
+    if include_auth:
+        headers["Authorization"] = f"Bearer {connector.auth_token}"
+    try:
+        result = active_connector_hub.dispatch(
+            account_id=connector.developer_account_id,
+            method=method,
+            path=path,
+            headers=headers,
+            body=payload,
+            timeout_seconds=timeout,
+        )
+    except ActiveConnectorTimeoutError as error:
+        raise ConnectorCallError(error.args[0]) from error
+
+    if result.status_code < 200 or result.status_code >= 300:
+        raise ConnectorCallError(f"connector 返回 HTTP {result.status_code}: {result.body[:180]}")
+    try:
+        return json.loads(result.body or "{}")
+    except json.JSONDecodeError as error:
+        raise ConnectorCallError(f"connector 返回内容不是 JSON: {error}") from error
 
 
 def _get_json(

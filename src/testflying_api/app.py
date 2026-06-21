@@ -70,6 +70,7 @@ def create_app(
     from testflying_api.routes import (
         accounts,
         app_logs,
+        connector_agent,
         devices,
         health,
         notifications,
@@ -79,6 +80,7 @@ def create_app(
 
     app.include_router(health.router)
     app.include_router(app_logs.router)
+    app.include_router(connector_agent.router)
     app.include_router(admin_routes.router)
     app.include_router(workspace.router)
     app.include_router(uploads.router)

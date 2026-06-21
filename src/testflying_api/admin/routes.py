@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
+import secrets
+import zipfile
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
@@ -461,6 +464,58 @@ def save_connector_page(
             _context(request, active="developer-accounts", error=error.message, **context),
             status_code=error.status_code,
         )
+
+
+@router.post("/developer-accounts/{account_id}/connector/windows-package")
+async def generate_connector_windows_package(
+    account_id: str,
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+    apple_issuer_id: Annotated[str, Form(alias="appleIssuerId")] = "",
+    apple_key_id: Annotated[str, Form(alias="appleKeyId")] = "",
+    apple_private_key: Annotated[UploadFile | None, File(alias="applePrivateKey")] = None,
+    google_service_account: Annotated[UploadFile | None, File(alias="googleServiceAccount")] = None,
+) -> Response:
+    context = _account_detail_context(request, session, account_id)
+    if context["account"] is None:
+        raise ApiError("account_not_found", "开发者账号不存在", status_code=404)
+    try:
+        apple_file = await _read_optional_upload(apple_private_key)
+        google_file = await _read_optional_upload(google_service_account)
+        package = _build_windows_connector_package(
+            account_id=account_id,
+            platform=str(context["account_store_platform"]),
+            center_url=_connector_center_url(request),
+            apple_issuer_id=apple_issuer_id,
+            apple_key_id=apple_key_id,
+            apple_file=apple_file,
+            google_file=google_file,
+        )
+        save_connector(
+            session,
+            account_id=account_id,
+            name="Windows Active Connector",
+            base_url=f"active://{account_id}",
+            auth_token=package["token"],
+        )
+        session.commit()
+    except ApiError as error:
+        session.rollback()
+        context = _account_detail_context(request, session, account_id)
+        return templates.TemplateResponse(
+            request,
+            "admin/account_detail.html",
+            _context(request, active="developer-accounts", error=error.message, **context),
+            status_code=error.status_code,
+        )
+
+    filename = f"testflying-connector-{_safe_filename(account_id)}-windows.zip"
+    return Response(
+        content=package["content"],
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/developer-accounts/{account_id}/connector/check", response_class=HTMLResponse)
@@ -1077,6 +1132,211 @@ def notifications_page(request: Request, session: SessionDep, _: AdminDep) -> HT
         "admin/notifications.html",
         _context(request, active="notifications", notifications=list_notifications(session)),
     )
+
+
+async def _read_optional_upload(upload: UploadFile | None) -> tuple[str, bytes] | None:
+    if upload is None or not upload.filename:
+        return None
+    content = await upload.read()
+    if not content:
+        return None
+    return _safe_filename(upload.filename), content
+
+
+def _build_windows_connector_package(
+    *,
+    account_id: str,
+    platform: str,
+    center_url: str,
+    apple_issuer_id: str,
+    apple_key_id: str,
+    apple_file: tuple[str, bytes] | None,
+    google_file: tuple[str, bytes] | None,
+) -> dict[str, object]:
+    token = secrets.token_urlsafe(32)
+    root = f"C:\\ProgramData\\TestFlying\\connectors\\{_safe_filename(account_id)}"
+    config: dict[str, object] = {
+        "accountId": account_id,
+        "connectorToken": token,
+        "storeMode": "live",
+        "centerUrl": center_url,
+    }
+    secrets_to_write: list[tuple[str, bytes]] = []
+
+    apple_needed = platform in {"ios", "mixed"}
+    google_needed = platform in {"android", "mixed"}
+    if apple_file is not None:
+        apple_filename, apple_content = apple_file
+        if not apple_filename.lower().endswith(".p8"):
+            raise ApiError(
+                "invalid_apple_key",
+                "App Store Connect API Key 必须是 .p8 文件",
+                status_code=422,
+            )
+        key_id = apple_key_id.strip() or _apple_key_id_from_filename(apple_filename)
+        issuer_id = apple_issuer_id.strip()
+        if not issuer_id or not key_id:
+            raise ApiError(
+                "invalid_apple_key",
+                "Apple 凭据需要填写 Issuer ID 和 Key ID",
+                status_code=422,
+            )
+        apple_path = f"{root}\\secrets\\apple\\{apple_filename}"
+        config["apple"] = {
+            "issuerId": issuer_id,
+            "keyId": key_id,
+            "privateKeyPath": apple_path,
+        }
+        secrets_to_write.append((f"secrets/apple/{apple_filename}", apple_content))
+    elif apple_needed and platform == "ios":
+        raise ApiError(
+            "missing_apple_key",
+            "iOS 账号需要上传 App Store Connect .p8 凭据",
+            status_code=422,
+        )
+
+    if google_file is not None:
+        google_filename, google_content = google_file
+        try:
+            json.loads(google_content.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ApiError(
+                "invalid_google_key",
+                "Google Play service account 必须是合法 JSON 文件",
+                status_code=422,
+            ) from error
+        google_path = f"{root}\\secrets\\google\\{google_filename}"
+        config["google"] = {"serviceAccountJsonPath": google_path}
+        secrets_to_write.append((f"secrets/google/{google_filename}", google_content))
+    elif google_needed and platform == "android":
+        raise ApiError(
+            "missing_google_key",
+            "Android 账号需要上传 Google Play service-account JSON",
+            status_code=422,
+        )
+
+    if platform == "mixed" and not secrets_to_write:
+        raise ApiError("missing_credentials", "请至少上传一组商店凭据", status_code=422)
+
+    buffer = BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("config.json", json.dumps(config, ensure_ascii=False, indent=2))
+        archive.writestr("install.ps1", _windows_install_script(account_id=account_id, root=root))
+        archive.writestr("README.txt", _windows_package_readme(account_id=account_id, root=root))
+        for path, content in secrets_to_write:
+            archive.writestr(path, content)
+    return {"token": token, "content": buffer.getvalue()}
+
+
+def _connector_center_url(request: Request) -> str:
+    configured = request.app.state.settings.public_base_url.strip().rstrip("/")
+    return configured or str(request.base_url).rstrip("/")
+
+
+def _apple_key_id_from_filename(filename: str) -> str:
+    match = re.match(r"AuthKey_([A-Za-z0-9]+)\.p8$", filename)
+    return match.group(1) if match else ""
+
+
+def _safe_filename(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]+", "-", value).strip(".-") or "connector"
+
+
+def _windows_install_script(*, account_id: str, root: str) -> str:
+    task_name = f"testflying-connector-{_safe_filename(account_id)}"
+    template = r'''$ErrorActionPreference = "Stop"
+$Root = "__ROOT__"
+$TaskName = "__TASK_NAME__"
+$Repo = "baoluchuling/testflying-api"
+
+New-Item -ItemType Directory -Force $Root, "$Root\logs", "$Root\secrets" | Out-Null
+Copy-Item -Force "$PSScriptRoot\config.json" "$Root\config.json"
+if (Test-Path "$PSScriptRoot\secrets") {
+  Copy-Item -Force -Recurse "$PSScriptRoot\secrets\*" "$Root\secrets"
+}
+
+if (Test-Path "$PSScriptRoot\testflying-connector.exe") {
+  Copy-Item -Force "$PSScriptRoot\testflying-connector.exe" "$Root\testflying-connector.exe"
+}
+
+if (!(Test-Path "$Root\testflying-connector.exe")) {
+  $Release = Invoke-RestMethod `
+    -Headers @{"User-Agent" = "testflying-connector-installer"} `
+    -Uri "https://api.github.com/repos/$Repo/releases/latest"
+  $Asset = $Release.assets |
+    Where-Object { $_.name -like "testflying-connector-windows-amd64-*.zip" } |
+    Select-Object -First 1
+  if ($null -eq $Asset) {
+    throw "GitHub Release 中没有找到 Windows connector 构建产物"
+  }
+  $ZipPath = "$Root\connector-windows.zip"
+  $ExtractPath = "$Root\download"
+  Invoke-WebRequest `
+    -Headers @{"User-Agent" = "testflying-connector-installer"} `
+    -Uri $Asset.browser_download_url `
+    -OutFile $ZipPath
+  if (Test-Path $ExtractPath) {
+    Remove-Item -Recurse -Force $ExtractPath
+  }
+  Expand-Archive -Force $ZipPath $ExtractPath
+  $Exe = Get-ChildItem -Path $ExtractPath -Filter "*.exe" -Recurse | Select-Object -First 1
+  if ($null -eq $Exe) {
+    throw "Windows connector 构建包中没有 exe"
+  }
+  Copy-Item -Force $Exe.FullName "$Root\testflying-connector.exe"
+}
+
+$RunScript = @"
+`$ErrorActionPreference = "Stop"
+`$env:TESTFLYING_CONNECTOR_CONFIG_PATH = "$Root\config.json"
+& "$Root\testflying-connector.exe" *>> "$Root\logs\connector.log"
+"@
+Set-Content -Encoding UTF8 "$Root\run-connector.ps1" $RunScript
+
+schtasks /End /TN $TaskName | Out-Null
+schtasks /Delete /TN $TaskName /F | Out-Null
+schtasks /Create `
+  /TN $TaskName `
+  /SC ONSTART `
+  /RL HIGHEST `
+  /RU SYSTEM `
+  /TR "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$Root\run-connector.ps1`"" `
+  /F | Out-Null
+schtasks /Run /TN $TaskName | Out-Null
+
+Write-Host "testflying connector installed."
+Write-Host "Task: $TaskName"
+Write-Host "Root: $Root"
+Write-Host "Log:  $Root\logs\connector.log"
+'''
+    return template.replace("__ROOT__", root).replace("__TASK_NAME__", task_name)
+
+
+def _windows_package_readme(*, account_id: str, root: str) -> str:
+    task_name = f"testflying-connector-{_safe_filename(account_id)}"
+    return f"""testflying Windows Connector 安装包
+
+账号: {account_id}
+安装目录: {root}
+计划任务: {task_name}
+
+安装:
+1. 在 Windows 上解压这个 zip。
+2. 右键 PowerShell，选择“以管理员身份运行”。
+3. 进入解压目录，执行:
+   powershell.exe -ExecutionPolicy Bypass -File .\\install.ps1
+
+手动重启:
+   schtasks /Run /TN {task_name}
+
+查看日志:
+   {root}\\logs\\connector.log
+
+注意:
+- Apple/Google 凭据只在这个安装包和 Windows 本机安装目录中保存。
+- 如果同目录下没有 testflying-connector.exe，
+  install.ps1 会自动从 GitHub Release 下载最新 Windows 构建产物。
+"""
 
 
 def _account_detail_context(

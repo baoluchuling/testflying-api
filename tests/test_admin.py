@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import subprocess
 from base64 import b64encode
 from dataclasses import replace
 from datetime import UTC, datetime
+from io import BytesIO
+from zipfile import ZipFile
 
 import pytest
 from fastapi.testclient import TestClient
@@ -633,6 +636,50 @@ def test_admin_can_generate_connector_url_from_account_template(
     assert "Connector 已保存" in response.text
     assert connector.base_url == expected_base_url
     assert expected_base_url in response.text
+
+
+def test_admin_can_generate_windows_active_connector_package(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+
+    response = client.post(
+        "/admin/developer-accounts/account-apple-enterprise/connector/windows-package",
+        headers=_admin_headers(),
+        data={
+            "appleIssuerId": "issuer-123",
+            "appleKeyId": "",
+        },
+        files={
+            "applePrivateKey": (
+                "AuthKey_ABC123.p8",
+                b"-----BEGIN PRIVATE KEY-----\nkey\n-----END PRIVATE KEY-----",
+                "application/octet-stream",
+            ),
+        },
+    )
+
+    connector = db_session.query(StoreConnector).one()
+    with ZipFile(BytesIO(response.content)) as archive:
+        names = set(archive.namelist())
+        config = json.loads(archive.read("config.json").decode("utf-8"))
+        install_script = archive.read("install.ps1").decode("utf-8")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/zip"
+    assert "config.json" in names
+    assert "install.ps1" in names
+    assert "README.txt" in names
+    assert "secrets/apple/AuthKey_ABC123.p8" in names
+    assert config["accountId"] == "account-apple-enterprise"
+    assert config["storeMode"] == "live"
+    assert config["centerUrl"] == "https://dist.example.test"
+    assert config["apple"]["issuerId"] == "issuer-123"
+    assert config["apple"]["keyId"] == "ABC123"
+    assert connector.base_url == "active://account-apple-enterprise"
+    assert connector.auth_token == config["connectorToken"]
+    assert "TESTFLYING_CONNECTOR_CONFIG_PATH" in install_script
 
 
 def test_admin_release_notes_page_runs_cached_preflight(

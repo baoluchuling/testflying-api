@@ -9,7 +9,7 @@
 - `testflying-server`：中心化后台，负责账号、App、构建、版本说明草稿、商店元数据草稿、预检查缓存、同步记录和审计。
 - `testflying-connector`：账号级 Go 子项目，每个开发者账号单独部署一份，负责保存该账号商店凭证并调用 Apple / Google 商店 API。
 
-中心后台可以调用 connector 的接口，但不能保存 Apple `.p8`、Google service account JSON 或商店访问 token。
+中心后台可以通过 HTTP 直接调用 connector，也可以让 connector 主动轮询中心后台领取任务。中心后台不能长期保存 Apple `.p8`、Google service account JSON 或商店访问 token；Windows 一次性安装包生成时会短暂接收凭据并直接写入 zip 响应，数据库只保存 connector token 和 `active://<account_id>` 地址。
 
 ## 第一版范围
 
@@ -175,6 +175,64 @@ GET /v1/apps/app-aurora-ios/supported-locales?developerAccountId=account-apple-e
 
 中心后台会按语言多次调用 `POST /v1/sync-runs`，每次请求的 `locale` 和 `metadata` 对应该语言。connector 不提供同步记录查询接口，任务状态以中心后台 `store_sync_runs` 为准。
 
+### Active Connector 协议
+
+当 `store_connectors.base_url` 为 `active://<account_id>` 时，中心后台不再发起出站 HTTP 请求，而是把上述请求投递到内存任务队列。connector 运行在 Windows 或其它受限网络环境时主动连接中心后台：
+
+```http
+POST /connector-agent/v1/poll
+Authorization: Bearer <connector-token>
+Content-Type: application/json
+
+{
+  "accountId": "account-apple-enterprise",
+  "timeoutSeconds": 25
+}
+```
+
+没有任务时返回：
+
+```json
+{
+  "task": null
+}
+```
+
+有任务时返回：
+
+```json
+{
+  "task": {
+    "id": "task-...",
+    "method": "POST",
+    "path": "/v1/preflight",
+    "headers": {
+      "Authorization": "Bearer <connector-token>",
+      "Content-Type": "application/json",
+      "Accept": "application/json"
+    },
+    "body": "{...}"
+  }
+}
+```
+
+connector 在本地复用同一个 HTTP handler 执行任务，然后回传：
+
+```http
+POST /connector-agent/v1/results
+Authorization: Bearer <connector-token>
+Content-Type: application/json
+
+{
+  "accountId": "account-apple-enterprise",
+  "taskId": "task-...",
+  "statusCode": 200,
+  "body": "{\"status\":\"ok\"}"
+}
+```
+
+这个协议是长轮询，不需要 Windows 开放入站端口，也不需要 SSH 反向隧道。connector 断线后会自动退避并重新轮询；中心后台请求等待超时后会按 connector 调用失败处理。
+
 ## Connector 部署和凭据
 
 connector 默认以 `mock` 模式启动，用于本地测试。生产部署必须显式开启 `live`：
@@ -206,7 +264,15 @@ JSON 文件挂载在 connector 所在机器，例如：
 -v /opt/testflying/secrets/google-a:/run/secrets/google:ro
 ```
 
-中心后台只配置 connector URL 和 token，不接收、不转存这些商店凭据。
+中心后台只持久化 connector URL 和 token，不转存这些商店凭据。
+
+Windows 推荐使用账号详情页的 `生成 Windows 一次性安装包`：
+
+- 后台根据账号平台要求上传 App Store Connect `.p8` 或 Google service account JSON。
+- 后台生成 zip，包含 `install.ps1`、`config.json`、`README.txt` 和 `secrets/...`。
+- 生成时自动把当前账号 connector 保存为 `active://<account_id>`。
+- `install.ps1` 会把文件复制到 `C:\ProgramData\TestFlying\connectors\<account_id>`，注册 `testflying-connector-<account_id>` 计划任务，并从 GitHub Release 下载 Windows connector exe。
+- 手动重启：`schtasks /Run /TN testflying-connector-<account_id>`。
 
 ## 隔离规则
 

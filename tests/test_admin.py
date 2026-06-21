@@ -22,7 +22,7 @@ from testflying_api.schema import (
 )
 from testflying_api.seed import seed_demo_catalog
 from testflying_api.store_sync import supported_locales_for_app
-from tests.fixtures import make_android_apk_bytes
+from tests.fixtures import make_android_apk_bytes, make_png_header_bytes
 
 
 def _admin_headers(password: str = "dev-token") -> dict[str, str]:
@@ -805,11 +805,11 @@ def test_admin_store_metadata_uploads_store_images_into_content_set(
         files=[
             (
                 "storeImageFiles__phone_screenshots__en-US",
-                ("phone-1.png", b"fake-phone-1", "image/png"),
+                ("phone-1.png", make_png_header_bytes(1290, 2796), "image/png"),
             ),
             (
                 "storeImageFiles__phone_screenshots__en-US",
-                ("phone-2.png", b"fake-phone-2", "image/png"),
+                ("phone-2.png", make_png_header_bytes(1320, 2868), "image/png"),
             ),
         ],
     )
@@ -825,12 +825,53 @@ def test_admin_store_metadata_uploads_store_images_into_content_set(
     assert [asset["fileName"] for asset in phone_assets] == ["phone-1.png", "phone-2.png"]
 
     page = client.get(
-        path + "?content_set_id=summer-launch",
+        path + "?version=2.4.0&content_set_id=summer-launch",
         headers=_admin_headers(),
     )
     assert page.status_code == 200
     assert "暑期活动投放" in page.text
     assert "phone-1.png" in page.text
+    assert "data-store-image-preview-image" in page.text
+    assert 'data-width="1290"' in page.text
+    assert 'data-height="2796"' in page.text
+    assert "style=\"aspect-ratio:" in page.text
+    assert "1290 x 2796" in page.text
+
+
+def test_admin_store_metadata_rejects_invalid_store_image_dimensions(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+
+    response = client.post(
+        "/admin/developer-accounts/account-apple-enterprise"
+        "/apps/app-aurora-ios/store-metadata",
+        headers=_admin_headers(),
+        data={
+            "version": "2.4.0",
+            "locale": "en-US",
+            "contentSetId": "summer-launch",
+            "contentSetName": "暑期活动投放",
+            "locales": ["en-US"],
+            "keywords": ["internal,test"],
+            "promotionalText": [""],
+            "description": ["Internal app distribution testing."],
+            "featureGraphicUrl": [""],
+            "phoneScreenshots": [""],
+            "tabletScreenshots": [""],
+        },
+        files=[
+            (
+                "storeImageFiles__phone_screenshots__en-US",
+                ("bad-phone.png", make_png_header_bytes(1080, 2400), "image/png"),
+            ),
+        ],
+    )
+
+    assert response.status_code == 422
+    assert "Apple 要求精确尺寸" in response.text
+    assert db_session.query(StoreAppMetadataDraft).count() == 0
 
 
 def test_admin_store_metadata_content_set_creation_persists(
@@ -1000,17 +1041,23 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "素材备注" not in response.text
     assert "手机截图" in response.text
     assert "平板截图" in response.text
-    assert "Feature graphic" not in response.text
+    assert "Feature graphic（功能宣传图）" not in response.text
     assert "Google Play Console 同步" not in response.text
-    assert "宣传图" not in response.text
+    assert "storeImageFiles__feature_graphic" not in response.text
     assert "data-store-image-input" in response.text
     assert "data-store-image-zone" in response.text
     assert "data-store-image-track" in response.text
     assert "store-image-add-card" in response.text
+    assert "data-store-image-requirement" in response.text
+    assert "data-store-image-validation" in response.text
     assert "data-store-image-preview-all" in response.text
     assert "data-store-image-lightbox" in response.text
     assert "openStoreImageLightbox" in response.text
     assert "closeStoreImageLightbox" in response.text
+    assert "readStoreImageDimensions" in response.text
+    assert "validateStoreImageInspection" in response.text
+    assert "filterValidStoreImageFiles" in response.text
+    assert "Apple 要求精确尺寸" in response.text
     assert re.search(
         r'name="storeImageFiles__phone_screenshots__en-US"[^>]*multiple',
         response.text,
@@ -1022,7 +1069,7 @@ def test_admin_store_metadata_page_lists_supported_locales(
         re.DOTALL,
     )
     assert "snapshotStoreImageFiles(input)" in response.text
-    assert "appendStoreImageFiles(input, selected" in response.text
+    assert "appendStoreImageFiles(input, validFiles" in response.text
     assert "uniqueStoreImageFiles([...existing, ...files])" in response.text
     assert "data-store-image-bulk-drop" in response.text
     assert "展开所有语言" in response.text
@@ -1065,6 +1112,8 @@ def test_admin_store_metadata_page_uses_google_play_terms_for_android(
     assert "Google Play Console 同步" in response.text
     assert "完整描述" in response.text
     assert "功能宣传图" in response.text
+    assert "Google Play 功能宣传图必须是 1024 x 500" in response.text
+    assert "Google Play 截图最小边 320" in response.text
     assert "手机截图" in response.text
     assert "平板截图" in response.text
     assert "Keywords（关键词）" not in response.text

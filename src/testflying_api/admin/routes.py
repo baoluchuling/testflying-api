@@ -44,6 +44,7 @@ from testflying_api.database import get_db_session
 from testflying_api.errors import ApiError
 from testflying_api.models import UploadResponse
 from testflying_api.schema import App, DeveloperAccount
+from testflying_api.store_image_requirements import validate_store_image
 from testflying_api.store_sync import (
     DEFAULT_CONTENT_SET_ID,
     DEFAULT_CONTENT_SET_NAME,
@@ -793,11 +794,15 @@ async def save_store_metadata_page(
     content_set_id = _form_value(form, "contentSetId", DEFAULT_CONTENT_SET_ID)
     content_set_name = _form_value(form, "contentSetName", DEFAULT_CONTENT_SET_NAME)
     try:
+        app = scoped_app(session, account_id, app_id)
+        if app is None:
+            raise ApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
         store_image_assets = await _store_image_assets_from_form(
             form,
             storage=request.app.state.artifact_storage,
             account_id=account_id,
             app_id=app_id,
+            platform=app.platform,
             version=version,
             content_set_id=content_set_id,
         )
@@ -951,11 +956,15 @@ async def sync_store_metadata_page(
     content_set_id = _form_value(form, "contentSetId", DEFAULT_CONTENT_SET_ID)
     content_set_name = _form_value(form, "contentSetName", DEFAULT_CONTENT_SET_NAME)
     try:
+        app = scoped_app(session, account_id, app_id)
+        if app is None:
+            raise ApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
         store_image_assets = await _store_image_assets_from_form(
             form,
             storage=request.app.state.artifact_storage,
             account_id=account_id,
             app_id=app_id,
+            platform=app.platform,
             version=version,
             content_set_id=content_set_id,
         )
@@ -1147,6 +1156,7 @@ async def _store_image_assets_from_form(
     storage: object,
     account_id: str,
     app_id: str,
+    platform: str,
     version: str,
     content_set_id: str,
 ) -> dict[str, dict[str, list[dict[str, object]]]]:
@@ -1169,6 +1179,19 @@ async def _store_image_assets_from_form(
         content = await value.read()
         if not content:
             continue
+        validation = validate_store_image(
+            platform=platform,
+            slot_key=slot_key,
+            filename=filename,
+            content_type=str(getattr(value, "content_type", "") or ""),
+            content=content,
+        )
+        if not validation.valid:
+            raise ApiError(
+                "store_image_invalid",
+                f"{locale} {Path(filename).name}: {validation.message}",
+                status_code=422,
+            )
         stored = storage.save(
             _store_image_storage_folder(
                 account_id=account_id,
@@ -1191,6 +1214,11 @@ async def _store_image_assets_from_form(
                 "sizeBytes": len(content),
                 "storageKey": stored.storage_key,
                 "downloadUrl": stored.download_url,
+                "width": validation.image.width if validation.image else None,
+                "height": validation.image.height if validation.image else None,
+                "format": validation.image.format if validation.image else None,
+                "validationMessage": validation.message,
+                "matchedLabel": validation.matched_label,
             }
         )
 

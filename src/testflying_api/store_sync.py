@@ -956,6 +956,15 @@ def _asset_list(value: object) -> list[dict[str, object]]:
                     item.get("storageKey") or item.get("storage_key") or ""
                 ).strip(),
                 "downloadUrl": download_url,
+                "width": int(item.get("width") or 0) or None,
+                "height": int(item.get("height") or 0) or None,
+                "format": str(item.get("format") or "").strip(),
+                "validationMessage": str(
+                    item.get("validationMessage") or item.get("validation_message") or ""
+                ).strip(),
+                "matchedLabel": str(
+                    item.get("matchedLabel") or item.get("matched_label") or ""
+                ).strip(),
             }
         )
     return assets

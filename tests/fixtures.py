@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import plistlib
+import struct
 from io import BytesIO
 from zipfile import ZipFile
 
@@ -34,6 +35,36 @@ ANDROID_APK_BASE64 = (
 
 def make_android_apk_bytes() -> bytes:
     return base64.b64decode(ANDROID_APK_BASE64)
+
+
+def make_png_header_bytes(
+    width: int,
+    height: int,
+    *,
+    bit_depth: int = 8,
+    color_type: int = 2,
+) -> bytes:
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + struct.pack(">I", 13)
+        + b"IHDR"
+        + struct.pack(">II", width, height)
+        + bytes([bit_depth, color_type, 0, 0, 0])
+        + b"\x00\x00\x00\x00"
+    )
+
+
+def make_jpeg_header_bytes(width: int, height: int) -> bytes:
+    return (
+        b"\xff\xd8"
+        + b"\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00"
+        + b"\xff\xc0"
+        + struct.pack(">H", 17)
+        + b"\x08"
+        + struct.pack(">HH", height, width)
+        + b"\x03\x01\x11\x00\x02\x11\x00\x03\x11\x00"
+        + b"\xff\xd9"
+    )
 
 
 def make_ipa_bytes(

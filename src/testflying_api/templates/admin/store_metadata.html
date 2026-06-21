@@ -35,6 +35,7 @@
     enctype="multipart/form-data"
     data-metadata-form
     data-source-locale="{{ source_locale }}"
+    data-store-platform="{{ app.platform }}"
   >
     <div hidden>
       <input name="version" value="{{ version }}" required data-metadata-version>
@@ -288,6 +289,7 @@
                   <h2>{{ slot.short_label or slot.label }}</h2>
                 </div>
                 <p class="current-locale">当前语言：<b data-current-locale-label>{{ locale }}</b></p>
+                <p class="store-image-requirement-summary">{{ slot.requirement.summary }}</p>
               </div>
               <div class="editor-actions">
                 <span class="focus-completion" data-focus-completion>待检查</span>
@@ -303,7 +305,12 @@
 
             <div class="editor-body">
               <div class="asset-workspace">
-                <div class="asset-uploader" data-store-image-bulk-drop data-slot="{{ slot.key }}">
+                <div
+                  class="asset-uploader"
+                  data-store-image-bulk-drop
+                  data-slot="{{ slot.key }}"
+                  data-store-image-requirement='{{ slot.requirement|tojson }}'
+                >
                   <input type="file" accept="image/*" multiple data-store-image-bulk-files>
                   <input type="file" multiple webkitdirectory directory data-store-image-folder>
                   <div class="dropzone">
@@ -323,10 +330,23 @@
                     </div>
                     <div class="preview-grid">
                       {% if current_image.value and current_image.value.preview_urls %}
-                        {% for preview_url in current_image.value.preview_urls[:3] %}
+                        {% for preview in current_image.value.preview_items[:3] %}
                           <article class="preview-card">
-                            <figure><img alt="{{ slot.short_label or slot.label }}预览" src="{{ preview_url }}"></figure>
-                            <div class="preview-meta"><span>{{ current_image.value.file_names[loop.index0] if current_image.value.file_names and loop.index0 < current_image.value.file_names|length else "image" }}</span><span>预览</span></div>
+                            <figure>
+                              <img
+                                alt="{{ slot.short_label or slot.label }}预览"
+                                src="{{ preview.url }}"
+                                data-store-image-preview-image
+                                data-width="{{ preview.width or '' }}"
+                                data-height="{{ preview.height or '' }}"
+                                data-validation-message="{{ preview.validationMessage or '' }}"
+                                style="aspect-ratio: {{ preview.width ~ ' / ' ~ preview.height if preview.width and preview.height else slot.requirement.fallbackAspectRatio }}"
+                              >
+                            </figure>
+                            <div class="preview-meta">
+                              <span>{{ preview.fileName or "image" }}</span>
+                              <span>{{ (preview.width ~ " x " ~ preview.height) if preview.width and preview.height else "预览" }}</span>
+                            </div>
                           </article>
                         {% endfor %}
                       {% else %}
@@ -360,15 +380,37 @@
                     >
                     <div class="store-image-track" data-store-image-track>
                       <div class="thumb-strip" data-store-image-preview>
-                        {% if image_slot.preview_urls %}
-                          {% for preview_url in image_slot.preview_urls %}
-                            <img class="thumb {{ 'tablet' if slot.key == 'tablet_screenshots' else '' }}" alt="{{ item.locale }} {{ slot.short_label or slot.label }}预览" src="{{ preview_url }}">
+                        {% if image_slot.preview_items %}
+                          {% for preview in image_slot.preview_items %}
+                            <figure class="store-image-thumb-card">
+                              <img
+                                class="thumb {{ 'tablet' if slot.key == 'tablet_screenshots' else '' }}"
+                                alt="{{ item.locale }} {{ slot.short_label or slot.label }}预览"
+                                src="{{ preview.url }}"
+                                data-store-image-preview-image
+                                data-width="{{ preview.width or '' }}"
+                                data-height="{{ preview.height or '' }}"
+                                data-validation-message="{{ preview.validationMessage or '' }}"
+                                data-matched-label="{{ preview.matchedLabel or '' }}"
+                                style="aspect-ratio: {{ preview.width ~ ' / ' ~ preview.height if preview.width and preview.height else slot.requirement.fallbackAspectRatio }}"
+                              >
+                              <figcaption>
+                                {{ (preview.width ~ " x " ~ preview.height) if preview.width and preview.height else "待检测" }}
+                              </figcaption>
+                            </figure>
                           {% endfor %}
                         {% else %}
                           <span class="store-image-empty-note">还没有截图</span>
                         {% endif %}
                       </div>
-                      <div class="store-image-upload store-image-add-card" data-store-image-zone data-slot="{{ slot.key }}" data-locale="{{ item.locale }}" data-multiple="{{ 'true' if slot.multiple else 'false' }}">
+                      <div
+                        class="store-image-upload store-image-add-card"
+                        data-store-image-zone
+                        data-slot="{{ slot.key }}"
+                        data-locale="{{ item.locale }}"
+                        data-multiple="{{ 'true' if slot.multiple else 'false' }}"
+                        data-store-image-requirement='{{ slot.requirement|tojson }}'
+                      >
                         <input
                           type="file"
                           name="storeImageFiles__{{ slot.key }}__{{ item.locale }}"
@@ -386,6 +428,7 @@
                             添加截图
                           {% endif %}
                         </div>
+                        <small data-store-image-validation></small>
                       </div>
                     </div>
                     <span class="image-count" data-store-image-count>{{ image_slot.count }} 张</span>

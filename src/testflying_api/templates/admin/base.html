@@ -749,9 +749,173 @@
         return file?.type?.startsWith('image/') || /\.(png|jpe?g|webp)$/i.test(file?.name || '');
       }
 
-      function applyStoreImageRecords(form, records, fallbackSlot, fallbackLocale) {
+      function storeImageRequirement(scope) {
+        if (!scope?.dataset.storeImageRequirement) return null;
+        try {
+          return JSON.parse(scope.dataset.storeImageRequirement);
+        } catch {
+          return null;
+        }
+      }
+
+      function storeImageFormat(file) {
+        const type = String(file?.type || '').toLowerCase();
+        if (type === 'image/jpeg' || type === 'image/jpg') return 'jpeg';
+        if (type === 'image/png') return 'png';
+        const extension = String(file?.name || '').split('.').pop()?.toLowerCase();
+        if (extension === 'jpg' || extension === 'jpeg') return 'jpeg';
+        if (extension === 'png') return 'png';
+        return extension || '';
+      }
+
+      function readStoreImageDimensions(file) {
+        return new Promise((resolve, reject) => {
+          const image = new Image();
+          const url = URL.createObjectURL(file);
+          image.onload = () => {
+            URL.revokeObjectURL(url);
+            resolve({ width: image.naturalWidth, height: image.naturalHeight });
+          };
+          image.onerror = () => {
+            URL.revokeObjectURL(url);
+            reject(new Error('无法读取图片尺寸'));
+          };
+          image.src = url;
+        });
+      }
+
+      async function readStoreImagePngInfo(file) {
+        const header = new Uint8Array(await file.slice(0, 32).arrayBuffer());
+        const signature = [137, 80, 78, 71, 13, 10, 26, 10];
+        if (!signature.every((value, index) => header[index] === value)) return {};
+        if (header[12] !== 73 || header[13] !== 72 || header[14] !== 68 || header[15] !== 82) return {};
+        return {
+          bitDepth: header[24],
+          colorType: header[25],
+        };
+      }
+
+      async function inspectStoreImageFile(file) {
+        const dimensions = await readStoreImageDimensions(file);
+        const format = storeImageFormat(file);
+        const pngInfo = format === 'png' ? await readStoreImagePngInfo(file) : {};
+        return { file, format, ...dimensions, ...pngInfo };
+      }
+
+      function validateStoreImageInspection(requirement, inspection) {
+        if (!requirement) {
+          return { valid: true, message: `${inspection.width} x ${inspection.height}` };
+        }
+        const allowed = new Set(requirement.allowedFormats || []);
+        if (!allowed.has(inspection.format)) {
+          return { valid: false, message: '商店图片只支持 JPG 或 PNG' };
+        }
+        if (requirement.pngNoAlpha && inspection.format === 'png') {
+          if (inspection.bitDepth !== 8 || inspection.colorType !== 2) {
+            return { valid: false, message: 'Google Play 只接受 24-bit PNG，不支持透明通道' };
+          }
+        }
+        if (requirement.kind === 'apple_exact_sizes') {
+          const matched = (requirement.exactSizes || []).find((size) => (
+            size.width === inspection.width && size.height === inspection.height
+          ));
+          if (matched) {
+            return {
+              valid: true,
+              message: `符合 ${matched.label} ${inspection.width} x ${inspection.height}`,
+              matchedLabel: matched.label,
+            };
+          }
+          return {
+            valid: false,
+            message: `Apple 要求精确尺寸，当前 ${inspection.width} x ${inspection.height} 不匹配`,
+          };
+        }
+        if (requirement.kind === 'google_feature_graphic') {
+          const exact = (requirement.exactSizes || [])[0];
+          if (exact && exact.width === inspection.width && exact.height === inspection.height) {
+            return {
+              valid: true,
+              message: `符合 Google Play Feature graphic ${inspection.width} x ${inspection.height}`,
+              matchedLabel: exact.label,
+            };
+          }
+          return {
+            valid: false,
+            message: `Google Play 功能宣传图必须是 ${exact?.width || 1024} x ${exact?.height || 500}，当前 ${inspection.width} x ${inspection.height}`,
+          };
+        }
+        const shortest = Math.min(inspection.width, inspection.height);
+        const longest = Math.max(inspection.width, inspection.height);
+        if (shortest < Number(requirement.minDimension || 0)) {
+          return {
+            valid: false,
+            message: `Google Play 截图最小边不能小于 ${requirement.minDimension}px，当前 ${inspection.width} x ${inspection.height}`,
+          };
+        }
+        if (longest > Number(requirement.maxDimension || Infinity)) {
+          return {
+            valid: false,
+            message: `Google Play 截图最大边不能超过 ${requirement.maxDimension}px，当前 ${inspection.width} x ${inspection.height}`,
+          };
+        }
+        if (longest / shortest > Number(requirement.maxAspectRatio || Infinity)) {
+          return {
+            valid: false,
+            message: `Google Play 截图长边不能超过短边 2 倍，当前 ${inspection.width} x ${inspection.height}`,
+          };
+        }
+        return {
+          valid: true,
+          message: `符合 Google Play 截图 ${inspection.width} x ${inspection.height}`,
+          matchedLabel: 'Google Play screenshot',
+        };
+      }
+
+      const storeImageFileValidation = new WeakMap();
+
+      function setStoreImageValidationMessage(scope, message, state) {
+        const messageNode = scope?.querySelector('[data-store-image-validation]');
+        if (!messageNode) return;
+        messageNode.textContent = message || '';
+        messageNode.dataset.state = state || '';
+      }
+
+      async function filterValidStoreImageFiles(input, files) {
+        const zone = input.closest('[data-store-image-zone]');
+        const requirement = storeImageRequirement(zone);
+        const accepted = [];
+        const rejected = [];
+        for (const file of files) {
+          try {
+            const inspection = await inspectStoreImageFile(file);
+            const validation = validateStoreImageInspection(requirement, inspection);
+            storeImageFileValidation.set(file, { ...inspection, ...validation });
+            if (validation.valid) {
+              accepted.push(file);
+            } else {
+              rejected.push(`${file.name}: ${validation.message}`);
+            }
+          } catch (error) {
+            rejected.push(`${file.name}: ${error.message || '无法读取图片尺寸'}`);
+          }
+        }
+        if (rejected.length) {
+          setStoreImageValidationMessage(zone, rejected.join('；'), 'error');
+        } else if (accepted.length) {
+          const first = storeImageFileValidation.get(accepted[0]);
+          const message = accepted.length === 1
+            ? first?.message
+            : `已通过 ${accepted.length} 张图片校验`;
+          setStoreImageValidationMessage(zone, message, 'ok');
+        }
+        return accepted;
+      }
+
+      async function applyStoreImageRecords(form, records, fallbackSlot, fallbackLocale) {
         const groups = new Map();
         let skipped = 0;
+        let acceptedCount = 0;
         records.forEach((record) => {
           if (!isStoreImageFile(record.file)) {
             skipped += 1;
@@ -767,26 +931,27 @@
           if (!groups.has(key)) groups.set(key, { slot, locale, files: [] });
           groups.get(key).files.push(record.file);
         });
-        groups.forEach(({ slot, locale, files }) => {
+        for (const { slot, locale, files } of groups.values()) {
           const input = form.querySelector(`[data-store-image-file][data-slot="${slot}"][data-locale="${locale}"]:not(:disabled)`);
-          if (!input) return;
+          if (!input) continue;
           const zone = input.closest('[data-store-image-zone]');
           const multiple = zone?.dataset.multiple === 'true';
           const sorted = files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+          const validFiles = await filterValidStoreImageFiles(input, sorted);
+          acceptedCount += validFiles.length;
           if (multiple) {
-            appendStoreImageFiles(input, sorted);
+            appendStoreImageFiles(input, validFiles);
           } else {
-            setStoreImageFiles(input, sorted.slice(-1));
+            setStoreImageFiles(input, validFiles.slice(-1));
           }
           renderStoreImagePreview(input);
-        });
+        }
         const statusScope = fallbackSlot
           ? form.querySelector(`[data-store-image-bulk-drop][data-slot="${fallbackSlot}"]`)
           : form;
         const status = statusScope?.querySelector('[data-store-image-bulk-status]');
         if (status) {
-          const count = Array.from(groups.values()).reduce((sum, group) => sum + group.files.length, 0);
-          status.textContent = `已归类 ${count} 张图片${skipped ? `，${skipped} 个文件未识别` : ''}`;
+          status.textContent = `已通过 ${acceptedCount} 张图片校验${skipped ? `，${skipped} 个文件未识别` : ''}`;
         }
       }
 
@@ -801,16 +966,17 @@
         setStoreImageFiles(input, uniqueStoreImageFiles([...existing, ...files]));
       }
 
-      function commitStoreImageSelection(input) {
+      async function commitStoreImageSelection(input) {
         const zone = input.closest('[data-store-image-zone]');
         const multiple = zone?.dataset.multiple === 'true';
         const selected = Array.from(input.files || []);
+        const validFiles = await filterValidStoreImageFiles(input, selected);
         if (!multiple) {
-          setStoreImageFiles(input, selected.slice(-1));
+          setStoreImageFiles(input, validFiles.slice(-1));
           storeImageFileSnapshots.delete(input);
           return;
         }
-        appendStoreImageFiles(input, selected, storeImageFileSnapshots.get(input) || []);
+        appendStoreImageFiles(input, validFiles, storeImageFileSnapshots.get(input) || []);
         storeImageFileSnapshots.delete(input);
       }
 
@@ -846,11 +1012,26 @@
           return;
         }
         preview.replaceChildren(...files.map((file) => {
+          const validation = storeImageFileValidation.get(file) || {};
+          const figure = document.createElement('figure');
+          figure.className = 'store-image-thumb-card';
           const image = document.createElement('img');
           image.className = input.dataset.slot === 'tablet_screenshots' ? 'thumb tablet' : 'thumb';
           image.alt = file.name;
           image.src = URL.createObjectURL(file);
-          return image;
+          image.dataset.width = validation.width || '';
+          image.dataset.height = validation.height || '';
+          image.dataset.validationMessage = validation.message || '';
+          image.dataset.matchedLabel = validation.matchedLabel || '';
+          if (validation.width && validation.height) {
+            image.style.aspectRatio = `${validation.width} / ${validation.height}`;
+          }
+          const caption = document.createElement('figcaption');
+          caption.textContent = validation.width && validation.height
+            ? `${validation.width} x ${validation.height}`
+            : '待检测';
+          figure.append(image, caption);
+          return figure;
         }));
       }
 
@@ -872,8 +1053,19 @@
           const clone = document.createElement('img');
           clone.src = image.src;
           clone.alt = image.alt || `${locale} 截图 ${index + 1}`;
+          if (image.dataset.width && image.dataset.height) {
+            clone.style.aspectRatio = `${image.dataset.width} / ${image.dataset.height}`;
+          } else if (image.style.aspectRatio) {
+            clone.style.aspectRatio = image.style.aspectRatio;
+          }
           const caption = document.createElement('figcaption');
-          caption.textContent = image.alt || `截图 ${index + 1}`;
+          const resolution = image.dataset.width && image.dataset.height
+            ? `${image.dataset.width} x ${image.dataset.height}`
+            : '尺寸待检测';
+          const validation = image.dataset.validationMessage || image.dataset.matchedLabel || '';
+          caption.textContent = validation
+            ? `${resolution} · ${validation}`
+            : `${resolution} · ${image.alt || `截图 ${index + 1}`}`;
           card.append(clone, caption);
           return card;
         }));
@@ -1389,7 +1581,7 @@
         }
       });
 
-      document.addEventListener('change', (event) => {
+      document.addEventListener('change', async (event) => {
         if (event.target.closest('[data-account-app-bind-form] select[name="appId"]')) {
           syncAccountStoreFields();
         }
@@ -1420,7 +1612,7 @@
         }
         const storeImageFile = event.target.closest('[data-store-image-file]');
         if (storeImageFile) {
-          commitStoreImageSelection(storeImageFile);
+          await commitStoreImageSelection(storeImageFile);
           renderStoreImagePreview(storeImageFile);
           syncMetadataEditor(storeImageFile.closest('[data-metadata-form]'));
         }
@@ -1428,7 +1620,7 @@
         if (bulkFiles) {
           const form = bulkFiles.closest('[data-metadata-form]');
           const bulkDrop = bulkFiles.closest('[data-store-image-bulk-drop]');
-          applyStoreImageRecords(
+          await applyStoreImageRecords(
             form,
             storeImageFileRecords(bulkFiles.files),
             bulkDrop?.dataset.slot || '',
@@ -1688,7 +1880,7 @@
         target.classList.remove('is-dragover');
         const form = target.closest('[data-metadata-form]');
         const records = await storeImageRecordsFromDrop(event.dataTransfer);
-        applyStoreImageRecords(
+        await applyStoreImageRecords(
           form,
           records,
           target.dataset.slot || '',

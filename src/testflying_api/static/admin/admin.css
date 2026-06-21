@@ -3939,6 +3939,13 @@ a.ghost-button {
   font-weight: 650;
 }
 
+.store-metadata-main .store-image-requirement-summary {
+  margin: 6px 0 0;
+  color: #667085;
+  font-size: 13px;
+  font-weight: 720;
+}
+
 .store-metadata-main .preview-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -4043,13 +4050,23 @@ a.ghost-button {
   min-width: 0;
 }
 
+.store-metadata-main .store-image-thumb-card {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 5px;
+  margin: 0;
+  min-width: 0;
+}
+
 .store-metadata-main .thumb,
 .store-metadata-main .thumb-strip img {
   display: grid;
   place-items: center;
   overflow: hidden;
   flex: 0 0 auto;
-  width: 42px;
+  width: auto;
+  min-width: 42px;
+  max-width: 108px;
   height: 58px;
   border: 1px solid #d5deea;
   border-radius: 7px;
@@ -4057,13 +4074,24 @@ a.ghost-button {
     linear-gradient(180deg, rgba(255, 255, 255, .82), rgba(255, 255, 255, .58)),
     linear-gradient(135deg, #dbeafe, #e9d5ff 48%, #dcfce7);
   box-shadow: inset 0 0 0 4px rgba(255, 255, 255, .45);
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .store-metadata-main .thumb.tablet,
 .store-metadata-main .thumb-strip img.tablet {
-  width: 58px;
-  height: 42px;
+  width: auto;
+  height: 58px;
+}
+
+.store-metadata-main .store-image-thumb-card figcaption {
+  overflow: hidden;
+  max-width: 108px;
+  color: #667085;
+  font-size: 10px;
+  font-weight: 760;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .store-metadata-main .thumb.empty {
@@ -5113,17 +5141,43 @@ a.ghost-button {
   white-space: nowrap;
 }
 
+.store-metadata-main .store-image-add-card [data-store-image-validation] {
+  display: block;
+  overflow: hidden;
+  max-width: 100%;
+  color: #667085;
+  font-size: 11px;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.store-metadata-main .store-image-add-card [data-store-image-validation][data-state="ok"] {
+  color: #128a43;
+}
+
+.store-metadata-main .store-image-add-card [data-store-image-validation][data-state="error"] {
+  color: #c2410c;
+}
+
 .store-metadata-main .image-locale-row[data-expanded="true"] .thumb,
 .store-metadata-main .image-locale-row[data-expanded="true"] .thumb-strip img {
-  width: 72px;
+  width: auto;
+  min-width: 72px;
+  max-width: 220px;
   height: 128px;
   border-radius: 10px;
 }
 
 .store-metadata-main .image-locale-row[data-expanded="true"] .thumb.tablet,
 .store-metadata-main .image-locale-row[data-expanded="true"] .thumb-strip img.tablet {
-  width: 126px;
-  height: 88px;
+  width: auto;
+  height: 128px;
+}
+
+.store-metadata-main .image-locale-row[data-expanded="true"] .store-image-thumb-card figcaption {
+  max-width: 220px;
+  font-size: 11px;
 }
 
 .store-metadata-main .store-image-empty-note {

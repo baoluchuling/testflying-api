@@ -16,6 +16,7 @@ from testflying_api.schema import (
     Notification,
     StoreSyncRun,
 )
+from testflying_api.store_image_requirements import store_image_requirement
 from testflying_api.store_sync import (
     DEFAULT_CONTENT_SET_ID,
     DEFAULT_CONTENT_SET_NAME,
@@ -393,18 +394,43 @@ def _store_image_slot(raw_value: object) -> dict[str, object]:
     else:
         urls = _string_list(raw_value)
         assets = []
+    asset_previews = [
+        {
+            "url": asset["downloadUrl"],
+            "fileName": asset["fileName"],
+            "width": asset.get("width"),
+            "height": asset.get("height"),
+            "validationMessage": asset.get("validationMessage"),
+            "matchedLabel": asset.get("matchedLabel"),
+            "format": asset.get("format"),
+        }
+        for asset in assets
+        if asset.get("downloadUrl")
+    ]
+    url_previews = [
+        {
+            "url": url,
+            "fileName": url.rsplit("/", 1)[-1],
+            "width": None,
+            "height": None,
+            "validationMessage": "",
+            "matchedLabel": "",
+            "format": "",
+        }
+        for url in urls
+    ]
+    preview_items = [*asset_previews, *url_previews]
     preview_urls = [
-        *[asset["downloadUrl"] for asset in assets if asset.get("downloadUrl")],
-        *urls,
+        *[item["url"] for item in preview_items],
     ]
     file_names = [
-        *[asset["fileName"] for asset in assets if asset.get("fileName")],
-        *[url.rsplit("/", 1)[-1] for url in urls],
+        *[item["fileName"] for item in preview_items],
     ]
     return {
         "urls": urls,
         "assets": assets,
         "value": "\n".join(urls),
+        "preview_items": preview_items,
         "preview_urls": preview_urls,
         "file_names": file_names,
         "count": len(preview_urls),
@@ -436,6 +462,11 @@ def _asset_list(value: object) -> list[dict[str, object]]:
                 "sizeBytes": int(item.get("sizeBytes") or 0),
                 "storageKey": str(item.get("storageKey") or "").strip(),
                 "downloadUrl": download_url,
+                "width": int(item.get("width") or 0) or None,
+                "height": int(item.get("height") or 0) or None,
+                "format": str(item.get("format") or "").strip(),
+                "validationMessage": str(item.get("validationMessage") or "").strip(),
+                "matchedLabel": str(item.get("matchedLabel") or "").strip(),
             }
         )
     return assets
@@ -509,6 +540,7 @@ def _store_image_slots(platform: str) -> list[dict[str, object]]:
                 "rows": 1,
                 "placeholder": "Google Play feature graphic URL",
                 "multiple": False,
+                "requirement": store_image_requirement(platform, "feature_graphic_url"),
             },
             {
                 "key": "phone_screenshots",
@@ -520,6 +552,7 @@ def _store_image_slots(platform: str) -> list[dict[str, object]]:
                 "rows": 3,
                 "placeholder": "一行一个 phone screenshot URL",
                 "multiple": True,
+                "requirement": store_image_requirement(platform, "phone_screenshots"),
             },
             {
                 "key": "tablet_screenshots",
@@ -531,6 +564,7 @@ def _store_image_slots(platform: str) -> list[dict[str, object]]:
                 "rows": 3,
                 "placeholder": "一行一个 tablet screenshot URL",
                 "multiple": True,
+                "requirement": store_image_requirement(platform, "tablet_screenshots"),
             },
         ]
     return [
@@ -544,6 +578,7 @@ def _store_image_slots(platform: str) -> list[dict[str, object]]:
             "rows": 3,
             "placeholder": "一行一个 iPhone screenshot URL",
             "multiple": True,
+            "requirement": store_image_requirement(platform, "phone_screenshots"),
         },
         {
             "key": "tablet_screenshots",
@@ -555,6 +590,7 @@ def _store_image_slots(platform: str) -> list[dict[str, object]]:
             "rows": 3,
             "placeholder": "一行一个 iPad screenshot URL",
             "multiple": True,
+            "requirement": store_image_requirement(platform, "tablet_screenshots"),
         },
     ]
 

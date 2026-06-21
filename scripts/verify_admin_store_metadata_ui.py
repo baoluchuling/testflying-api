@@ -194,8 +194,17 @@ def main() -> int:
         "store image add card is compact": (
             r"\.store-metadata-main\s+\.store-image-add-card\s*\{[^}]*flex:\s*0\s+0\s+88px"
         ),
-        "store image lightbox exists": (
+        "store image lightbox is fullscreen": (
             r"\.store-image-lightbox\s*\{[^}]*position:\s*fixed"
+            r"[^}]*inset:\s*0[^}]*place-items:\s*stretch[^}]*padding:\s*0"
+        ),
+        "store image lightbox panel fills viewport": (
+            r"\.store-image-lightbox-panel\s*\{[^}]*width:\s*100vw"
+            r"[^}]*height:\s*100vh[^}]*border:\s*0[^}]*border-radius:\s*0"
+        ),
+        "store image fullscreen grid scrolls": (
+            r"\.store-image-lightbox-grid\s*\{[^}]*grid-template-columns:"
+            r"\s*repeat\(auto-fill,\s*minmax\(240px,\s*1fr\)\)[^}]*overflow:\s*auto"
         ),
         "rail history link stays one row": (
             r"\.store-metadata-main\s+\.history-link\s*\{[^}]*display:\s*grid"

@@ -148,6 +148,13 @@ def test_admin_store_metadata_focus_layout_css_contract(client: TestClient) -> N
     assert "height: 64px" in response.text
     assert ".metadata-sync-history-panel" in response.text
     assert ".store-metadata-main .image-locale-row" in response.text
+    assert ".store-image-lightbox" in response.text
+    assert "place-items: stretch" in response.text
+    assert ".store-image-lightbox-panel" in response.text
+    assert "width: 100vw" in response.text
+    assert "height: 100vh" in response.text
+    assert "border-radius: 0" in response.text
+    assert "repeat(auto-fill, minmax(240px, 1fr))" in response.text
     assert ".store-metadata-main .history-link" in response.text
     assert "grid-template-columns: 26px minmax(0, 1fr) 24px" in response.text
     assert "white-space: nowrap" in response.text

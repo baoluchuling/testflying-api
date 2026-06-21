@@ -5170,21 +5170,21 @@ a.ghost-button {
   z-index: 80;
   inset: 0;
   display: grid;
-  place-items: center;
-  padding: 28px;
-  background: rgba(15, 23, 42, .48);
+  place-items: stretch;
+  padding: 0;
+  background: #f8fafc;
 }
 
 .store-image-lightbox-panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
-  width: min(1080px, calc(100vw - 56px));
-  max-height: calc(100vh - 56px);
-  border: 1px solid #dbe3ef;
-  border-radius: 12px;
+  width: 100vw;
+  height: 100vh;
+  border: 0;
+  border-radius: 0;
   background: white;
-  box-shadow: 0 24px 64px rgba(15, 23, 42, .24);
+  box-shadow: none;
 }
 
 .store-image-lightbox-head {
@@ -5192,8 +5192,10 @@ a.ghost-button {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 18px 20px;
+  padding: 18px 28px;
   border-bottom: 1px solid var(--line);
+  background: rgba(255, 255, 255, .96);
+  box-shadow: 0 1px 0 rgba(15, 23, 42, .04);
 }
 
 .store-image-lightbox-head strong,
@@ -5215,10 +5217,12 @@ a.ghost-button {
 
 .store-image-lightbox-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  align-items: start;
+  gap: 18px;
   overflow: auto;
-  padding: 18px 20px 22px;
+  padding: 24px 28px 32px;
+  background: #f8fafc;
 }
 
 .store-image-lightbox-card {
@@ -5230,10 +5234,10 @@ a.ghost-button {
 
 .store-image-lightbox-card img {
   width: 100%;
-  max-height: 520px;
+  max-height: min(72vh, 760px);
   border: 1px solid #dbe3ef;
   border-radius: 12px;
-  background: #f8fafc;
+  background: white;
   object-fit: contain;
 }
 

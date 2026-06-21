@@ -997,6 +997,12 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "宣传图" not in response.text
     assert "data-store-image-input" in response.text
     assert "data-store-image-zone" in response.text
+    assert "data-store-image-track" in response.text
+    assert "store-image-add-card" in response.text
+    assert "data-store-image-preview-all" in response.text
+    assert "data-store-image-lightbox" in response.text
+    assert "openStoreImageLightbox" in response.text
+    assert "closeStoreImageLightbox" in response.text
     assert "data-store-image-bulk-drop" in response.text
     assert "展开所有语言" in response.text
     assert "row.hidden = false" in response.text

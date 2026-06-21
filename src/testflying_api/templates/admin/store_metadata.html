@@ -358,38 +358,38 @@
                       data-locale="{{ item.locale }}"
                       data-slot="{{ slot.key }}"
                     >
-                    <div class="store-image-upload" data-store-image-zone data-slot="{{ slot.key }}" data-locale="{{ item.locale }}" data-multiple="{{ 'true' if slot.multiple else 'false' }}">
-                      <input
-                        type="file"
-                        name="storeImageFiles__{{ slot.key }}__{{ item.locale }}"
-                        accept="image/*"
-                        data-store-image-file
-                        data-slot="{{ slot.key }}"
-                        data-locale="{{ item.locale }}"
-                        {% if slot.multiple %}multiple{% endif %}
-                      >
-                      <div data-store-image-file-list>
-                        {% if image_slot.file_names %}
-                          {{ image_slot.file_names|join(", ") }}
+                    <div class="store-image-track" data-store-image-track>
+                      <div class="thumb-strip" data-store-image-preview>
+                        {% if image_slot.preview_urls %}
+                          {% for preview_url in image_slot.preview_urls %}
+                            <img class="thumb {{ 'tablet' if slot.key == 'tablet_screenshots' else '' }}" alt="{{ item.locale }} {{ slot.short_label or slot.label }}预览" src="{{ preview_url }}">
+                          {% endfor %}
                         {% else %}
-                          暂无本地图片
+                          <span class="store-image-empty-note">还没有截图</span>
                         {% endif %}
                       </div>
-                    </div>
-                    <div class="thumb-strip" data-store-image-preview>
-                      {% if image_slot.preview_urls %}
-                        {% for preview_url in image_slot.preview_urls[:3] %}
-                          <img class="thumb {{ 'tablet' if slot.key == 'tablet_screenshots' else '' }}" alt="{{ item.locale }} {{ slot.short_label or slot.label }}预览" src="{{ preview_url }}">
-                        {% endfor %}
-                      {% else %}
-                        <span class="thumb {{ 'tablet' if slot.key == 'tablet_screenshots' else '' }} empty">+</span>
-                        {% if slot.multiple %}
-                          <span class="thumb {{ 'tablet' if slot.key == 'tablet_screenshots' else '' }} empty">+</span>
-                          <span class="thumb {{ 'tablet' if slot.key == 'tablet_screenshots' else '' }} empty">+</span>
-                        {% endif %}
-                      {% endif %}
+                      <div class="store-image-upload store-image-add-card" data-store-image-zone data-slot="{{ slot.key }}" data-locale="{{ item.locale }}" data-multiple="{{ 'true' if slot.multiple else 'false' }}">
+                        <input
+                          type="file"
+                          name="storeImageFiles__{{ slot.key }}__{{ item.locale }}"
+                          accept="image/*"
+                          data-store-image-file
+                          data-slot="{{ slot.key }}"
+                          data-locale="{{ item.locale }}"
+                          {% if slot.multiple %}multiple{% endif %}
+                        >
+                        <span class="store-image-add-icon" aria-hidden="true">+</span>
+                        <div data-store-image-file-list>
+                          {% if image_slot.file_names %}
+                            {{ image_slot.file_names|join(", ") }}
+                          {% else %}
+                            添加截图
+                          {% endif %}
+                        </div>
+                      </div>
                     </div>
                     <span class="image-count" data-store-image-count>{{ image_slot.count }} 张</span>
+                    <button class="button small ghost store-image-preview-button" type="button" data-store-image-preview-all {% if not image_slot.count %}disabled{% endif %}>预览全部</button>
                     <span class="chevron down" aria-hidden="true"></span>
                   </article>
                 {% endfor %}
@@ -478,4 +478,17 @@
       </tbody>
     </table>
   </section>
+
+  <div class="store-image-lightbox" data-store-image-lightbox hidden>
+    <div class="store-image-lightbox-panel" role="dialog" aria-modal="true" aria-labelledby="store-image-lightbox-title">
+      <div class="store-image-lightbox-head">
+        <div>
+          <strong id="store-image-lightbox-title" data-store-image-lightbox-title>截图预览</strong>
+          <span data-store-image-lightbox-subtitle>当前语言</span>
+        </div>
+        <button class="button small ghost" type="button" data-store-image-lightbox-close>关闭</button>
+      </div>
+      <div class="store-image-lightbox-grid" data-store-image-lightbox-grid></div>
+    </div>
+  </div>
 {% endblock %}

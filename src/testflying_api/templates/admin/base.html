@@ -603,12 +603,17 @@
           const previewCount = row?.querySelectorAll('[data-store-image-preview] img').length || 0;
           const fileCount = fileInput?.files?.length || 0;
           const filled = hasStoreImageSlotValue(form, locale, slot);
+          const displayCount = fileCount || previewCount;
           if (status) {
             status.textContent = filled ? '已上传' : '待上传';
             status.classList.toggle('warn', !filled);
           }
-          if (count && (fileCount || previewCount)) {
-            count.textContent = `${fileCount || previewCount} 张`;
+          if (count) {
+            count.textContent = `${displayCount} 张`;
+          }
+          const previewButton = row?.querySelector('[data-store-image-preview-all]');
+          if (previewButton) {
+            previewButton.disabled = displayCount === 0;
           }
         });
 
@@ -761,24 +766,76 @@
 
       function renderStoreImagePreview(input) {
         const zone = input.closest('[data-store-image-zone]');
-        const wrapper = zone?.parentElement;
-        const preview = wrapper?.querySelector('[data-store-image-preview]');
+        const row = zone?.closest('[data-locale-row]');
+        const track = zone?.parentElement;
+        const preview = track?.querySelector('[data-store-image-preview]');
         const fileList = zone?.querySelector('[data-store-image-file-list]');
-        const countLabel = wrapper?.querySelector('[data-store-image-count]');
+        const countLabel = row?.querySelector('[data-store-image-count]');
+        const previewButton = row?.querySelector('[data-store-image-preview-all]');
         const files = Array.from(input.files || []);
         zone?.classList.toggle('has-files', files.length > 0);
         if (fileList) {
           fileList.textContent = files.length
-            ? files.map((file) => file.name).join(', ')
-            : '暂无本地图片，可拖拽图片或语言文件夹';
+            ? `已选择 ${files.length} 张`
+            : '添加截图';
         }
         if (countLabel) {
           countLabel.textContent = `${files.length} 张`;
         }
-        if (!preview || !files.length) return;
-        preview.innerHTML = files.map((file) => (
-          `<img alt="${file.name}" src="${URL.createObjectURL(file)}">`
-        )).join('');
+        if (previewButton) {
+          previewButton.disabled = files.length === 0 && !preview?.querySelector('img');
+        }
+        if (!preview) return;
+        if (!files.length) {
+          if (!preview.querySelector('img')) {
+            preview.replaceChildren(Object.assign(document.createElement('span'), {
+              className: 'store-image-empty-note',
+              textContent: '还没有截图',
+            }));
+          }
+          return;
+        }
+        preview.replaceChildren(...files.map((file) => {
+          const image = document.createElement('img');
+          image.className = input.dataset.slot === 'tablet_screenshots' ? 'thumb tablet' : 'thumb';
+          image.alt = file.name;
+          image.src = URL.createObjectURL(file);
+          return image;
+        }));
+      }
+
+      function openStoreImageLightbox(row) {
+        const modal = document.querySelector('[data-store-image-lightbox]');
+        const grid = modal?.querySelector('[data-store-image-lightbox-grid]');
+        if (!modal || !grid) return;
+        const images = Array.from(row.querySelectorAll('[data-store-image-preview] img'));
+        if (!images.length) return;
+        const locale = row.dataset.locale || '当前语言';
+        const count = row.querySelector('[data-store-image-count]')?.textContent?.trim() || `${images.length} 张`;
+        const title = modal.querySelector('[data-store-image-lightbox-title]');
+        const subtitle = modal.querySelector('[data-store-image-lightbox-subtitle]');
+        if (title) title.textContent = `${locale} 截图预览`;
+        if (subtitle) subtitle.textContent = count;
+        grid.replaceChildren(...images.map((image, index) => {
+          const card = document.createElement('figure');
+          card.className = 'store-image-lightbox-card';
+          const clone = document.createElement('img');
+          clone.src = image.src;
+          clone.alt = image.alt || `${locale} 截图 ${index + 1}`;
+          const caption = document.createElement('figcaption');
+          caption.textContent = image.alt || `截图 ${index + 1}`;
+          card.append(clone, caption);
+          return card;
+        }));
+        modal.hidden = false;
+        document.body.classList.add('store-image-lightbox-open');
+      }
+
+      function closeStoreImageLightbox() {
+        const modal = document.querySelector('[data-store-image-lightbox]');
+        if (!modal) return;
+        modal.hidden = true;
+        document.body.classList.remove('store-image-lightbox-open');
       }
 
       function activeMetadataLocale(form) {
@@ -1509,6 +1566,21 @@
           return;
         }
 
+        const previewAll = event.target.closest('[data-store-image-preview-all]');
+        if (previewAll) {
+          const row = previewAll.closest('[data-locale-row]');
+          if (row) openStoreImageLightbox(row);
+          return;
+        }
+
+        if (
+          event.target.closest('[data-store-image-lightbox-close]')
+          || event.target.matches('[data-store-image-lightbox]')
+        ) {
+          closeStoreImageLightbox();
+          return;
+        }
+
         const folderButton = event.target.closest('[data-store-image-folder-button]');
         if (folderButton) {
           const scope = folderButton.closest('[data-store-image-bulk-drop]')
@@ -1634,6 +1706,12 @@
           await navigateAdmin(window.location.pathname, false);
         } catch (error) {
           window.location.reload();
+        }
+      });
+
+      window.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+          closeStoreImageLightbox();
         }
       });
 

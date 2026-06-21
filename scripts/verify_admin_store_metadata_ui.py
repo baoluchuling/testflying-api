@@ -82,6 +82,12 @@ def main() -> int:
         "image-count",
         "asset-uploader",
         "preview-grid",
+        "data-store-image-track",
+        "store-image-add-card",
+        "data-store-image-preview-all",
+        "data-store-image-lightbox",
+        "openStoreImageLightbox",
+        "closeStoreImageLightbox",
         "data-sync-item-select",
         "data-sync-item-panel",
         "row.hidden = false",
@@ -155,6 +161,15 @@ def main() -> int:
         ),
         "store image rows expose image count": (
             r"\.store-metadata-main\s+\.image-locale-row\s*\{[^}]*grid-template-columns:"
+        ),
+        "store image rows use horizontal track": (
+            r"\.store-metadata-main\s+\.store-image-track\s*\{[^}]*overflow-x:\s*auto"
+        ),
+        "store image add card is compact": (
+            r"\.store-metadata-main\s+\.store-image-add-card\s*\{[^}]*flex:\s*0\s+0\s+88px"
+        ),
+        "store image lightbox exists": (
+            r"\.store-image-lightbox\s*\{[^}]*position:\s*fixed"
         ),
         "rail history link stays one row": (
             r"\.store-metadata-main\s+\.history-link\s*\{[^}]*display:\s*grid"

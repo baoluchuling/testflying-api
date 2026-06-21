@@ -376,7 +376,7 @@
                           data-store-image-file
                           data-slot="{{ slot.key }}"
                           data-locale="{{ item.locale }}"
-                          {% if slot.multiple %}multiple{% endif %}
+                          {% if slot.multiple or slot.key in ["phone_screenshots", "tablet_screenshots"] %}multiple{% endif %}
                         >
                         <span class="store-image-add-icon" aria-hidden="true">+</span>
                         <div data-store-image-file-list>

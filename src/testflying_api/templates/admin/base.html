@@ -367,6 +367,34 @@
         });
       }
 
+      const storeImageFileSnapshots = new WeakMap();
+
+      function storeImageFileKey(file) {
+        return [
+          file.name,
+          file.size,
+          file.lastModified,
+          file.type,
+        ].join(':');
+      }
+
+      function uniqueStoreImageFiles(files) {
+        const seen = new Set();
+        const unique = [];
+        files.forEach((file) => {
+          const key = storeImageFileKey(file);
+          if (seen.has(key)) return;
+          seen.add(key);
+          unique.push(file);
+        });
+        return unique;
+      }
+
+      function snapshotStoreImageFiles(input) {
+        if (!input) return;
+        storeImageFileSnapshots.set(input, Array.from(input.files || []));
+      }
+
       function syncContentSetControls(form) {
         const picker = form?.querySelector('[data-content-set-picker]');
         const nameInput = form?.querySelector('[data-content-set-name]');
@@ -745,7 +773,11 @@
           const zone = input.closest('[data-store-image-zone]');
           const multiple = zone?.dataset.multiple === 'true';
           const sorted = files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-          setStoreImageFiles(input, multiple ? sorted : sorted.slice(-1));
+          if (multiple) {
+            appendStoreImageFiles(input, sorted);
+          } else {
+            setStoreImageFiles(input, sorted.slice(-1));
+          }
           renderStoreImagePreview(input);
         });
         const statusScope = fallbackSlot
@@ -762,6 +794,24 @@
         const transfer = new DataTransfer();
         files.forEach((file) => transfer.items.add(file));
         input.files = transfer.files;
+      }
+
+      function appendStoreImageFiles(input, files, baseFiles) {
+        const existing = baseFiles || Array.from(input.files || []);
+        setStoreImageFiles(input, uniqueStoreImageFiles([...existing, ...files]));
+      }
+
+      function commitStoreImageSelection(input) {
+        const zone = input.closest('[data-store-image-zone]');
+        const multiple = zone?.dataset.multiple === 'true';
+        const selected = Array.from(input.files || []);
+        if (!multiple) {
+          setStoreImageFiles(input, selected.slice(-1));
+          storeImageFileSnapshots.delete(input);
+          return;
+        }
+        appendStoreImageFiles(input, selected, storeImageFileSnapshots.get(input) || []);
+        storeImageFileSnapshots.delete(input);
       }
 
       function renderStoreImagePreview(input) {
@@ -1370,6 +1420,7 @@
         }
         const storeImageFile = event.target.closest('[data-store-image-file]');
         if (storeImageFile) {
+          commitStoreImageSelection(storeImageFile);
           renderStoreImagePreview(storeImageFile);
           syncMetadataEditor(storeImageFile.closest('[data-metadata-form]'));
         }
@@ -1599,7 +1650,9 @@
 
         const imageZone = event.target.closest('[data-store-image-zone]');
         if (imageZone && !event.target.closest('input')) {
-          imageZone.querySelector('[data-store-image-file]')?.click();
+          const input = imageZone.querySelector('[data-store-image-file]');
+          snapshotStoreImageFiles(input);
+          input?.click();
           return;
         }
 

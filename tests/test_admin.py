@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 from base64 import b64encode
@@ -1003,6 +1004,19 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "data-store-image-lightbox" in response.text
     assert "openStoreImageLightbox" in response.text
     assert "closeStoreImageLightbox" in response.text
+    assert re.search(
+        r'name="storeImageFiles__phone_screenshots__en-US"[^>]*multiple',
+        response.text,
+        re.DOTALL,
+    )
+    assert re.search(
+        r'name="storeImageFiles__tablet_screenshots__en-US"[^>]*multiple',
+        response.text,
+        re.DOTALL,
+    )
+    assert "snapshotStoreImageFiles(input)" in response.text
+    assert "appendStoreImageFiles(input, selected" in response.text
+    assert "uniqueStoreImageFiles([...existing, ...files])" in response.text
     assert "data-store-image-bulk-drop" in response.text
     assert "展开所有语言" in response.text
     assert "row.hidden = false" in response.text

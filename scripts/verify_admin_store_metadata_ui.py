@@ -88,6 +88,9 @@ def main() -> int:
         "data-store-image-lightbox",
         "openStoreImageLightbox",
         "closeStoreImageLightbox",
+        "snapshotStoreImageFiles(input)",
+        "appendStoreImageFiles(input, selected",
+        "uniqueStoreImageFiles([...existing, ...files])",
         "data-sync-item-select",
         "data-sync-item-panel",
         "row.hidden = false",
@@ -103,6 +106,29 @@ def main() -> int:
         "data-locale-detail-input",
     ):
         require(marker in html, f"page is missing {marker}", failures)
+
+    require(
+        bool(
+            re.search(
+                r'name="storeImageFiles__phone_screenshots__[^"]+"[^>]*multiple',
+                html,
+                re.DOTALL,
+            )
+        ),
+        "phone screenshot upload input is not multi-select",
+        failures,
+    )
+    require(
+        bool(
+            re.search(
+                r'name="storeImageFiles__tablet_screenshots__[^"]+"[^>]*multiple',
+                html,
+                re.DOTALL,
+            )
+        ),
+        "tablet screenshot upload input is not multi-select",
+        failures,
+    )
     for label in ("关键词", "宣传文本", "描述", "手机截图", "平板截图"):
         require(label in html, f"page is missing short label {label}", failures)
 

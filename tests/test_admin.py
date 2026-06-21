@@ -1057,6 +1057,8 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "readStoreImageDimensions" in response.text
     assert "validateStoreImageInspection" in response.text
     assert "filterValidStoreImageFiles" in response.text
+    assert "图片未通过校验，已拒绝添加" in response.text
+    assert "messageNode.title = message || ''" in response.text
     assert "Apple 要求精确尺寸" in response.text
     assert re.search(
         r'name="storeImageFiles__phone_screenshots__en-US"[^>]*multiple',

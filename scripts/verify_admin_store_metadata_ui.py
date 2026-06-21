@@ -93,6 +93,8 @@ def main() -> int:
         "readStoreImageDimensions",
         "validateStoreImageInspection",
         "filterValidStoreImageFiles",
+        "图片未通过校验，已拒绝添加",
+        "messageNode.title = message || ''",
         "snapshotStoreImageFiles(input)",
         "appendStoreImageFiles(input, validFiles",
         "uniqueStoreImageFiles([...existing, ...files])",
@@ -198,6 +200,10 @@ def main() -> int:
         ),
         "store image add card is compact": (
             r"\.store-metadata-main\s+\.store-image-add-card\s*\{[^}]*flex:\s*0\s+0\s+88px"
+        ),
+        "store image validation errors can wrap": (
+            r"\.store-metadata-main\s+\.store-image-add-card\s+\[data-store-image-validation\]\s*\{"
+            r"[^}]*white-space:\s*normal[^}]*word-break:\s*break-word"
         ),
         "store image lightbox is fullscreen": (
             r"\.store-image-lightbox\s*\{[^}]*position:\s*fixed"

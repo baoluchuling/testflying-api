@@ -5143,13 +5143,15 @@ a.ghost-button {
 
 .store-metadata-main .store-image-add-card [data-store-image-validation] {
   display: block;
-  overflow: hidden;
+  overflow: visible;
   max-width: 100%;
   color: #667085;
   font-size: 11px;
   font-weight: 760;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.25;
+  text-overflow: clip;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .store-metadata-main .store-image-add-card [data-store-image-validation][data-state="ok"] {

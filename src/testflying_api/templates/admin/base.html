@@ -878,7 +878,15 @@
         const messageNode = scope?.querySelector('[data-store-image-validation]');
         if (!messageNode) return;
         messageNode.textContent = message || '';
+        messageNode.title = message || '';
         messageNode.dataset.state = state || '';
+      }
+
+      function rejectedStoreImageMessage(file, reason, total) {
+        if (total === 1) {
+          return `图片未通过校验，已拒绝添加：${reason}`;
+        }
+        return `${file.name}：${reason}`;
       }
 
       async function filterValidStoreImageFiles(input, files) {
@@ -894,10 +902,14 @@
             if (validation.valid) {
               accepted.push(file);
             } else {
-              rejected.push(`${file.name}: ${validation.message}`);
+              rejected.push(rejectedStoreImageMessage(file, validation.message, files.length));
             }
           } catch (error) {
-            rejected.push(`${file.name}: ${error.message || '无法读取图片尺寸'}`);
+            rejected.push(rejectedStoreImageMessage(
+              file,
+              error.message || '无法读取图片尺寸',
+              files.length
+            ));
           }
         }
         if (rejected.length) {

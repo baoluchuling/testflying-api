@@ -1049,6 +1049,10 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "翻译所有文案项" in response.text
     assert "requestMetadataTranslation" in response.text
     assert "syncMetadataWorkspace" in response.text
+    assert "data-store-metadata-sync-submit" in response.text
+    assert "data-store-sync-confirm" in response.text
+    assert "buildStoreSyncPlan" in response.text
+    assert "确认要同步到商店的内容" in response.text
     assert "未接入翻译服务前" not in response.text
     assert "商店内容套件" in response.text
     assert "新建套件" in response.text

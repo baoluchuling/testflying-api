@@ -368,6 +368,7 @@
       }
 
       const storeImageFileSnapshots = new WeakMap();
+      const storeSyncSubmitters = new WeakMap();
 
       function storeImageFileKey(file) {
         return [
@@ -558,6 +559,221 @@
         const preview = form?.querySelector(`[data-store-image-zone][data-slot="${slot}"][data-locale="${locale}"]`)
           ?.parentElement?.querySelector('[data-store-image-preview] img');
         return Boolean(value || fileInput?.files?.length || preview);
+      }
+
+      function storeSyncFieldLabel(field) {
+        return ({
+          keywords: '关键词',
+          promotional_text: '宣传文本',
+          description: '描述',
+        })[field] || field;
+      }
+
+      function storeSyncImageLabel(slot) {
+        return ({
+          feature_graphic_url: 'Feature graphic',
+          phone_screenshots: '手机截图',
+          tablet_screenshots: '平板截图',
+        })[slot] || slot;
+      }
+
+      function storeImageValueCount(value) {
+        const trimmed = String(value || '').trim();
+        if (!trimmed) return 0;
+        try {
+          const payload = JSON.parse(trimmed);
+          if (Array.isArray(payload)) return payload.length;
+          if (payload && typeof payload === 'object') {
+            const counts = ['assets', 'urls', 'items', 'files']
+              .map((key) => Array.isArray(payload[key]) ? payload[key].length : 0);
+            const total = counts.reduce((sum, count) => sum + count, 0);
+            if (total) return total;
+          }
+        } catch {
+          // Plain text values are handled below.
+        }
+        return trimmed.split(/\r?\n|,/).map((item) => item.trim()).filter(Boolean).length;
+      }
+
+      function storeImageAssetCount(form, locale, slot) {
+        const input = storeImageInputs(form, locale, slot)[0];
+        const row = input?.closest('[data-locale-row]');
+        const fileInput = Array.from(form?.querySelectorAll('[data-store-image-file]') || [])
+          .find((item) => item.dataset.locale === locale && item.dataset.slot === slot);
+        const valueCount = storeImageValueCount(input?.value);
+        const fileCount = fileInput?.files?.length || 0;
+        const previewCount = row?.querySelectorAll('[data-store-image-preview] img').length || 0;
+        const textCount = Number.parseInt(row?.querySelector('[data-store-image-count]')?.textContent || '0', 10);
+        return Math.max(valueCount, fileCount, previewCount, Number.isNaN(textCount) ? 0 : textCount);
+      }
+
+      function storeSyncTextItem(form, locale, field, sourceLocale) {
+        const value = metadataValue(form, locale, field).trim();
+        const sourceValue = metadataValue(form, sourceLocale, field).trim();
+        if (value) {
+          return {
+            label: storeSyncFieldLabel(field),
+            state: 'ok',
+            status: '已填写',
+            detail: value,
+          };
+        }
+        if (sourceValue && locale !== sourceLocale) {
+          return {
+            label: storeSyncFieldLabel(field),
+            state: 'fallback',
+            status: `将用 ${sourceLocale} 回填`,
+            detail: sourceValue,
+          };
+        }
+        return {
+          label: storeSyncFieldLabel(field),
+          state: 'risk',
+          status: '空值风险',
+          detail: '当前语言和源文案都为空',
+        };
+      }
+
+      function storeSyncImageItem(form, locale, slot, sourceLocale) {
+        const count = storeImageAssetCount(form, locale, slot);
+        const sourceCount = storeImageAssetCount(form, sourceLocale, slot);
+        if (count > 0) {
+          return {
+            label: storeSyncImageLabel(slot),
+            state: 'ok',
+            status: `已上传 ${count} 张`,
+            detail: '将同步当前语言图片',
+          };
+        }
+        if (sourceCount > 0 && locale !== sourceLocale) {
+          return {
+            label: storeSyncImageLabel(slot),
+            state: 'fallback',
+            status: `将用 ${sourceLocale} 回填`,
+            detail: `${sourceCount} 张图片`,
+          };
+        }
+        return {
+          label: storeSyncImageLabel(slot),
+          state: 'empty',
+          status: '未上传',
+          detail: '不会同步图片',
+        };
+      }
+
+      function buildStoreSyncPlan(form) {
+        const sourceLocale = form?.dataset.sourceLocale
+          || form?.querySelector('[name="locale"]')?.value
+          || '';
+        const locales = storeImageLocales(form);
+        const fields = metadataFields(form);
+        const slots = storeImageSlots(form);
+        const rows = locales.map((locale) => {
+          const textItems = fields.map((field) => storeSyncTextItem(form, locale, field, sourceLocale));
+          const imageItems = slots.map((slot) => storeSyncImageItem(form, locale, slot, sourceLocale));
+          return {
+            locale,
+            isSource: locale === sourceLocale,
+            items: [...textItems, ...imageItems],
+          };
+        });
+        const allItems = rows.flatMap((row) => row.items);
+        return {
+          sourceLocale,
+          locales,
+          fields,
+          slots,
+          rows,
+          fallbackCount: allItems.filter((item) => item.state === 'fallback').length,
+          riskCount: allItems.filter((item) => item.state === 'risk').length,
+          emptyImageCount: allItems.filter((item) => item.state === 'empty').length,
+        };
+      }
+
+      function createStoreSyncNode(tag, className, text) {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text !== undefined) node.textContent = text;
+        return node;
+      }
+
+      function appendStoreSyncBadge(parent, text, state) {
+        const badge = createStoreSyncNode('span', `store-sync-confirm-badge ${state}`, text);
+        parent.appendChild(badge);
+        return badge;
+      }
+
+      function renderStoreSyncConfirm(form, plan) {
+        const modal = form?.querySelector('[data-store-sync-confirm]');
+        const summary = modal?.querySelector('[data-store-sync-confirm-summary]');
+        const body = modal?.querySelector('[data-store-sync-confirm-body]');
+        if (!modal || !summary || !body) return false;
+
+        summary.replaceChildren();
+        const summaryMain = createStoreSyncNode(
+          'strong',
+          '',
+          `将同步 ${plan.locales.length} 个语言、${plan.fields.length} 个文案项、${plan.slots.length} 个商店图项`
+        );
+        summary.appendChild(summaryMain);
+        const summaryMeta = createStoreSyncNode('div', 'store-sync-confirm-meta');
+        appendStoreSyncBadge(summaryMeta, `源文案：${plan.sourceLocale || '-'}`, 'neutral');
+        appendStoreSyncBadge(summaryMeta, `回填项：${plan.fallbackCount}`, plan.fallbackCount ? 'fallback' : 'neutral');
+        appendStoreSyncBadge(summaryMeta, `空文案风险：${plan.riskCount}`, plan.riskCount ? 'risk' : 'neutral');
+        appendStoreSyncBadge(summaryMeta, `无图片项：${plan.emptyImageCount}`, plan.emptyImageCount ? 'empty' : 'neutral');
+        summary.appendChild(summaryMeta);
+
+        body.replaceChildren();
+        plan.rows.forEach((row) => {
+          const section = createStoreSyncNode('section', 'store-sync-confirm-locale');
+          const head = createStoreSyncNode('div', 'store-sync-confirm-locale-head');
+          head.appendChild(createStoreSyncNode('strong', '', row.locale));
+          if (row.isSource) appendStoreSyncBadge(head, '源文案', 'neutral');
+          section.appendChild(head);
+
+          const list = createStoreSyncNode('div', 'store-sync-confirm-list');
+          row.items.forEach((item) => {
+            const itemNode = createStoreSyncNode('article', `store-sync-confirm-item ${item.state}`);
+            itemNode.appendChild(createStoreSyncNode('strong', '', item.label));
+            appendStoreSyncBadge(itemNode, item.status, item.state);
+            const detail = createStoreSyncNode('small', '', item.detail || '');
+            itemNode.appendChild(detail);
+            list.appendChild(itemNode);
+          });
+          section.appendChild(list);
+          body.appendChild(section);
+        });
+        return true;
+      }
+
+      function openStoreSyncConfirm(form, submitter) {
+        const plan = buildStoreSyncPlan(form);
+        if (!renderStoreSyncConfirm(form, plan)) return false;
+        const modal = form.querySelector('[data-store-sync-confirm]');
+        storeSyncSubmitters.set(form, submitter);
+        modal.hidden = false;
+        document.body.classList.add('store-sync-confirm-open');
+        modal.querySelector('[data-store-sync-confirm-submit]')?.focus();
+        return true;
+      }
+
+      function closeStoreSyncConfirm(form = document) {
+        const modal = form.querySelector?.('[data-store-sync-confirm]') || document.querySelector('[data-store-sync-confirm]');
+        if (!modal) return;
+        modal.hidden = true;
+        document.body.classList.remove('store-sync-confirm-open');
+      }
+
+      function submitConfirmedStoreSync(form) {
+        const submitter = storeSyncSubmitters.get(form)
+          || form.querySelector('[data-store-metadata-sync-submit]');
+        closeStoreSyncConfirm(form);
+        form.dataset.storeSyncConfirmed = 'true';
+        if (typeof form.requestSubmit === 'function' && submitter) {
+          form.requestSubmit(submitter);
+          return;
+        }
+        form.submit();
       }
 
       function syncItemProgress(form, item) {
@@ -1644,6 +1860,21 @@
       });
 
       document.addEventListener('click', async (event) => {
+        const storeSyncConfirm = event.target.closest('[data-store-sync-confirm-submit]');
+        if (storeSyncConfirm) {
+          const form = storeSyncConfirm.closest('[data-metadata-form]');
+          if (form) submitConfirmedStoreSync(form);
+          return;
+        }
+
+        if (
+          event.target.closest('[data-store-sync-cancel]')
+          || event.target.matches('[data-store-sync-confirm]')
+        ) {
+          closeStoreSyncConfirm(event.target.closest('[data-metadata-form]') || document);
+          return;
+        }
+
         const connectorEdit = event.target.closest('[data-connector-edit]');
         if (connectorEdit) {
           const panel = connectorEdit.closest('[data-admin-main]');
@@ -1953,6 +2184,24 @@
       });
 
       document.addEventListener('submit', (event) => {
+        const form = event.target.closest('[data-metadata-form]');
+        const submitter = event.submitter;
+        if (!form || !submitter?.matches?.('[data-store-metadata-sync-submit]')) return;
+        if (form.dataset.storeSyncConfirmed === 'true') {
+          delete form.dataset.storeSyncConfirmed;
+          setSubmitterBusy(submitter, '同步中');
+          event.stopImmediatePropagation();
+          return;
+        }
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (typeof form.reportValidity === 'function' && !form.reportValidity()) return;
+        syncMetadataEditor(form);
+        syncMetadataPreflightForm(form);
+        openStoreSyncConfirm(form, submitter);
+      });
+
+      document.addEventListener('submit', (event) => {
         const form = event.target.closest('form');
         if (!form || form.matches('[data-upload-form]')) return;
         setSubmitterBusy(event.submitter);
@@ -1969,6 +2218,7 @@
       window.addEventListener('keydown', (event) => {
         if (event.key === 'Escape') {
           closeStoreImageLightbox();
+          closeStoreSyncConfirm();
         }
       });
 

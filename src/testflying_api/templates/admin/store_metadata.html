@@ -96,6 +96,7 @@
           class="button primary"
           formaction="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata/sync"
           type="submit"
+          data-store-metadata-sync-submit
           {% if not preflight or not preflight.can_sync %}disabled{% endif %}
         >同步到商店</button>
         <button class="button ghost metadata-refresh-button" type="submit" form="metadata-preflight-form">
@@ -499,6 +500,24 @@
         </section>
       </aside>
     </section>
+
+    <div class="store-sync-confirm" data-store-sync-confirm hidden>
+      <div class="store-sync-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="store-sync-confirm-title">
+        <div class="store-sync-confirm-head">
+          <div>
+            <span>同步确认</span>
+            <strong id="store-sync-confirm-title">确认要同步到商店的内容</strong>
+          </div>
+          <button class="button small ghost" type="button" data-store-sync-cancel>关闭</button>
+        </div>
+        <div class="store-sync-confirm-summary" data-store-sync-confirm-summary></div>
+        <div class="store-sync-confirm-body" data-store-sync-confirm-body></div>
+        <div class="store-sync-confirm-actions">
+          <button class="button ghost" type="button" data-store-sync-cancel>取消</button>
+          <button class="button primary" type="button" data-store-sync-confirm-submit>确认同步</button>
+        </div>
+      </div>
+    </div>
   </form>
 
   <section class="panel metadata-sync-history-panel" hidden>

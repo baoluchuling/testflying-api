@@ -35,6 +35,12 @@ UPDATE_APP_METADATA = "update_app_metadata"
 DEFAULT_LOCALE = "zh-Hans"
 DEFAULT_CONTENT_SET_ID = "default"
 DEFAULT_CONTENT_SET_NAME = "默认上架内容"
+APP_STORE_DESCRIPTION_MAX_LENGTH = 4000
+APP_STORE_DESCRIPTION_MIN_LENGTH = 10
+APP_STORE_KEYWORDS_MAX_LENGTH = 100
+APP_STORE_PROMOTIONAL_TEXT_MAX_LENGTH = 170
+GOOGLE_PLAY_FULL_DESCRIPTION_MAX_LENGTH = 4000
+GOOGLE_PLAY_FULL_DESCRIPTION_MIN_LENGTH = 10
 
 
 @dataclass(frozen=True)
@@ -726,6 +732,13 @@ def sync_app_metadata(
     connector = account_connector(session, account_id)
     if connector is None:
         raise ApiError("connector_missing", "当前开发者账号还没有配置 connector", status_code=422)
+    validate_app_metadata_for_sync(
+        platform=app.platform,
+        locale=locale,
+        keywords=keywords,
+        promotional_text=promotional_text,
+        description=description,
+    )
     draft = save_app_metadata_draft(
         session,
         account_id=account_id,
@@ -797,6 +810,92 @@ def sync_app_metadata(
     )
     session.flush()
     return run
+
+
+def validate_app_metadata_for_sync(
+    *,
+    platform: str,
+    locale: str,
+    keywords: str,
+    promotional_text: str,
+    description: str,
+) -> None:
+    normalized_description = description.strip()
+    normalized_locale = locale.strip() or DEFAULT_LOCALE
+    if platform == "ios":
+        _validate_text_length(
+            locale=normalized_locale,
+            label="Description（描述）",
+            value=normalized_description,
+            min_length=APP_STORE_DESCRIPTION_MIN_LENGTH,
+            max_length=APP_STORE_DESCRIPTION_MAX_LENGTH,
+            required=True,
+        )
+        _validate_text_length(
+            locale=normalized_locale,
+            label="Keywords（关键词）",
+            value=keywords.strip(),
+            max_length=APP_STORE_KEYWORDS_MAX_LENGTH,
+        )
+        _validate_text_length(
+            locale=normalized_locale,
+            label="Promotional Text（宣传文本）",
+            value=promotional_text.strip(),
+            max_length=APP_STORE_PROMOTIONAL_TEXT_MAX_LENGTH,
+        )
+        return
+
+    if platform == "android":
+        _validate_text_length(
+            locale=normalized_locale,
+            label="Full description（完整描述）",
+            value=normalized_description,
+            min_length=GOOGLE_PLAY_FULL_DESCRIPTION_MIN_LENGTH,
+            max_length=GOOGLE_PLAY_FULL_DESCRIPTION_MAX_LENGTH,
+            required=True,
+        )
+        return
+
+    _validate_text_length(
+        locale=normalized_locale,
+        label="Description（描述）",
+        value=normalized_description,
+        min_length=APP_STORE_DESCRIPTION_MIN_LENGTH,
+        max_length=APP_STORE_DESCRIPTION_MAX_LENGTH,
+        required=True,
+    )
+
+
+def _validate_text_length(
+    *,
+    locale: str,
+    label: str,
+    value: str,
+    max_length: int,
+    min_length: int | None = None,
+    required: bool = False,
+) -> None:
+    length = len(value)
+    if required and length == 0:
+        raise ApiError(
+            "invalid_store_metadata",
+            f"{locale} 的 {label} 不能为空。",
+            status_code=422,
+        )
+    if length == 0:
+        return
+    if min_length is not None and length < min_length:
+        raise ApiError(
+            "invalid_store_metadata",
+            f"{locale} 的 {label} 太短，至少需要 {min_length} 个字符，当前 {length} 个字符。",
+            status_code=422,
+        )
+    if length > max_length:
+        raise ApiError(
+            "invalid_store_metadata",
+            f"{locale} 的 {label} 不能超过 {max_length} 个字符，当前 {length} 个字符。",
+            status_code=422,
+        )
 
 
 def recent_sync_runs(

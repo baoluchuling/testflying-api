@@ -823,6 +823,68 @@ def test_admin_store_metadata_save_and_sync_creates_records(
     assert {run.status for run in runs[-4:]} == {"succeeded"}
 
 
+def test_admin_store_metadata_sync_rejects_too_short_description(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+
+    response = client.post(
+        "/admin/developer-accounts/account-apple-enterprise"
+        "/apps/app-aurora-ios/store-metadata/sync",
+        headers=_admin_headers(),
+        data={
+            "version": "2.4.0",
+            "locale": "en-US",
+            "locales": ["en-US"],
+            "keywords": ["internal,test"],
+            "promotionalText": ["Faster internal installs."],
+            "description": ["fix bugs"],
+            "featureGraphicUrl": [""],
+            "phoneScreenshots": [""],
+            "tabletScreenshots": [""],
+        },
+    )
+
+    assert response.status_code == 422
+    assert "en-US 的 Description（描述） 太短" in response.text
+    assert "至少需要 10 个字符，当前 8 个字符" in response.text
+    assert db_session.query(StoreAppMetadataDraft).count() == 0
+    assert db_session.query(StoreSyncRun).count() == 0
+
+
+def test_admin_store_metadata_sync_rejects_overlong_ios_keywords(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+
+    response = client.post(
+        "/admin/developer-accounts/account-apple-enterprise"
+        "/apps/app-aurora-ios/store-metadata/sync",
+        headers=_admin_headers(),
+        data={
+            "version": "2.4.0",
+            "locale": "en-US",
+            "locales": ["en-US"],
+            "keywords": ["x" * 101],
+            "promotionalText": ["Faster internal installs."],
+            "description": [
+                "Internal distribution metadata for testing installs before release."
+            ],
+            "featureGraphicUrl": [""],
+            "phoneScreenshots": [""],
+            "tabletScreenshots": [""],
+        },
+    )
+
+    assert response.status_code == 422
+    assert "en-US 的 Keywords（关键词） 不能超过 100 个字符" in response.text
+    assert "当前 101 个字符" in response.text
+    assert db_session.query(StoreAppMetadataDraft).count() == 0
+    assert db_session.query(StoreSyncRun).count() == 0
+
+
 def test_admin_store_metadata_uploads_store_images_into_content_set(
     client: TestClient,
     db_session: Session,

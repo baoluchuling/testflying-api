@@ -14,6 +14,8 @@ from testflying_api.schema import (
     DeveloperAccountApp,
     Device,
     Notification,
+    StoreImageSuite,
+    StoreReleaseNoteDraft,
     StoreSyncRun,
 )
 from testflying_api.store_image_requirements import store_image_requirement
@@ -232,6 +234,17 @@ def store_metadata_context(
         if app and target_version
         else {}
     )
+    release_note_drafts_by_locale = (
+        _release_note_drafts_for_scope(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            platform=app.platform,
+            version=target_version,
+        )
+        if app and target_version
+        else {}
+    )
     content_sets = (
         metadata_content_sets_for_scope(
             session,
@@ -243,12 +256,38 @@ def store_metadata_context(
         if app and target_version
         else [{"id": DEFAULT_CONTENT_SET_ID, "name": DEFAULT_CONTENT_SET_NAME}]
     )
+    image_suites = (
+        _store_image_suites_for_app(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            platform=app.platform,
+        )
+        if app
+        else [{"id": DEFAULT_CONTENT_SET_ID, "name": DEFAULT_CONTENT_SET_NAME}]
+    )
+    active_image_suite = next(
+        (item for item in image_suites if item["id"] == content_set_id),
+        None,
+    )
+    image_suite_locales_by_locale = (
+        active_image_suite.get("locales_by_locale", {}) if active_image_suite else {}
+    )
     active_content_set = next(
         (item for item in content_sets if item["id"] == content_set_id),
+        next(
+            (
+                {"id": item["id"], "name": item["name"]}
+                for item in image_suites
+                if item["id"] == content_set_id
+            ),
+            None,
+        ),
+    ) or (
         {
             "id": content_set_id or DEFAULT_CONTENT_SET_ID,
             "name": content_set_id or DEFAULT_CONTENT_SET_NAME,
-        },
+        }
     )
     supported_locales = (
         supported_locales_for_app(
@@ -304,6 +343,11 @@ def store_metadata_context(
         "content_set_id": active_content_set["id"],
         "content_set_name": active_content_set["name"],
         "content_sets": content_sets,
+        "content_set_options": _merge_content_set_options(content_sets, image_suites),
+        "image_suites": [
+            {key: value for key, value in item.items() if key != "locales_by_locale"}
+            for item in image_suites
+        ],
         "draft": draft,
         "metadata": base_metadata,
         "metadata_fields": _metadata_fields(app.platform if app else ""),
@@ -313,6 +357,8 @@ def store_metadata_context(
         "localized_metadata": _localized_metadata(
             supported_locales=supported_locales,
             drafts_by_locale=drafts_by_locale,
+            release_note_drafts_by_locale=release_note_drafts_by_locale,
+            image_suite_locales_by_locale=image_suite_locales_by_locale,
             base_metadata=base_metadata,
             source_locale=source_locale,
         ),
@@ -339,12 +385,16 @@ def _localized_metadata(
     *,
     supported_locales: list[str],
     drafts_by_locale: dict[str, object],
+    release_note_drafts_by_locale: dict[str, StoreReleaseNoteDraft],
+    image_suite_locales_by_locale: dict[str, object],
     base_metadata: dict[str, str],
     source_locale: str,
 ) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     for locale in supported_locales:
         draft = drafts_by_locale.get(locale)
+        release_note_draft = release_note_drafts_by_locale.get(locale)
+        image_suite_locale = image_suite_locales_by_locale.get(locale)
         defaults = base_metadata if locale == source_locale else _empty_metadata()
         rows.append(
             {
@@ -355,10 +405,90 @@ def _localized_metadata(
                     draft.promotional_text if draft else defaults["promotional_text"]
                 ),
                 "description": draft.description if draft else defaults["description"],
-                "store_images": _store_images(draft),
+                "release_notes": release_note_draft.release_notes if release_note_draft else "",
+                "store_images": _store_images(image_suite_locale or draft),
             }
         )
     return rows
+
+
+def _merge_content_set_options(
+    content_sets: list[dict[str, object]],
+    image_suites: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    merged: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for item in [*content_sets, *image_suites]:
+        item_id = str(item.get("id") or "").strip()
+        if not item_id or item_id in seen:
+            continue
+        seen.add(item_id)
+        merged.append({"id": item_id, "name": str(item.get("name") or item_id)})
+    return merged
+
+
+def _store_image_suites_for_app(
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    platform: str,
+) -> list[dict[str, object]]:
+    suites = list(
+        session.scalars(
+            select(StoreImageSuite)
+            .options(selectinload(StoreImageSuite.locales))
+            .where(
+                StoreImageSuite.developer_account_id == account_id,
+                StoreImageSuite.app_id == app_id,
+                StoreImageSuite.platform == platform,
+            )
+            .order_by(StoreImageSuite.updated_at.desc(), StoreImageSuite.suite_name.asc())
+        )
+    )
+    rows = [
+        {
+            "id": suite.suite_id,
+            "name": suite.suite_name,
+            "source": suite.source,
+            "locale_count": len(suite.locales),
+            "updated_at": suite.updated_at,
+            "locales_by_locale": {item.locale: item for item in suite.locales},
+        }
+        for suite in suites
+    ]
+    if not any(item["id"] == DEFAULT_CONTENT_SET_ID for item in rows):
+        rows.insert(
+            0,
+            {
+                "id": DEFAULT_CONTENT_SET_ID,
+                "name": DEFAULT_CONTENT_SET_NAME,
+                "source": "admin",
+                "locale_count": 0,
+                "updated_at": None,
+                "locales_by_locale": {},
+            },
+        )
+    return rows
+
+
+def _release_note_drafts_for_scope(
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    platform: str,
+    version: str,
+) -> dict[str, StoreReleaseNoteDraft]:
+    drafts = session.scalars(
+        select(StoreReleaseNoteDraft).where(
+            StoreReleaseNoteDraft.developer_account_id == account_id,
+            StoreReleaseNoteDraft.app_id == app_id,
+            StoreReleaseNoteDraft.platform == platform,
+            StoreReleaseNoteDraft.version == version,
+        )
+    )
+    return {draft.locale: draft for draft in drafts}
 
 
 def _empty_metadata() -> dict[str, str]:

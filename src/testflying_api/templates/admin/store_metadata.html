@@ -1,8 +1,8 @@
 {% extends "admin/base.html" %}
-{% block main_class %}store-metadata-main{% endblock %}
+{% block main_class %}store-metadata-main store-workspace-main{% endblock %}
 {% block heading %}商店元数据{% endblock %}
 {% block content %}
-  <section class="card context-card">
+  <section class="card context-card store-workspace-context">
     <div>
       <p class="kicker">{{ store_label }} 同步</p>
       <strong>{{ app.name }}</strong>
@@ -29,13 +29,14 @@
   </form>
 
   <form
-    class="store-metadata-form"
+    class="store-metadata-form store-workspace-form"
     action="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata"
     method="post"
     enctype="multipart/form-data"
     data-metadata-form
     data-source-locale="{{ source_locale }}"
     data-store-platform="{{ app.platform }}"
+    data-store-workspace-mode="copy"
   >
     <div hidden>
       <input name="version" value="{{ version }}" required data-metadata-version>
@@ -51,12 +52,12 @@
       <button type="button" data-translate-metadata>翻译所有文案项</button>
     </div>
 
-    <section class="card toolbar">
+    <section class="card toolbar store-workspace-toolbar">
       <div class="toolbar-left">
         <label class="button ghost select-button native-select content-set-picker">
           <span class="select-prefix" aria-hidden="true">▣</span>
-          <select name="contentSetId" data-content-set-picker aria-label="商店内容套件">
-            {% for content_set in content_sets %}
+          <select name="contentSetId" data-content-set-picker aria-label="当前内容套件">
+            {% for content_set in content_set_options %}
               <option
                 value="{{ content_set.id }}"
                 data-name="{{ content_set.name }}"
@@ -106,14 +107,37 @@
       </div>
     </section>
 
-    <section class="workspace" data-metadata-editor data-mode="field">
+    <nav class="task-tabs" aria-label="商店工作区">
+      <button class="task-tab is-active" type="button" data-store-workspace-tab="copy">
+        <span class="tab-icon" aria-hidden="true">文</span>
+        <span>版本文案</span>
+      </button>
+      <button class="task-tab" type="button" data-store-workspace-tab="suites">
+        <span class="tab-icon" aria-hidden="true">图</span>
+        <span>商店图套件</span>
+      </button>
+    </nav>
+
+    <section class="metadata-source-note store-workspace-note copy-note" data-store-workspace-screen="copy">
+      <strong>{{ source_locale }}</strong>
+      <span>作为源文案；当前页维护最新版本的文案元数据和版本说明，历史版本只用于查看和回填。</span>
+      <button class="button ghost subtle" type="button" data-translate-metadata>翻译所有文案项</button>
+    </section>
+
+    <section class="metadata-source-note store-workspace-note suite-note" data-store-workspace-screen="suites" hidden>
+      <strong>商店图套件</strong>
+      <span>与版本平行维护。切换或同步商店图不会默认修改当前版本文案和版本说明。</span>
+      <button class="button ghost subtle" type="button" data-create-content-set>新建套件</button>
+    </section>
+
+    <section class="workspace store-workspace-grid" data-metadata-editor data-mode="field">
       <aside class="card rail">
         <div class="rail-header">
           <h2>同步项</h2>
           <span>{{ localized_metadata|length }} 个语言</span>
         </div>
 
-        <div class="rail-section">
+        <div class="rail-section" data-store-workspace-screen="copy">
           <p class="rail-section-title">文案</p>
           {% for field in metadata_fields %}
             <button
@@ -141,9 +165,26 @@
               <span class="chevron right" aria-hidden="true"></span>
             </button>
           {% endfor %}
+
+          <button
+            class="sync-item"
+            type="button"
+            data-sync-item-select
+            data-sync-item-key="release_notes"
+            data-sync-item-type="release-notes"
+          >
+            <span class="sync-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M6 3.5h12v17H6Z"/><path d="M9 8h6"/><path d="M9 12h6"/><path d="M9 16h4"/></svg>
+            </span>
+            <span class="sync-copy"><strong>版本说明</strong></span>
+            <span class="progress-dot" aria-hidden="true"></span>
+            <span class="sync-count" data-sync-item-count>{{ localized_metadata|length }}/{{ localized_metadata|length }} 语言</span>
+            <small data-sync-item-status>待检查</small>
+            <span class="chevron right" aria-hidden="true"></span>
+          </button>
         </div>
 
-        <div class="rail-section">
+        <div class="rail-section" data-store-workspace-screen="suites" hidden>
           <p class="rail-section-title">商店图</p>
           {% for slot in store_image_slots %}
             <button
@@ -175,275 +216,295 @@
         </div>
       </aside>
 
-      <section data-field-view>
-        {% for field in metadata_fields %}
-          {% set current_field = namespace(value="") %}
+      <section class="store-workspace-center">
+        <div data-field-view data-store-workspace-screen="copy">
+          {% for field in metadata_fields %}
+            {% set current_field = namespace(value="") %}
+            {% for item in localized_metadata %}
+              {% if item.locale == locale %}
+                {% set current_field.value = item[field.key] %}
+              {% endif %}
+            {% endfor %}
+            <section
+              class="card editor"
+              data-field="{{ field.key }}"
+              data-sync-item-panel="{{ field.key }}"
+              data-locale-group
+              {% if field.key != "description" %}hidden{% endif %}
+            >
+              <div class="editor-head">
+                <div>
+                  <div class="title-row">
+                    <span class="title-icon" aria-hidden="true">
+                      {% if field.key == "keywords" %}
+                        <svg viewBox="0 0 24 24"><path d="M20 10v8a2 2 0 0 1-2 2H9L4 15V6a2 2 0 0 1 2-2h8Z"/><path d="M14 4v6h6"/><path d="M8 10h3"/></svg>
+                      {% elif field.key == "promotional_text" %}
+                        <svg viewBox="0 0 24 24"><path d="M4 14h4l9 4V6l-9 4H4Z"/><path d="M8 10v4"/><path d="M20 9a4 4 0 0 1 0 6"/></svg>
+                      {% else %}
+                        <svg viewBox="0 0 24 24"><path d="M7 3.5h7l4 4V21H7Z"/><path d="M14 3.5v5h5"/><path d="M10 13h5"/><path d="M10 17h5"/></svg>
+                      {% endif %}
+                    </span>
+                    <h2>{{ field.short_label or field.label }}</h2>
+                  </div>
+                  <p class="current-locale">当前语言：<b data-current-locale-label>{{ locale }}</b></p>
+                </div>
+                <div class="editor-actions">
+                  <span class="focus-completion" data-focus-completion>待检查</span>
+                  <button class="button small ghost" type="button" data-translate-field data-field="{{ field.key }}">生成该项多语言</button>
+                  <button class="button small ghost" type="button" data-locale-group-toggle>
+                    <span data-locale-group-toggle-label>展开所有语言</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="editor-body">
+                <div class="metadata-current-editor" data-current-field-editor data-field="{{ field.key }}">
+                  <textarea
+                    class="main-input"
+                    rows="{{ field.rows or 6 }}"
+                    placeholder="{{ field.placeholder }}"
+                    data-current-metadata-editor
+                    data-field="{{ field.key }}"
+                  >{{ current_field.value }}</textarea>
+                </div>
+
+                <h3 class="languages-title">所有语言（{{ localized_metadata|length }}）</h3>
+                <div class="locale-list">
+                  {% for item in localized_metadata %}
+                    <article class="locale-row" data-locale="{{ item.locale }}" data-locale-row>
+                      <span class="drag" aria-hidden="true">⁝</span>
+                      <strong class="locale-code">{{ item.locale }}</strong>
+                      <span class="tag {{ 'warn' if not item[field.key] else '' }}" data-locale-status>{{ "待填写" if not item[field.key] else "已填写" }}</span>
+                      <p class="locale-preview" data-locale-preview>{{ item[field.key] if item[field.key] else field.placeholder }}</p>
+                      <textarea class="locale-detail-input" rows="{{ 4 if field.key == 'description' else 2 }}" placeholder="{{ field.placeholder }}" data-locale-detail-input data-locale="{{ item.locale }}" data-field="{{ field.key }}">{{ item[field.key] }}</textarea>
+                      <input type="hidden" name="{{ field.name }}" value="{{ item[field.key] }}" placeholder="{{ field.placeholder }}" data-metadata-input data-locale="{{ item.locale }}" data-field="{{ field.key }}" data-required-field="{{ 'true' if field.required else 'false' }}" data-backing-input="true">
+                      <span class="chevron down" aria-hidden="true"></span>
+                    </article>
+                  {% endfor %}
+                </div>
+              </div>
+            </section>
+          {% endfor %}
+
+          {% set current_notes = namespace(value="") %}
           {% for item in localized_metadata %}
             {% if item.locale == locale %}
-              {% set current_field.value = item[field.key] %}
+              {% set current_notes.value = item.release_notes %}
             {% endif %}
           {% endfor %}
-          <section
-            class="card editor"
-            data-field="{{ field.key }}"
-            data-sync-item-panel="{{ field.key }}"
-            data-locale-group
-            {% if field.key != "description" %}hidden{% endif %}
-          >
+          <section class="card editor" data-sync-item-panel="release_notes" data-locale-group hidden>
             <div class="editor-head">
               <div>
                 <div class="title-row">
-                  <span class="title-icon" aria-hidden="true">
-                    {% if field.key == "keywords" %}
-                      <svg viewBox="0 0 24 24"><path d="M20 10v8a2 2 0 0 1-2 2H9L4 15V6a2 2 0 0 1 2-2h8Z"/><path d="M14 4v6h6"/><path d="M8 10h3"/></svg>
-                    {% elif field.key == "promotional_text" %}
-                      <svg viewBox="0 0 24 24"><path d="M4 14h4l9 4V6l-9 4H4Z"/><path d="M8 10v4"/><path d="M20 9a4 4 0 0 1 0 6"/></svg>
-                    {% else %}
-                      <svg viewBox="0 0 24 24"><path d="M7 3.5h7l4 4V21H7Z"/><path d="M14 3.5v5h5"/><path d="M10 13h5"/><path d="M10 17h5"/></svg>
-                    {% endif %}
-                  </span>
-                  <h2>{{ field.short_label or field.label }}</h2>
+                  <span class="title-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3.5h12v17H6Z"/><path d="M9 8h6"/><path d="M9 12h6"/><path d="M9 16h4"/></svg></span>
+                  <h2>版本说明</h2>
                 </div>
                 <p class="current-locale">当前语言：<b data-current-locale-label>{{ locale }}</b></p>
               </div>
               <div class="editor-actions">
                 <span class="focus-completion" data-focus-completion>待检查</span>
-                <button class="button small ghost" type="button" data-translate-field data-field="{{ field.key }}">
-                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18"/><path d="m8 7 4-4 4 4"/><path d="M4 14h7"/><path d="M13 18h7"/></svg>
-                  生成该项多语言
-                </button>
                 <button class="button small ghost" type="button" data-locale-group-toggle>
-                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/></svg>
                   <span data-locale-group-toggle-label>展开所有语言</span>
                 </button>
               </div>
             </div>
-
             <div class="editor-body">
-              <div data-current-field-editor data-field="{{ field.key }}">
-                <textarea
-                  class="main-input"
-                  rows="{{ field.rows or 6 }}"
-                  placeholder="{{ field.placeholder }}"
-                  data-current-metadata-editor
-                  data-field="{{ field.key }}"
-                >{{ current_field.value }}</textarea>
+              <div class="metadata-current-editor" data-current-release-note-wrapper>
+                <textarea class="main-input" rows="6" placeholder="Release Notes" data-current-release-note-editor>{{ current_notes.value }}</textarea>
               </div>
-
               <h3 class="languages-title">所有语言（{{ localized_metadata|length }}）</h3>
               <div class="locale-list">
                 {% for item in localized_metadata %}
                   <article class="locale-row" data-locale="{{ item.locale }}" data-locale-row>
                     <span class="drag" aria-hidden="true">⁝</span>
                     <strong class="locale-code">{{ item.locale }}</strong>
-                    <span class="tag {{ 'warn' if not item[field.key] else '' }}" data-locale-status>{{ "待填写" if not item[field.key] else "已填写" }}</span>
-                    <p class="locale-preview" data-locale-preview>
-                      {{ item[field.key] if item[field.key] else field.placeholder }}
-                    </p>
-                    <textarea
-                      class="locale-detail-input"
-                      rows="{{ 4 if field.key == 'description' else 2 }}"
-                      placeholder="{{ field.placeholder }}"
-                      data-locale-detail-input
-                      data-locale="{{ item.locale }}"
-                      data-field="{{ field.key }}"
-                    >{{ item[field.key] }}</textarea>
-                    <input
-                      type="hidden"
-                      name="{{ field.name }}"
-                      value="{{ item[field.key] }}"
-                      placeholder="{{ field.placeholder }}"
-                      data-metadata-input
-                      data-locale="{{ item.locale }}"
-                      data-field="{{ field.key }}"
-                      data-required-field="{{ 'true' if field.required else 'false' }}"
-                      data-backing-input="true"
-                    >
+                    <span class="tag {{ 'warn' if not item.release_notes else '' }}" data-release-note-status>{{ "待填写" if not item.release_notes else "已填写" }}</span>
+                    <p class="locale-preview" data-release-note-preview>{{ item.release_notes if item.release_notes else "Release Notes" }}</p>
+                    <textarea class="locale-detail-input" rows="4" placeholder="Release Notes" data-locale-detail-release-note data-locale="{{ item.locale }}">{{ item.release_notes }}</textarea>
+                    <input type="hidden" name="releaseNotes" value="{{ item.release_notes }}" placeholder="Release Notes" data-release-note-input data-locale="{{ item.locale }}" data-backing-input="true">
                     <span class="chevron down" aria-hidden="true"></span>
                   </article>
                 {% endfor %}
               </div>
             </div>
           </section>
-        {% endfor %}
+        </div>
 
-        {% for slot in store_image_slots %}
-          {% set current_image = namespace(value=None) %}
-          {% for item in localized_metadata %}
-            {% if item.locale == locale %}
-              {% set current_image.value = item.store_images[slot.key] %}
-            {% endif %}
-          {% endfor %}
-          <section
-            class="card editor"
-            data-store-image-slot="{{ slot.key }}"
-            data-sync-item-panel="{{ slot.key }}"
-            data-locale-group
-            hidden
-          >
-            <div class="editor-head">
+        <div class="suite-workspace" data-store-workspace-screen="suites" hidden>
+          <section class="card suite-library">
+            <div class="suite-toolbar">
               <div>
-                <div class="title-row">
-                  <span class="title-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="m5 16 4.2-4.2 3.8 3.8 2-2L20 18"/><circle cx="16" cy="9" r="1.2"/></svg>
-                  </span>
-                  <h2>{{ slot.short_label or slot.label }}</h2>
-                </div>
-                <p class="current-locale">当前语言：<b data-current-locale-label>{{ locale }}</b></p>
-                <p class="store-image-requirement-summary">{{ slot.requirement.summary }}</p>
+                <h2>商店图套件库</h2>
+                <p>套件与版本平行，可以单独保存和同步。</p>
               </div>
-              <div class="editor-actions">
-                <span class="focus-completion" data-focus-completion>待检查</span>
-                <button class="button small ghost" type="button" data-store-image-files-button>
-                  批量上传
-                </button>
-                <button class="button small ghost" type="button" data-locale-group-toggle>
-                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/></svg>
-                  <span data-locale-group-toggle-label>展开所有语言</span>
-                </button>
+              <div class="suite-actions">
+                <button class="button ghost" type="button" data-create-content-set>新建套件</button>
+                <button class="button ghost" type="button" data-duplicate-content-set>复制当前套</button>
               </div>
             </div>
-
-            <div class="editor-body">
-              <div class="asset-workspace">
-                <div
-                  class="asset-uploader"
-                  data-store-image-bulk-drop
-                  data-slot="{{ slot.key }}"
-                  data-store-image-requirement='{{ slot.requirement|tojson }}'
-                >
-                  <input type="file" accept="image/*" multiple data-store-image-bulk-files>
-                  <input type="file" multiple webkitdirectory directory data-store-image-folder>
-                  <div class="dropzone">
-                    <strong>批量上传{{ slot.short_label or slot.label }}</strong>
-                    <span>拖入图片或语言文件夹。文件夹名按商店语言识别，例如 en-US/01.png、zh-Hant/01.png。</span>
-                    <div class="drop-actions">
-                      <button class="button small ghost" type="button" data-store-image-files-button>选择图片</button>
-                      <button class="button small ghost" type="button" data-store-image-folder-button>选择文件夹</button>
+            <div class="suite-grid">
+              {% for content_set in image_suites %}
+                <article class="suite-card {% if content_set.id == content_set_id %}active{% endif %}" data-suite-card data-content-set-id="{{ content_set.id }}">
+                  <div class="suite-head">
+                    <div class="suite-title">
+                      <strong>{{ content_set.name }}</strong>
+                      <span>{{ content_set.id }}</span>
                     </div>
-                    <small data-store-image-bulk-status>还没有导入本地图片</small>
+                    <span class="tag {{ '' if content_set.id == content_set_id else 'warn' }}">{{ "当前打开" if content_set.id == content_set_id else "可切换" }}</span>
                   </div>
-
-                  <div class="preview-panel">
-                    <div class="preview-panel-head">
-                      <strong>{{ locale }} 预览</strong>
-                      <small>{{ current_image.value.count if current_image.value else 0 }} 张，按拖动顺序同步</small>
-                    </div>
-                    <div class="preview-grid">
-                      {% if current_image.value and current_image.value.preview_urls %}
-                        {% for preview in current_image.value.preview_items[:3] %}
-                          <article class="preview-card">
-                            <figure>
-                              <img
-                                alt="{{ slot.short_label or slot.label }}预览"
-                                src="{{ preview.url }}"
-                                data-store-image-preview-image
-                                data-width="{{ preview.width or '' }}"
-                                data-height="{{ preview.height or '' }}"
-                                data-validation-message="{{ preview.validationMessage or '' }}"
-                                style="aspect-ratio: {{ preview.width ~ ' / ' ~ preview.height if preview.width and preview.height else slot.requirement.fallbackAspectRatio }}"
-                              >
-                            </figure>
-                            <div class="preview-meta">
-                              <span>{{ preview.fileName or "image" }}</span>
-                              <span>{{ (preview.width ~ " x " ~ preview.height) if preview.width and preview.height else "预览" }}</span>
-                            </div>
-                          </article>
-                        {% endfor %}
-                      {% else %}
-                        {% for _ in range(3) %}
-                          <article class="preview-card">
-                            <figure><span class="shot {{ 'tablet' if slot.key == 'tablet_screenshots' else 'phone' }}"></span></figure>
-                            <div class="preview-meta"><span>待上传</span><span>可选</span></div>
-                          </article>
-                        {% endfor %}
-                      {% endif %}
-                    </div>
+                  <div class="suite-meta">
+                    <div><span>语言</span><strong>{{ content_set.locale_count or 0 }}</strong></div>
+                    <div><span>图片项</span><strong>{{ store_image_slots|length }}</strong></div>
+                    <div><span>状态</span><strong>{{ "编辑中" if content_set.id == content_set_id else "草稿" }}</strong></div>
                   </div>
+                </article>
+              {% endfor %}
+            </div>
+          </section>
+
+          {% for slot in store_image_slots %}
+            {% set current_image = namespace(value=None) %}
+            {% for item in localized_metadata %}
+              {% if item.locale == locale %}
+                {% set current_image.value = item.store_images[slot.key] %}
+              {% endif %}
+            {% endfor %}
+            <section class="card editor" data-store-image-slot="{{ slot.key }}" data-sync-item-panel="{{ slot.key }}" data-locale-group hidden>
+              <div class="editor-head">
+                <div>
+                  <div class="title-row">
+                    <span class="title-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="m5 16 4.2-4.2 3.8 3.8 2-2L20 18"/><circle cx="16" cy="9" r="1.2"/></svg>
+                    </span>
+                    <h2>{{ slot.short_label or slot.label }}</h2>
+                  </div>
+                  <p class="current-locale">当前语言：<b data-current-locale-label>{{ locale }}</b></p>
+                  <p class="store-image-requirement-summary">{{ slot.requirement.summary }}</p>
+                </div>
+                <div class="editor-actions">
+                  <span class="focus-completion" data-focus-completion>待检查</span>
+                  <button class="button small ghost" type="button" data-store-image-files-button>批量上传</button>
+                  <button class="button small ghost" type="button" data-locale-group-toggle>
+                    <span data-locale-group-toggle-label>展开所有语言</span>
+                  </button>
                 </div>
               </div>
 
-              <h3 class="languages-title">所有语言（{{ localized_metadata|length }}）</h3>
-              <div class="locale-list">
-                {% for item in localized_metadata %}
-                  {% set image_slot = item.store_images[slot.key] %}
-                  <article class="image-locale-row store-image-locale-row" data-locale="{{ item.locale }}" data-locale-row>
-                    <span class="drag" aria-hidden="true">⁝</span>
-                    <strong class="locale-code">{{ item.locale }}</strong>
-                    <span class="tag {{ 'warn' if not image_slot.count else '' }}" data-store-image-status>{{ "待上传" if not image_slot.count else "已上传" }}</span>
-                    <input
-                      type="hidden"
-                      name="{{ slot.name }}"
-                      value="{{ image_slot.value }}"
-                      data-store-image-input
-                      data-locale="{{ item.locale }}"
-                      data-slot="{{ slot.key }}"
-                    >
-                    <div class="store-image-track" data-store-image-track>
-                      <div class="thumb-strip" data-store-image-preview>
-                        {% if image_slot.preview_items %}
-                          {% for preview in image_slot.preview_items %}
-                            <figure class="store-image-thumb-card">
-                              <img
-                                class="thumb {{ 'tablet' if slot.key == 'tablet_screenshots' else '' }}"
-                                alt="{{ item.locale }} {{ slot.short_label or slot.label }}预览"
-                                src="{{ preview.url }}"
-                                data-store-image-preview-image
-                                data-width="{{ preview.width or '' }}"
-                                data-height="{{ preview.height or '' }}"
-                                data-validation-message="{{ preview.validationMessage or '' }}"
-                                data-matched-label="{{ preview.matchedLabel or '' }}"
-                                style="aspect-ratio: {{ preview.width ~ ' / ' ~ preview.height if preview.width and preview.height else slot.requirement.fallbackAspectRatio }}"
-                              >
-                              <figcaption>
-                                {{ (preview.width ~ " x " ~ preview.height) if preview.width and preview.height else "待检测" }}
-                              </figcaption>
-                            </figure>
+              <div class="editor-body">
+                <div class="asset-workspace">
+                  <div class="asset-uploader" data-store-image-bulk-drop data-slot="{{ slot.key }}" data-store-image-requirement='{{ slot.requirement|tojson }}'>
+                    <input type="file" accept="image/*" multiple data-store-image-bulk-files>
+                    <input type="file" multiple webkitdirectory directory data-store-image-folder>
+                    <div class="dropzone">
+                      <strong>批量上传{{ slot.short_label or slot.label }}</strong>
+                      <span>拖入图片或语言文件夹。文件夹名按商店语言识别，例如 en-US/01.png、zh-Hant/01.png。</span>
+                      <div class="drop-actions">
+                        <button class="button small ghost" type="button" data-store-image-files-button>选择图片</button>
+                        <button class="button small ghost" type="button" data-store-image-folder-button>选择文件夹</button>
+                      </div>
+                      <small data-store-image-bulk-status>还没有导入本地图片</small>
+                    </div>
+
+                    <div class="preview-panel">
+                      <div class="preview-panel-head">
+                        <strong>{{ locale }} 预览</strong>
+                        <small>{{ current_image.value.count if current_image.value else 0 }} 张，按拖动顺序同步</small>
+                      </div>
+                      <div class="preview-grid">
+                        {% if current_image.value and current_image.value.preview_urls %}
+                          {% for preview in current_image.value.preview_items[:3] %}
+                            <article class="preview-card">
+                              <figure>
+                                <img alt="{{ slot.short_label or slot.label }}预览" src="{{ preview.url }}" data-store-image-preview-image data-width="{{ preview.width or '' }}" data-height="{{ preview.height or '' }}" data-validation-message="{{ preview.validationMessage or '' }}" style="aspect-ratio: {{ preview.width ~ ' / ' ~ preview.height if preview.width and preview.height else slot.requirement.fallbackAspectRatio }}">
+                              </figure>
+                              <div class="preview-meta">
+                                <span>{{ preview.fileName or "image" }}</span>
+                                <span>{{ (preview.width ~ " x " ~ preview.height) if preview.width and preview.height else "预览" }}</span>
+                              </div>
+                            </article>
                           {% endfor %}
                         {% else %}
-                          <span class="store-image-empty-note">还没有截图</span>
+                          {% for _ in range(3) %}
+                            <article class="preview-card">
+                              <figure><span class="shot {{ 'tablet' if slot.key == 'tablet_screenshots' else 'phone' }}"></span></figure>
+                              <div class="preview-meta"><span>待上传</span><span>可选</span></div>
+                            </article>
+                          {% endfor %}
                         {% endif %}
                       </div>
-                      <div
-                        class="store-image-upload store-image-add-card"
-                        data-store-image-zone
-                        data-slot="{{ slot.key }}"
-                        data-locale="{{ item.locale }}"
-                        data-multiple="{{ 'true' if slot.multiple else 'false' }}"
-                        data-store-image-requirement='{{ slot.requirement|tojson }}'
-                      >
-                        <input
-                          type="file"
-                          name="storeImageFiles__{{ slot.key }}__{{ item.locale }}"
-                          accept="image/*"
-                          data-store-image-file
-                          data-slot="{{ slot.key }}"
-                          data-locale="{{ item.locale }}"
-                          {% if slot.multiple or slot.key in ["phone_screenshots", "tablet_screenshots"] %}multiple{% endif %}
-                        >
-                        <span class="store-image-add-icon" aria-hidden="true">+</span>
-                        <div data-store-image-file-list>
-                          {% if image_slot.file_names %}
-                            {{ image_slot.file_names|join(", ") }}
+                    </div>
+                  </div>
+                </div>
+
+                <h3 class="languages-title">所有语言（{{ localized_metadata|length }}）</h3>
+                <div class="locale-list">
+                  {% for item in localized_metadata %}
+                    {% set image_slot = item.store_images[slot.key] %}
+                    <article class="image-locale-row store-image-locale-row" data-locale="{{ item.locale }}" data-locale-row>
+                      <span class="drag" aria-hidden="true">⁝</span>
+                      <strong class="locale-code">{{ item.locale }}</strong>
+                      <span class="tag {{ 'warn' if not image_slot.count else '' }}" data-store-image-status>{{ "待上传" if not image_slot.count else "已上传" }}</span>
+                      <input type="hidden" name="{{ slot.name }}" value="{{ image_slot.value }}" data-store-image-input data-locale="{{ item.locale }}" data-slot="{{ slot.key }}">
+                      <div class="store-image-track" data-store-image-track>
+                        <div class="thumb-strip" data-store-image-preview>
+                          {% if image_slot.preview_items %}
+                            {% for preview in image_slot.preview_items %}
+                              <figure class="store-image-thumb-card">
+                                <img class="thumb {{ 'tablet' if slot.key == 'tablet_screenshots' else '' }}" alt="{{ item.locale }} {{ slot.short_label or slot.label }}预览" src="{{ preview.url }}" data-store-image-preview-image data-width="{{ preview.width or '' }}" data-height="{{ preview.height or '' }}" data-validation-message="{{ preview.validationMessage or '' }}" data-matched-label="{{ preview.matchedLabel or '' }}" style="aspect-ratio: {{ preview.width ~ ' / ' ~ preview.height if preview.width and preview.height else slot.requirement.fallbackAspectRatio }}">
+                                <figcaption>{{ (preview.width ~ " x " ~ preview.height) if preview.width and preview.height else "待检测" }}</figcaption>
+                              </figure>
+                            {% endfor %}
                           {% else %}
-                            添加截图
+                            <span class="store-image-empty-note">还没有截图</span>
                           {% endif %}
                         </div>
-                        <small data-store-image-validation></small>
+                        <div class="store-image-upload store-image-add-card" data-store-image-zone data-slot="{{ slot.key }}" data-locale="{{ item.locale }}" data-multiple="{{ 'true' if slot.multiple else 'false' }}" data-store-image-requirement='{{ slot.requirement|tojson }}'>
+                          <input type="file" name="storeImageFiles__{{ slot.key }}__{{ item.locale }}" accept="image/*" data-store-image-file data-slot="{{ slot.key }}" data-locale="{{ item.locale }}" {% if slot.multiple or slot.key in ["phone_screenshots", "tablet_screenshots"] %}multiple{% endif %}>
+                          <span class="store-image-add-icon" aria-hidden="true">+</span>
+                          <div data-store-image-file-list>
+                            {% if image_slot.file_names %}
+                              {{ image_slot.file_names|join(", ") }}
+                            {% else %}
+                              添加截图
+                            {% endif %}
+                          </div>
+                          <small data-store-image-validation></small>
+                        </div>
                       </div>
-                    </div>
-                    <span class="image-count" data-store-image-count>{{ image_slot.count }} 张</span>
-                    <button class="button small ghost store-image-preview-button" type="button" data-store-image-preview-all {% if not image_slot.count %}disabled{% endif %}>预览全部</button>
-                    <span class="chevron down" aria-hidden="true"></span>
-                  </article>
-                {% endfor %}
+                      <span class="image-count" data-store-image-count>{{ image_slot.count }} 张</span>
+                      <button class="button small ghost store-image-preview-button" type="button" data-store-image-preview-all {% if not image_slot.count %}disabled{% endif %}>预览全部</button>
+                      <span class="chevron down" aria-hidden="true"></span>
+                    </article>
+                  {% endfor %}
+                </div>
               </div>
-            </div>
-          </section>
-        {% endfor %}
+            </section>
+          {% endfor %}
+        </div>
       </section>
 
       <aside class="side">
+        <section class="card side-card sync-scope-card">
+          <div class="side-head">
+            <h2>同步范围</h2>
+            <span data-sync-scope-summary>默认文案</span>
+          </div>
+          <div class="scope-list">
+            <label class="scope-option">
+              <input type="checkbox" name="syncScopes" value="metadata" data-sync-scope="metadata" checked>
+              <span><strong>文案元数据</strong><small>关键词、宣传文本、描述</small></span>
+            </label>
+            <label class="scope-option">
+              <input type="checkbox" name="syncScopes" value="release_notes" data-sync-scope="release_notes" checked>
+              <span><strong>版本说明</strong><small>Release Notes</small></span>
+            </label>
+            <label class="scope-option">
+              <input type="checkbox" name="syncScopes" value="store_images" data-sync-scope="store_images">
+              <span><strong>商店图套件</strong><small>当前打开的截图套件</small></span>
+            </label>
+          </div>
+        </section>
+
         <section class="card side-card">
           <div class="side-head">
             <h2>同步前检查</h2>
@@ -501,19 +562,45 @@
       </aside>
     </section>
 
+    <div class="bottom-bar store-workspace-bottom">
+      <div class="bottom-copy copy-bottom-copy">
+        <span>当前操作</span>
+        <strong>本次同步范围：文案元数据、版本说明</strong>
+        <small>商店图套件未默认选中；同步前可以在确认清单里调整。</small>
+      </div>
+      <div class="bottom-copy suite-bottom-copy" hidden>
+        <span>当前操作</span>
+        <strong>本次同步范围：仅商店图套件</strong>
+        <small>文案和版本说明未选中；同步前可以在确认清单里调整。</small>
+      </div>
+      <div class="bottom-actions">
+        <button class="button ghost" type="submit">保存草稿</button>
+        <button class="button primary" formaction="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata/sync" type="submit" data-store-metadata-sync-submit {% if not preflight or not preflight.can_sync %}disabled{% endif %}>同步到商店</button>
+      </div>
+    </div>
+
     <div class="store-sync-confirm" data-store-sync-confirm hidden>
       <div class="store-sync-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="store-sync-confirm-title">
         <div class="store-sync-confirm-head">
           <div>
-            <span>同步确认</span>
-            <strong id="store-sync-confirm-title">确认要同步到商店的内容</strong>
+            <strong id="store-sync-confirm-title">同步确认清单</strong>
+            <small>确认要同步到商店的内容</small>
+            <span>这一步才展示完整清单，确认后才会调用 connector。</span>
           </div>
-          <button class="button small ghost" type="button" data-store-sync-cancel>关闭</button>
+          <span class="store-sync-confirm-badge empty">商店版本需处理</span>
+        </div>
+        <div class="store-sync-intro">
+          <section><strong>同步范围可以调整</strong><p>从版本文案页发起时默认同步文案元数据和版本说明；商店图不会默认带上。</p></section>
+          <section><strong>商店图可单独同步</strong><p>如果只需要换截图，可以取消文案范围，只选择商店图套件。</p></section>
         </div>
         <div class="store-sync-confirm-summary" data-store-sync-confirm-summary></div>
         <div class="store-sync-confirm-body" data-store-sync-confirm-body></div>
         <div class="store-sync-confirm-actions">
           <button class="button ghost" type="button" data-store-sync-cancel>取消</button>
+          <button class="button ghost metadata-refresh-button" type="submit" form="metadata-preflight-form">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.8-3.8"/><path d="M5 3v4.5h4.5"/><path d="M4 13a8 8 0 0 0 14.8 3.8"/><path d="M19 21v-4.5h-4.5"/></svg>
+            实时检查
+          </button>
           <button class="button primary" type="button" data-store-sync-confirm-submit>确认同步</button>
         </div>
       </div>

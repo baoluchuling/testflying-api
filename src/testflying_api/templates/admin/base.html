@@ -336,11 +336,41 @@
         });
       }
 
+      function releaseNoteInputs(form, locale) {
+        if (!form) return [];
+        return Array.from(form.querySelectorAll('[data-release-note-input]')).filter((input) => (
+          input.dataset.locale === locale
+        ));
+      }
+
+      function releaseNoteValue(form, locale) {
+        const input = releaseNoteInputs(form, locale)[0];
+        return input?.value || '';
+      }
+
+      function setReleaseNoteValue(form, locale, value) {
+        releaseNoteInputs(form, locale).forEach((input) => {
+          input.value = value;
+        });
+      }
+
       function syncCurrentMetadataEditors(form, activeLocale) {
         form?.querySelectorAll('[data-current-field-editor]').forEach((wrapper) => {
           const editor = wrapper.querySelector('[data-current-metadata-editor]');
           const field = wrapper.dataset.field || editor?.dataset.field;
           const target = metadataInputs(form, activeLocale, field)[0];
+          if (!editor || !target) return;
+          if (editor !== document.activeElement) {
+            editor.value = target.value || '';
+          }
+          editor.placeholder = target.placeholder || editor.placeholder || '';
+        });
+      }
+
+      function syncCurrentReleaseNoteEditors(form, activeLocale) {
+        form?.querySelectorAll('[data-current-release-note-wrapper]').forEach((wrapper) => {
+          const editor = wrapper.querySelector('[data-current-release-note-editor]');
+          const target = releaseNoteInputs(form, activeLocale)[0];
           if (!editor || !target) return;
           if (editor !== document.activeElement) {
             editor.value = target.value || '';
@@ -496,6 +526,41 @@
         ));
       }
 
+      function selectedStoreSyncScopes(form) {
+        const checked = Array.from(form?.querySelectorAll('[data-sync-scope]:checked') || [])
+          .map((input) => input.value)
+          .filter(Boolean);
+        if (checked.length) return new Set(checked);
+        const mode = form?.dataset.storeWorkspaceMode || 'copy';
+        return new Set(mode === 'suites' ? ['store_images'] : ['metadata', 'release_notes']);
+      }
+
+      function syncStoreScopeInputs(form) {
+        if (!form) return;
+        const mode = form.dataset.storeWorkspaceMode || 'copy';
+        const defaults = mode === 'suites'
+          ? new Set(['store_images'])
+          : new Set(['metadata', 'release_notes']);
+        form.querySelectorAll('[data-sync-scope]').forEach((input) => {
+          if (input.dataset.userChanged !== 'true') {
+            input.checked = defaults.has(input.value);
+          }
+        });
+        const scopes = selectedStoreSyncScopes(form);
+        const labels = [];
+        if (scopes.has('metadata')) labels.push('文案元数据');
+        if (scopes.has('release_notes')) labels.push('版本说明');
+        if (scopes.has('store_images')) labels.push('商店图套件');
+        const summary = labels.length ? labels.join('、') : '未选择';
+        form.querySelectorAll('[data-sync-scope-summary]').forEach((node) => {
+          node.textContent = summary;
+        });
+        const copy = form.querySelector('.copy-bottom-copy strong');
+        if (copy) copy.textContent = `本次同步范围：${summary}`;
+        const suite = form.querySelector('.suite-bottom-copy strong');
+        if (suite) suite.textContent = `本次同步范围：${summary}`;
+      }
+
       async function requestMetadataTranslation(form, field, sourceLocale, text, targetLocales) {
         const response = await fetch(`${form.action}/translations`, {
           method: 'POST',
@@ -595,6 +660,33 @@
         return trimmed.split(/\r?\n|,/).map((item) => item.trim()).filter(Boolean).length;
       }
 
+      function storeSyncReleaseNoteItem(form, locale, sourceLocale) {
+        const value = releaseNoteValue(form, locale).trim();
+        const sourceValue = releaseNoteValue(form, sourceLocale).trim();
+        if (value) {
+          return {
+            label: '版本说明',
+            state: 'ok',
+            status: '已填写',
+            detail: value,
+          };
+        }
+        if (sourceValue && locale !== sourceLocale) {
+          return {
+            label: '版本说明',
+            state: 'fallback',
+            status: `将用 ${sourceLocale} 回填`,
+            detail: sourceValue,
+          };
+        }
+        return {
+          label: '版本说明',
+          state: 'empty',
+          status: '未填写',
+          detail: '不会同步版本说明',
+        };
+      }
+
       function storeImageAssetCount(form, locale, slot) {
         const input = storeImageInputs(form, locale, slot)[0];
         const row = input?.closest('[data-locale-row]');
@@ -666,22 +758,28 @@
           || form?.querySelector('[name="locale"]')?.value
           || '';
         const locales = storeImageLocales(form);
-        const fields = metadataFields(form);
-        const slots = storeImageSlots(form);
+        const scopes = selectedStoreSyncScopes(form);
+        const fields = scopes.has('metadata') ? metadataFields(form) : [];
+        const slots = scopes.has('store_images') ? storeImageSlots(form) : [];
         const rows = locales.map((locale) => {
           const textItems = fields.map((field) => storeSyncTextItem(form, locale, field, sourceLocale));
           const imageItems = slots.map((slot) => storeSyncImageItem(form, locale, slot, sourceLocale));
+          const releaseItems = scopes.has('release_notes')
+            ? [storeSyncReleaseNoteItem(form, locale, sourceLocale)]
+            : [];
           return {
             locale,
             isSource: locale === sourceLocale,
-            items: [...textItems, ...imageItems],
+            items: [...textItems, ...releaseItems, ...imageItems],
           };
         });
         const allItems = rows.flatMap((row) => row.items);
         return {
           sourceLocale,
+          scopes,
           locales,
           fields,
+          releaseNoteSelected: scopes.has('release_notes'),
           slots,
           rows,
           fallbackCount: allItems.filter((item) => item.state === 'fallback').length,
@@ -710,10 +808,14 @@
         if (!modal || !summary || !body) return false;
 
         summary.replaceChildren();
+        const selectedLabels = [];
+        if (plan.scopes.has('metadata')) selectedLabels.push('文案元数据');
+        if (plan.releaseNoteSelected) selectedLabels.push('版本说明');
+        if (plan.scopes.has('store_images')) selectedLabels.push('商店图套件');
         const summaryMain = createStoreSyncNode(
           'strong',
           '',
-          `将同步 ${plan.locales.length} 个语言、${plan.fields.length} 个文案项、${plan.slots.length} 个商店图项`
+          `将同步 ${plan.locales.length} 个语言；范围：${selectedLabels.join('、') || '未选择'}`
         );
         summary.appendChild(summaryMain);
         const summaryMeta = createStoreSyncNode('div', 'store-sync-confirm-meta');
@@ -780,7 +882,9 @@
         const locales = storeImageLocales(form);
         const key = item.dataset.field || item.dataset.slot || item.dataset.syncItemKey;
         const filled = locales.filter((locale) => (
-          item.dataset.syncItemType === 'store-image'
+          item.dataset.syncItemType === 'release-notes'
+            ? releaseNoteValue(form, locale).trim()
+            : item.dataset.syncItemType === 'store-image'
             ? hasStoreImageSlotValue(form, locale, key)
             : metadataValue(form, locale, key).trim()
         )).length;
@@ -837,6 +941,23 @@
           status.classList.toggle('warn', !filled);
         });
 
+        form.querySelectorAll('[data-release-note-input]').forEach((input) => {
+          const row = input.closest('[data-locale-row]');
+          const status = row?.querySelector('[data-release-note-status]');
+          const preview = row?.querySelector('[data-release-note-preview]');
+          const detail = row?.querySelector('[data-locale-detail-release-note]');
+          if (preview) {
+            preview.textContent = input.value.trim() || input.placeholder || 'Release Notes';
+          }
+          if (detail && detail !== document.activeElement) {
+            detail.value = input.value || '';
+          }
+          if (!status) return;
+          const filled = Boolean(input.value.trim());
+          status.textContent = filled ? '已填写' : '待填写';
+          status.classList.toggle('warn', !filled);
+        });
+
         form.querySelectorAll('[data-store-image-input]').forEach((input) => {
           const row = input.closest('[data-locale-row]');
           const status = row?.querySelector('[data-store-image-status]');
@@ -870,6 +991,7 @@
           });
         });
         syncCurrentMetadataEditors(form, activeLocale);
+        syncCurrentReleaseNoteEditors(form, activeLocale);
       }
 
       function flashButtonText(button, message) {
@@ -1378,6 +1500,42 @@
         });
       }
 
+      function setStoreWorkspaceMode(form, mode) {
+        if (!form) return;
+        const normalized = mode === 'suites' ? 'suites' : 'copy';
+        form.dataset.storeWorkspaceMode = normalized;
+        form.querySelectorAll('[data-sync-scope]').forEach((input) => {
+          input.dataset.userChanged = 'false';
+        });
+        if (normalized === 'suites') {
+          const firstImage = form.querySelector('[data-sync-item-type="store-image"]');
+          if (firstImage) form.dataset.selectedSyncItem = firstImage.dataset.syncItemKey;
+        } else {
+          const defaultCopy = form.querySelector('[data-default-focus="true"]')
+            || form.querySelector('[data-sync-item-type="field"]');
+          if (defaultCopy) form.dataset.selectedSyncItem = defaultCopy.dataset.syncItemKey;
+        }
+        syncMetadataEditor(form);
+      }
+
+      function syncStoreWorkspaceMode(form) {
+        if (!form) return;
+        const mode = form.dataset.storeWorkspaceMode === 'suites' ? 'suites' : 'copy';
+        form.querySelectorAll('[data-store-workspace-tab]').forEach((tab) => {
+          const active = tab.dataset.storeWorkspaceTab === mode;
+          tab.classList.toggle('is-active', active);
+          tab.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+        form.querySelectorAll('[data-store-workspace-screen]').forEach((screen) => {
+          screen.hidden = screen.dataset.storeWorkspaceScreen !== mode;
+        });
+        const copyBottom = form.querySelector('.copy-bottom-copy');
+        const suiteBottom = form.querySelector('.suite-bottom-copy');
+        if (copyBottom) copyBottom.hidden = mode !== 'copy';
+        if (suiteBottom) suiteBottom.hidden = mode !== 'suites';
+        syncStoreScopeInputs(form);
+      }
+
       function syncMetadataEditor(root = document) {
         const forms = root.matches?.('[data-metadata-form]')
           ? [root]
@@ -1389,6 +1547,7 @@
 
           form.querySelector('[data-metadata-editor]')?.setAttribute('data-mode', 'field');
           if (fieldView) fieldView.hidden = false;
+          syncStoreWorkspaceMode(form);
           syncMetadataWorkspace(form, activeLocale);
           syncCollapsibleLocaleGroups(form, activeLocale);
 
@@ -1770,6 +1929,14 @@
           );
           syncMetadataEditor(form);
         }
+        const currentReleaseNoteInput = event.target.closest('[data-current-release-note-editor]');
+        if (currentReleaseNoteInput) {
+          const form = currentReleaseNoteInput.closest('[data-metadata-form]');
+          const picker = form?.querySelector('[data-language-picker]');
+          const activeLocale = picker?.value || form?.dataset.sourceLocale;
+          setReleaseNoteValue(form, activeLocale, currentReleaseNoteInput.value);
+          syncMetadataEditor(form);
+        }
         const storeImageInput = event.target.closest('[data-store-image-input]');
         if (storeImageInput) {
           const form = storeImageInput.closest('[data-metadata-form]');
@@ -1789,6 +1956,16 @@
             localeDetailInput.dataset.locale,
             localeDetailInput.dataset.field,
             localeDetailInput.value
+          );
+          syncMetadataEditor(form);
+        }
+        const localeDetailReleaseNote = event.target.closest('[data-locale-detail-release-note]');
+        if (localeDetailReleaseNote) {
+          const form = localeDetailReleaseNote.closest('[data-metadata-form]');
+          setReleaseNoteValue(
+            form,
+            localeDetailReleaseNote.dataset.locale,
+            localeDetailReleaseNote.value
           );
           syncMetadataEditor(form);
         }
@@ -1818,6 +1995,11 @@
         }
         if (event.target.closest('[data-language-picker]')) {
           syncMetadataEditor();
+        }
+        const syncScope = event.target.closest('[data-sync-scope]');
+        if (syncScope) {
+          syncScope.dataset.userChanged = 'true';
+          syncStoreScopeInputs(syncScope.closest('[data-metadata-form]'));
         }
         if (event.target.closest('[data-app-log-levels] input')) {
           renderAppLogs();
@@ -1939,6 +2121,15 @@
           return;
         }
 
+        const workspaceTab = event.target.closest('[data-store-workspace-tab]');
+        if (workspaceTab) {
+          setStoreWorkspaceMode(
+            workspaceTab.closest('[data-metadata-form]'),
+            workspaceTab.dataset.storeWorkspaceTab
+          );
+          return;
+        }
+
         const localeToggle = event.target.closest('[data-locale-group-toggle]');
         if (localeToggle && localeToggle.dataset.localeToggleBound !== 'true') {
           const group = localeToggle.closest('[data-locale-group]');
@@ -2049,6 +2240,20 @@
             const status = form?.querySelector('[data-content-set-status]');
             if (status) status.textContent = '套件保存失败';
           });
+          return;
+        }
+
+        const suiteCard = event.target.closest('[data-suite-card]');
+        if (suiteCard) {
+          const form = suiteCard.closest('[data-metadata-form]');
+          const suiteId = suiteCard.dataset.contentSetId;
+          if (form && suiteId) {
+            const picker = form.querySelector('[data-content-set-picker]');
+            if (picker) picker.value = suiteId;
+            syncContentSetControls(form);
+            replaceContentSetUrl(form, suiteId);
+            window.location.reload();
+          }
           return;
         }
 

@@ -14,6 +14,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from testflying_api.admin.security import require_admin
@@ -46,7 +47,7 @@ from testflying_api.app_logs import build_app_log_connect_context
 from testflying_api.database import get_db_session
 from testflying_api.errors import ApiError
 from testflying_api.models import UploadResponse
-from testflying_api.schema import App, DeveloperAccount
+from testflying_api.schema import App, DeveloperAccount, StoreImageSuite, StoreImageSuiteLocale
 from testflying_api.store_image_requirements import validate_store_image
 from testflying_api.store_sync import (
     DEFAULT_CONTENT_SET_ID,
@@ -54,6 +55,7 @@ from testflying_api.store_sync import (
     DEFAULT_LOCALE,
     account_connector,
     check_connector_health,
+    metadata_draft_for_scope,
     resolve_connector_base_url,
     save_app_metadata_draft,
     save_connector,
@@ -866,6 +868,14 @@ async def save_store_metadata_page(
             current_locale=locale,
             store_image_assets_by_locale=store_image_assets,
         )
+        _save_store_image_suite_rows(
+            session,
+            account_id=account_id,
+            app=app,
+            suite_id=content_set_id,
+            suite_name=content_set_name,
+            metadata_rows=metadata_rows,
+        )
         for row in metadata_rows:
             save_app_metadata_draft(
                 session,
@@ -879,6 +889,14 @@ async def save_store_metadata_page(
                 promotional_text=row["promotional_text"],
                 description=row["description"],
                 store_images=row["store_images"],
+            )
+            save_release_note_draft(
+                session,
+                account_id=account_id,
+                app_id=app_id,
+                version=version,
+                locale=row["locale"],
+                release_notes=row["release_notes"],
             )
         session.commit()
         context = store_metadata_context(
@@ -933,6 +951,17 @@ async def create_store_metadata_content_set(
     content_set_name = _form_value(form, "contentSetName", content_set_id)
     try:
         metadata_rows = _metadata_rows_from_request_form(form, current_locale=locale)
+        app = scoped_app(session, account_id, app_id)
+        if app is None:
+            raise ApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
+        _save_store_image_suite_rows(
+            session,
+            account_id=account_id,
+            app=app,
+            suite_id=content_set_id,
+            suite_name=content_set_name,
+            metadata_rows=metadata_rows,
+        )
         for row in metadata_rows:
             save_app_metadata_draft(
                 session,
@@ -946,6 +975,14 @@ async def create_store_metadata_content_set(
                 promotional_text=row["promotional_text"],
                 description=row["description"],
                 store_images=row["store_images"],
+            )
+            save_release_note_draft(
+                session,
+                account_id=account_id,
+                app_id=app_id,
+                version=version,
+                locale=row["locale"],
+                release_notes=row["release_notes"],
             )
         session.commit()
     except ApiError as error:
@@ -1028,24 +1065,60 @@ async def sync_store_metadata_page(
             current_locale=locale,
             store_image_assets_by_locale=store_image_assets,
         )
+        requested_sync_scopes = _form_values(form, "syncScopes")
+        sync_scopes = set(requested_sync_scopes or ["metadata"])
+        include_store_images = requested_sync_scopes is None or "store_images" in sync_scopes
+        if "store_images" in sync_scopes:
+            _save_store_image_suite_rows(
+                session,
+                account_id=account_id,
+                app=app,
+                suite_id=content_set_id,
+                suite_name=content_set_name,
+                metadata_rows=metadata_rows,
+            )
         sync_runs = []
         for row in metadata_rows:
-            sync_runs.append(
-                sync_app_metadata(
+            if "metadata" in sync_scopes:
+                store_images_for_draft = _metadata_store_images_for_sync(
                     session,
                     account_id=account_id,
-                    app_id=app_id,
+                    app=app,
                     version=version,
                     locale=row["locale"],
                     content_set_id=content_set_id,
-                    content_set_name=content_set_name,
-                    keywords=row["keywords"],
-                    promotional_text=row["promotional_text"],
-                    description=row["description"],
-                    actor="admin",
-                    store_images=row["store_images"],
+                    row_store_images=row["store_images"],
+                    include_store_images=include_store_images,
                 )
-            )
+                sync_runs.append(
+                    sync_app_metadata(
+                        session,
+                        account_id=account_id,
+                        app_id=app_id,
+                        version=version,
+                        locale=row["locale"],
+                        content_set_id=content_set_id,
+                        content_set_name=content_set_name,
+                        keywords=row["keywords"],
+                        promotional_text=row["promotional_text"],
+                        description=row["description"],
+                        actor="admin",
+                        store_images=store_images_for_draft,
+                        include_store_images_in_payload=include_store_images,
+                    )
+                )
+            if "release_notes" in sync_scopes:
+                sync_runs.append(
+                    sync_release_notes(
+                        session,
+                        account_id=account_id,
+                        app_id=app_id,
+                        version=version,
+                        locale=row["locale"],
+                        release_notes=row["release_notes"],
+                        actor="admin",
+                    )
+                )
         session.commit()
         context = store_metadata_context(
             session,
@@ -1057,11 +1130,21 @@ async def sync_store_metadata_page(
         )
         session.commit()
         success_count = sum(1 for run in sync_runs if run.status == "succeeded")
-        message = (
-            f"商店元数据已同步 {len(sync_runs)} 个语言"
-            if success_count == len(sync_runs)
-            else f"同步已完成，成功 {success_count}/{len(sync_runs)} 个语言"
-        )
+        if sync_runs:
+            if sync_scopes == {"metadata"}:
+                message = (
+                    f"商店元数据已同步 {len(sync_runs)} 个语言"
+                    if success_count == len(sync_runs)
+                    else f"同步已完成，成功 {success_count}/{len(sync_runs)} 个语言"
+                )
+            else:
+                message = (
+                    f"已同步 {len(sync_runs)} 个任务"
+                    if success_count == len(sync_runs)
+                    else f"同步已完成，成功 {success_count}/{len(sync_runs)} 个任务"
+                )
+        else:
+            message = "商店图套件草稿已保存；当前 connector 暂未实现商店图单独同步"
         return templates.TemplateResponse(
             request,
             "admin/store_metadata.html",
@@ -1386,6 +1469,7 @@ def _metadata_rows_from_request_form(
         keywords=_form_values(form, "keywords"),
         promotional_text=_form_values(form, "promotionalText"),
         description=_form_values(form, "description"),
+        release_notes=_form_values(form, "releaseNotes"),
         feature_graphic_url=_form_values(form, "featureGraphicUrl"),
         phone_screenshots=_form_values(form, "phoneScreenshots"),
         tablet_screenshots=_form_values(form, "tabletScreenshots"),
@@ -1510,6 +1594,7 @@ def _metadata_rows_from_form(
     keywords: list[str] | None,
     promotional_text: list[str] | None,
     description: list[str] | None,
+    release_notes: list[str] | None,
     feature_graphic_url: list[str] | None,
     phone_screenshots: list[str] | None,
     tablet_screenshots: list[str] | None,
@@ -1522,6 +1607,7 @@ def _metadata_rows_from_form(
             "keywords": _form_list_value(keywords, index),
             "promotional_text": _form_list_value(promotional_text, index),
             "description": _form_list_value(description, index),
+            "release_notes": _form_list_value(release_notes, index),
             "store_images": {
                 "feature_graphic_url": _store_image_form_value(
                     feature_graphic_url,
@@ -1556,6 +1642,7 @@ def _metadata_rows_from_form(
         row["keywords"] = row["keywords"] or base_row["keywords"]
         row["promotional_text"] = row["promotional_text"] or base_row["promotional_text"]
         row["description"] = row["description"] or base_row["description"]
+        row["release_notes"] = row["release_notes"] or base_row["release_notes"]
         row["store_images"] = _merge_store_images(row["store_images"], base_row["store_images"])
     return rows
 
@@ -1570,6 +1657,119 @@ def _merge_store_images(
         base = base_store_images.get(key)
         merged[key] = current if _has_store_image_value(current) else base
     return merged
+
+
+def _metadata_store_images_for_sync(
+    session: Session,
+    *,
+    account_id: str,
+    app: App,
+    version: str,
+    locale: str,
+    content_set_id: str,
+    row_store_images: dict[str, object],
+    include_store_images: bool,
+) -> dict[str, object]:
+    if include_store_images:
+        return row_store_images
+    existing = metadata_draft_for_scope(
+        session,
+        account_id=account_id,
+        app_id=app.id,
+        platform=app.platform,
+        version=version,
+        locale=locale,
+        content_set_id=content_set_id,
+    )
+    if existing is not None and isinstance(existing.store_images_json, dict):
+        return dict(existing.store_images_json)
+    return row_store_images
+
+
+def _save_store_image_suite_rows(
+    session: Session,
+    *,
+    account_id: str,
+    app: App,
+    suite_id: str,
+    suite_name: str,
+    metadata_rows: list[dict[str, object]],
+) -> StoreImageSuite:
+    normalized_suite_id = (suite_id or DEFAULT_CONTENT_SET_ID).strip() or DEFAULT_CONTENT_SET_ID
+    normalized_suite_name = (
+        (suite_name or DEFAULT_CONTENT_SET_NAME).strip()
+        or (
+            DEFAULT_CONTENT_SET_NAME
+            if normalized_suite_id == DEFAULT_CONTENT_SET_ID
+            else normalized_suite_id
+        )
+    )
+    suite = session.scalar(
+        select(StoreImageSuite).where(
+            StoreImageSuite.developer_account_id == account_id,
+            StoreImageSuite.app_id == app.id,
+            StoreImageSuite.platform == app.platform,
+            StoreImageSuite.suite_id == normalized_suite_id,
+        )
+    )
+    now = datetime.now(UTC)
+    if suite is None:
+        suite = StoreImageSuite(
+            id=f"image-suite-{uuid4().hex[:12]}",
+            developer_account_id=account_id,
+            app_id=app.id,
+            platform=app.platform,
+            suite_id=normalized_suite_id,
+            suite_name=normalized_suite_name,
+            source="admin",
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(suite)
+    else:
+        suite.suite_name = normalized_suite_name
+        suite.source = "admin"
+        suite.updated_at = now
+    session.flush()
+    for row in metadata_rows:
+        _save_store_image_suite_locale_row(
+            session,
+            suite=suite,
+            locale=str(row["locale"]),
+            store_images=row["store_images"],
+        )
+    return suite
+
+
+def _save_store_image_suite_locale_row(
+    session: Session,
+    *,
+    suite: StoreImageSuite,
+    locale: str,
+    store_images: object,
+) -> StoreImageSuiteLocale:
+    suite_locale = session.scalar(
+        select(StoreImageSuiteLocale).where(
+            StoreImageSuiteLocale.image_suite_id == suite.id,
+            StoreImageSuiteLocale.locale == locale,
+        )
+    )
+    now = datetime.now(UTC)
+    store_images_json = dict(store_images) if isinstance(store_images, dict) else {}
+    if suite_locale is None:
+        suite_locale = StoreImageSuiteLocale(
+            id=f"image-suite-locale-{uuid4().hex[:12]}",
+            image_suite_id=suite.id,
+            locale=locale,
+            store_images_json=store_images_json,
+            updated_at=now,
+        )
+        session.add(suite_locale)
+    else:
+        suite_locale.store_images_json = store_images_json
+        suite_locale.updated_at = now
+    session.flush()
+    return suite_locale
 
 
 def _store_image_form_value(

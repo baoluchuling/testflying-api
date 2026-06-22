@@ -724,6 +724,7 @@ def sync_app_metadata(
     description: str,
     actor: str,
     store_images: dict[str, object] | None = None,
+    include_store_images_in_payload: bool = True,
     client: StoreConnectorClient | None = None,
 ) -> StoreSyncRun:
     app = scoped_app(session, account_id, app_id)
@@ -786,7 +787,10 @@ def sync_app_metadata(
         operation=UPDATE_APP_METADATA,
         version=version,
         locale=locale,
-        metadata=_metadata_payload(draft),
+        metadata=_metadata_payload(
+            draft,
+            include_store_images=include_store_images_in_payload,
+        ),
     )
     connector_client = client or StoreConnectorClient()
     try:
@@ -1003,8 +1007,12 @@ def _app_payload(app: App) -> dict[str, object]:
     }
 
 
-def _metadata_payload(draft: StoreAppMetadataDraft) -> dict[str, object]:
-    return {
+def _metadata_payload(
+    draft: StoreAppMetadataDraft,
+    *,
+    include_store_images: bool = True,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
         "contentSet": {
             "id": draft.content_set_id,
             "name": draft.content_set_name,
@@ -1012,8 +1020,10 @@ def _metadata_payload(draft: StoreAppMetadataDraft) -> dict[str, object]:
         "keywords": draft.keywords,
         "promotionalText": draft.promotional_text,
         "description": draft.description,
-        "storeImages": draft.store_images_json,
     }
+    if include_store_images:
+        payload["storeImages"] = draft.store_images_json
+    return payload
 
 
 def _normalize_store_images(raw_images: dict[str, object] | None) -> dict[str, object]:

@@ -74,6 +74,7 @@ def create_app(
         devices,
         health,
         notifications,
+        store_management,
         uploads,
         workspace,
     )
@@ -84,6 +85,7 @@ def create_app(
     app.include_router(admin_routes.router)
     app.include_router(workspace.router)
     app.include_router(uploads.router)
+    app.include_router(store_management.router)
     app.include_router(devices.router)
     app.include_router(accounts.router)
     app.include_router(notifications.router)

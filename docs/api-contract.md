@@ -93,6 +93,84 @@ iOS 上传会从 IPA 的 `Payload/*.app/Info.plist` 解析 bundle id、应用名
 
 上传不会创建安装任务，也不会记录某台设备是否安装过该构建。
 
+## 导入商店内容套件
+
+```http
+POST /v1/store-management/developer-accounts/{accountId}/apps/{appId}/metadata-content-sets
+Authorization: Bearer <TESTFLYING_STATIC_TOKEN>
+Content-Type: multipart/form-data
+```
+
+这个接口给内部脚本、CI 或素材生成工具使用。它只把商店元数据和商店图保存到
+testflying 的商店内容草稿，不调用 connector，不做商店版本预检查，也不同步到 App Store
+Connect 或 Google Play Console。
+
+表单字段：
+
+- `metadata`：必填，JSON 字符串。
+- `storeImageFiles__phone_screenshots__{locale}`：可选，当前语言的手机截图，支持多文件。
+- `storeImageFiles__tablet_screenshots__{locale}`：可选，当前语言的平板截图，支持多文件。
+- `storeImageFiles__feature_graphic_url__{locale}`：可选，当前语言的 Google Play 功能宣传图。
+
+图片字段的素材类型也兼容 camelCase，例如
+`storeImageFiles__phoneScreenshots__en-US`。上传图片会保存到当前对象存储后端，并按 App
+平台校验尺寸和格式：iOS 使用 App Store Connect 截图精确尺寸规则，Android 使用 Google Play
+截图和 Feature graphic 规则。
+
+`metadata` 示例：
+
+```json
+{
+  "version": "1.0.0",
+  "contentSet": {
+    "id": "summer-a",
+    "name": "暑期截图方案 A"
+  },
+  "sourceLocale": "en-US",
+  "locales": [
+    {
+      "locale": "en-US",
+      "keywords": "novel,reader,story",
+      "promotionalText": "Read better stories every day.",
+      "description": "Long store description.",
+      "storeImages": {
+        "phoneScreenshots": [
+          "https://cdn.example.test/source-phone.png"
+        ]
+      }
+    },
+    {
+      "locale": "zh-Hant",
+      "keywords": "",
+      "promotionalText": "",
+      "description": ""
+    }
+  ]
+}
+```
+
+如果某个语言的 `keywords`、`promotionalText`、`description` 或商店图为空，会使用
+`sourceLocale` 对应内容填充。`description` 最终不能为空，否则返回 `422`。
+
+成功响应：
+
+```json
+{
+  "contentSet": {
+    "id": "summer-a",
+    "name": "暑期截图方案 A"
+  },
+  "version": "1.0.0",
+  "locales": ["en-US", "zh-Hant"],
+  "savedDrafts": 2,
+  "uploadedAssets": 3,
+  "warnings": []
+}
+```
+
+这个接口不会创建 `store_sync_runs` 记录。后续需要同步到商店时，仍然从管理后台打开对应
+App 的商店元数据页面，选择同一个商店内容套件，再执行预检查和同步。
+
 ## 管理后台
 
 ```http
@@ -130,7 +208,7 @@ GET /admin/notifications
 
 后台上传表单复用 `POST /v1/test-distribution/uploads` 的业务逻辑，上传成功后同样会创建应用、构建、制品、iOS manifest 和通知。后台页面使用浏览器上传进度事件展示上传百分比；服务端收到完整文件后再解析包信息和写入数据库。MinIO Console 只管理对象存储文件，不能替代管理后台上传，因为直接上传到 MinIO 不会写入业务数据库。
 
-开发者账号后台支持新增/编辑账号、配置账号级 connector、检查 connector 连接状态、绑定/解绑 App、维护 App 商店标识，并在账号上下文中同步版本说明和商店元数据。每个开发者账号只能有一个 connector，保存后只能编辑原 connector；账号详情页进入时会自动检查一次连接状态。App 商店标识按平台收窄：iOS 只填 App Store Connect App ID，Android 只填 Google Play package name。商店元数据支持多语言编辑，语言列表只使用 connector 从商店 App 拉取的实际支持语言；页面默认优先使用 `en-US` 作为源文案语言，并按 App 平台展示术语：iOS 显示 App Store Connect 的 `Keywords`、`Promotional Text`、`Description`、`iPhone screenshots` 和 `iPad screenshots`；Android 显示 Google Play 的 `Full description`、`Feature graphic`、`Phone screenshots` 和 `Tablet screenshots`。标题、副标题、隐私政策 URL、支持 URL、营销 URL、App 图标和素材备注当前不支持设置。商店元数据支持多套内容草稿，文案和商店图都按 `content_set_id` 隔离保存；页面可以选择已有套件打开，也可以新建或复制当前套件。后台会把图片保存到对象存储，并在同步 payload 的 `metadata.storeImages` 中传给 connector。商店同步页面进入时会自动预检查；相同账号、App、平台、版本、语言和操作的预检查结果缓存 5 分钟；商店元数据页的实时查询按钮可以绕过 5 分钟缓存，但同一请求 1 分钟内只允许触发一次；同步前中心后台会按平台校验商店文案字段长度，校验失败时不调用 connector。当前尚未做商店截图尺寸校验和商店侧截图上传适配；connector 是独立 Go 服务，支持 Linux、macOS 和 Windows 单二进制运行，也支持 Docker 镜像部署；生产环境使用 `TESTFLYING_CONNECTOR_STORE_MODE=live` 并在 connector 部署机器挂载 Apple `.p8` 或 Google service account JSON；中心后台不保存这些商店凭据。
+开发者账号后台支持新增/编辑账号、配置账号级 connector、检查 connector 连接状态、绑定/解绑 App、维护 App 商店标识，并在账号上下文中同步版本说明和商店元数据。每个开发者账号只能有一个 connector，保存后只能编辑原 connector；账号详情页进入时会自动检查一次连接状态。App 商店标识按平台收窄：iOS 只填 App Store Connect App ID，Android 只填 Google Play package name。商店元数据支持多语言编辑，语言列表只使用 connector 从商店 App 拉取的实际支持语言；页面默认优先使用 `en-US` 作为源文案语言，并按 App 平台展示术语：iOS 显示 App Store Connect 的 `Keywords`、`Promotional Text`、`Description`、`iPhone screenshots` 和 `iPad screenshots`；Android 显示 Google Play 的 `Full description`、`Feature graphic`、`Phone screenshots` 和 `Tablet screenshots`。标题、副标题、隐私政策 URL、支持 URL、营销 URL、App 图标和素材备注当前不支持设置。商店元数据支持多套内容草稿，文案和商店图都按 `content_set_id` 隔离保存；页面可以选择已有套件打开，也可以新建或复制当前套件。后台会把图片保存到对象存储，并在同步 payload 的 `metadata.storeImages` 中传给 connector。商店同步页面进入时会自动预检查；相同账号、App、平台、版本、语言和操作的预检查结果缓存 5 分钟；商店元数据页的实时查询按钮可以绕过 5 分钟缓存，但同一请求 1 分钟内只允许触发一次；同步前中心后台会按平台校验商店文案字段长度和图片尺寸，校验失败时不调用 connector。商店侧截图上传适配由 connector 后续消费 `metadata.storeImages` 完成；connector 是独立 Go 服务，支持 Linux、macOS 和 Windows 单二进制运行，也支持 Docker 镜像部署；生产环境使用 `TESTFLYING_CONNECTOR_STORE_MODE=live` 并在 connector 部署机器挂载 Apple `.p8` 或 Google service account JSON；中心后台不保存这些商店凭据。
 
 ## 设备
 

@@ -1163,8 +1163,6 @@ def _build_windows_connector_package(
     }
     secrets_to_write: list[tuple[str, bytes]] = []
 
-    apple_needed = platform in {"ios", "mixed"}
-    google_needed = platform in {"android", "mixed"}
     if apple_file is not None:
         apple_filename, apple_content = apple_file
         if not apple_filename.lower().endswith(".p8"):
@@ -1188,12 +1186,6 @@ def _build_windows_connector_package(
             "privateKeyPath": apple_path,
         }
         secrets_to_write.append((f"secrets/apple/{apple_filename}", apple_content))
-    elif apple_needed and platform == "ios":
-        raise ApiError(
-            "missing_apple_key",
-            "iOS 账号需要上传 App Store Connect .p8 凭据",
-            status_code=422,
-        )
 
     if google_file is not None:
         google_filename, google_content = google_file
@@ -1208,15 +1200,6 @@ def _build_windows_connector_package(
         google_path = f"{root}\\secrets\\google\\{google_filename}"
         config["google"] = {"serviceAccountJsonPath": google_path}
         secrets_to_write.append((f"secrets/google/{google_filename}", google_content))
-    elif google_needed and platform == "android":
-        raise ApiError(
-            "missing_google_key",
-            "Android 账号需要上传 Google Play service-account JSON",
-            status_code=422,
-        )
-
-    if platform == "mixed" and not secrets_to_write:
-        raise ApiError("missing_credentials", "请至少上传一组商店凭据", status_code=422)
 
     buffer = BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:

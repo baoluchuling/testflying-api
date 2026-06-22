@@ -306,6 +306,9 @@ def test_admin_developer_account_detail_renders_store_sync_entry(
     assert "App Store Connect live 模式" in response.text
     assert "TESTFLYING_CONNECTOR_APPLE_ISSUER_ID" in response.text
     assert "TESTFLYING_CONNECTOR_APPLE_PRIVATE_KEY_PATH" in response.text
+    assert "Google Play Console" in response.text
+    assert "Service Account JSON" in response.text
+    assert "如果这个 connector 也要同步 Android App" in response.text
     assert "Google Play live 模式" not in response.text
     assert "TESTFLYING_CONNECTOR_GOOGLE_SERVICE_ACCOUNT_JSON_PATH" not in response.text
     assert "hidden" in response.text
@@ -680,6 +683,53 @@ def test_admin_can_generate_windows_active_connector_package(
     assert connector.base_url == "active://account-apple-enterprise"
     assert connector.auth_token == config["connectorToken"]
     assert "TESTFLYING_CONNECTOR_CONFIG_PATH" in install_script
+
+
+def test_admin_windows_active_connector_package_can_include_google_credentials(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+
+    response = client.post(
+        "/admin/developer-accounts/account-apple-enterprise/connector/windows-package",
+        headers=_admin_headers(),
+        data={
+            "appleIssuerId": "issuer-123",
+            "appleKeyId": "",
+        },
+        files=[
+            (
+                "applePrivateKey",
+                (
+                    "AuthKey_ABC123.p8",
+                    b"-----BEGIN PRIVATE KEY-----\nkey\n-----END PRIVATE KEY-----",
+                    "application/octet-stream",
+                ),
+            ),
+            (
+                "googleServiceAccount",
+                (
+                    "service-account.json",
+                    b'{"client_email":"robot@example.test","private_key":"key"}',
+                    "application/json",
+                ),
+            ),
+        ],
+    )
+
+    with ZipFile(BytesIO(response.content)) as archive:
+        names = set(archive.namelist())
+        config = json.loads(archive.read("config.json").decode("utf-8"))
+
+    assert response.status_code == 200
+    assert "secrets/apple/AuthKey_ABC123.p8" in names
+    assert "secrets/google/service-account.json" in names
+    assert config["apple"]["issuerId"] == "issuer-123"
+    assert config["apple"]["keyId"] == "ABC123"
+    assert config["google"]["serviceAccountJsonPath"].endswith(
+        r"\secrets\google\service-account.json"
+    )
 
 
 def test_admin_release_notes_page_runs_cached_preflight(

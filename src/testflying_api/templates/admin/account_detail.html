@@ -159,33 +159,42 @@
             <span class="badge muted">active connector</span>
           </div>
           <div class="connector-package-grid">
-            {% if account_store_platform in ["ios", "mixed"] %}
-              <fieldset>
-                <legend>App Store Connect</legend>
-                <label>
-                  Issuer ID
-                  <input name="appleIssuerId" placeholder="App Store Connect Issuer ID" {% if account_store_platform == "ios" %}required{% endif %}>
-                </label>
-                <label>
-                  Key ID
-                  <input name="appleKeyId" placeholder="可从 AuthKey_XXXX.p8 自动识别">
-                </label>
-                <label>
-                  API Key (.p8)
-                  <input name="applePrivateKey" type="file" accept=".p8" {% if account_store_platform == "ios" %}required{% endif %}>
-                </label>
-              </fieldset>
-            {% endif %}
-            {% if account_store_platform in ["android", "mixed"] %}
-              <fieldset>
-                <legend>Google Play Console</legend>
-                <label>
-                  Service Account JSON
-                  <input name="googleServiceAccount" type="file" accept=".json,application/json" {% if account_store_platform == "android" %}required{% endif %}>
-                </label>
-                <p>使用 Google Cloud service account JSON，应用仍然按 package name 关联。</p>
-              </fieldset>
-            {% endif %}
+            <fieldset>
+              <legend>App Store Connect</legend>
+              <label>
+                Issuer ID
+                <input name="appleIssuerId" placeholder="App Store Connect Issuer ID" {% if account_store_platform == "ios" %}required{% endif %}>
+              </label>
+              <label>
+                Key ID
+                <input name="appleKeyId" placeholder="可从 AuthKey_XXXX.p8 自动识别">
+              </label>
+              <label>
+                API Key (.p8)
+                <input name="applePrivateKey" type="file" accept=".p8" {% if account_store_platform == "ios" %}required{% endif %}>
+              </label>
+              <p>
+                {% if account_store_platform == "ios" %}
+                  当前账号已关联 iOS App，这组凭据必填。
+                {% else %}
+                  如果这个 connector 也要同步 iOS App，可以一并上传 Apple 凭据。
+                {% endif %}
+              </p>
+            </fieldset>
+            <fieldset>
+              <legend>Google Play Console</legend>
+              <label>
+                Service Account JSON
+                <input name="googleServiceAccount" type="file" accept=".json,application/json" {% if account_store_platform == "android" %}required{% endif %}>
+              </label>
+              <p>
+                {% if account_store_platform == "android" %}
+                  当前账号已关联 Android App，这组凭据必填。
+                {% else %}
+                  如果这个 connector 也要同步 Android App，可以一并上传 Google service account JSON。
+                {% endif %}
+              </p>
+            </fieldset>
           </div>
           <div class="connector-package-actions">
             <button class="primary-button" type="submit">生成并下载安装包</button>

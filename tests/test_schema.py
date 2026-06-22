@@ -24,6 +24,8 @@ def test_catalog_schema_contains_no_user_state_tables() -> None:
         "store_connectors",
         "store_release_note_drafts",
         "store_app_metadata_drafts",
+        "store_image_suites",
+        "store_image_suite_locales",
         "store_preflight_checks",
         "store_sync_runs",
         "audit_logs",
@@ -54,3 +56,36 @@ def test_store_metadata_drafts_include_image_settings() -> None:
     }
 
     assert "store_images_json" in columns
+
+
+def test_store_image_suites_are_unique_per_app_scope() -> None:
+    engine = create_engine_for_url("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+
+    constraints = inspect(engine).get_unique_constraints("store_image_suites")
+
+    assert any(
+        constraint["column_names"] == [
+            "developer_account_id",
+            "app_id",
+            "platform",
+            "suite_id",
+        ]
+        for constraint in constraints
+    )
+
+
+def test_store_image_suite_locales_store_images_by_locale() -> None:
+    engine = create_engine_for_url("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+
+    columns = {
+        column["name"]
+        for column in inspect(engine).get_columns("store_image_suite_locales")
+    }
+    constraints = inspect(engine).get_unique_constraints("store_image_suite_locales")
+
+    assert "store_images_json" in columns
+    assert any(
+        constraint["column_names"] == ["image_suite_id", "locale"] for constraint in constraints
+    )

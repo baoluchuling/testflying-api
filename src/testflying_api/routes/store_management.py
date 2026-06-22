@@ -3,21 +3,27 @@ from __future__ import annotations
 import json
 import re
 import secrets
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from testflying_api.database import get_db_session
 from testflying_api.errors import ApiError
+from testflying_api.schema import StoreImageSuite, StoreImageSuiteLocale
 from testflying_api.store_image_requirements import validate_store_image
 from testflying_api.store_sync import (
     DEFAULT_CONTENT_SET_ID,
     DEFAULT_CONTENT_SET_NAME,
     DEFAULT_LOCALE,
+    metadata_draft_for_scope,
     save_app_metadata_draft,
+    save_release_note_draft,
     scoped_app,
 )
 
@@ -70,6 +76,56 @@ class MetadataContentSetResponse(CamelModel):
     version: str
     locales: list[str]
     saved_drafts: int = Field(alias="savedDrafts")
+    uploaded_assets: int = Field(alias="uploadedAssets")
+    warnings: list[str] = Field(default_factory=list)
+
+
+class VersionLocaleDraftInput(CamelModel):
+    locale: str
+    keywords: str = ""
+    promotional_text: str = Field(default="", alias="promotionalText")
+    description: str = ""
+    release_notes: str = Field(default="", alias="releaseNotes")
+
+
+class StoreVersionDraftImport(CamelModel):
+    source_locale: str = Field(default=DEFAULT_LOCALE, alias="sourceLocale")
+    locales: list[VersionLocaleDraftInput]
+
+
+class StoreVersionDraftResponse(CamelModel):
+    version: str
+    locales: list[str]
+    saved_metadata_drafts: int = Field(alias="savedMetadataDrafts")
+    saved_release_note_drafts: int = Field(alias="savedReleaseNoteDrafts")
+    warnings: list[str] = Field(default_factory=list)
+
+
+class StoreImageSuiteInput(CamelModel):
+    id: str = DEFAULT_CONTENT_SET_ID
+    name: str = "默认商店图"
+
+
+class LocaleStoreImagesInput(CamelModel):
+    locale: str
+    store_images: dict[str, object] = Field(default_factory=dict, alias="storeImages")
+
+
+class StoreImageSuiteImport(CamelModel):
+    image_suite: StoreImageSuiteInput = Field(
+        default_factory=StoreImageSuiteInput,
+        alias="imageSuite",
+    )
+    source: str = "api"
+    source_locale: str = Field(default=DEFAULT_LOCALE, alias="sourceLocale")
+    locales: list[LocaleStoreImagesInput]
+    store_images: dict[str, object] = Field(default_factory=dict, alias="storeImages")
+
+
+class StoreImageSuiteResponse(CamelModel):
+    image_suite: StoreImageSuiteInput = Field(alias="imageSuite")
+    locales: list[str]
+    saved_locales: int = Field(alias="savedLocales")
     uploaded_assets: int = Field(alias="uploadedAssets")
     warnings: list[str] = Field(default_factory=list)
 
@@ -130,6 +186,126 @@ async def import_metadata_content_set(
     )
 
 
+@router.post(
+    "/developer-accounts/{account_id}/apps/{app_id}/store-versions/{version}/draft",
+    response_model=StoreVersionDraftResponse,
+)
+async def import_store_version_draft(
+    account_id: str,
+    app_id: str,
+    version: str,
+    request: Request,
+    session: SessionDep,
+) -> StoreVersionDraftResponse:
+    _require_static_token(request)
+    payload = await _store_version_payload_from_request(request)
+    app = scoped_app(session, account_id, app_id)
+    if app is None:
+        raise ApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
+
+    rows = _version_draft_rows(payload)
+    saved_metadata_drafts = 0
+    saved_release_note_drafts = 0
+    for row in rows:
+        if row["save_metadata"]:
+            existing = metadata_draft_for_scope(
+                session,
+                account_id=account_id,
+                app_id=app_id,
+                platform=app.platform,
+                version=version,
+                locale=str(row["locale"]),
+                content_set_id=DEFAULT_CONTENT_SET_ID,
+            )
+            save_app_metadata_draft(
+                session,
+                account_id=account_id,
+                app_id=app_id,
+                version=version,
+                locale=str(row["locale"]),
+                content_set_id=DEFAULT_CONTENT_SET_ID,
+                content_set_name=DEFAULT_CONTENT_SET_NAME,
+                keywords=str(row["keywords"]),
+                promotional_text=str(row["promotional_text"]),
+                description=str(row["description"]),
+                store_images=existing.store_images_json if existing is not None else {},
+            )
+            saved_metadata_drafts += 1
+
+        save_release_note_draft(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            version=version,
+            locale=str(row["locale"]),
+            release_notes=str(row["release_notes"]),
+        )
+        saved_release_note_drafts += 1
+
+    session.commit()
+    return StoreVersionDraftResponse(
+        version=version,
+        locales=[str(row["locale"]) for row in rows],
+        savedMetadataDrafts=saved_metadata_drafts,
+        savedReleaseNoteDrafts=saved_release_note_drafts,
+        warnings=[],
+    )
+
+
+@router.post(
+    "/developer-accounts/{account_id}/apps/{app_id}/store-image-suites",
+    response_model=StoreImageSuiteResponse,
+)
+async def import_store_image_suite(
+    account_id: str,
+    app_id: str,
+    request: Request,
+    session: SessionDep,
+) -> StoreImageSuiteResponse:
+    _require_static_token(request)
+    form = await request.form()
+    payload = _store_image_suite_payload_from_form(form)
+    app = scoped_app(session, account_id, app_id)
+    if app is None:
+        raise ApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
+
+    suite_id = _normalize_suite_id(payload.image_suite.id)
+    suite_name = _normalize_suite_name(payload.image_suite.name, suite_id)
+    uploaded_assets = await _store_image_assets_from_form(
+        form,
+        request=request,
+        account_id=account_id,
+        app_id=app_id,
+        platform=app.platform,
+        image_suite_id=suite_id,
+    )
+    rows = _image_suite_rows(payload, uploaded_assets)
+    suite = _save_image_suite(
+        session,
+        account_id=account_id,
+        app_id=app_id,
+        platform=app.platform,
+        suite_id=suite_id,
+        suite_name=suite_name,
+        source=payload.source,
+    )
+    for row in rows:
+        _save_image_suite_locale(
+            session,
+            suite=suite,
+            locale=str(row["locale"]),
+            store_images=row["store_images"],
+        )
+    session.commit()
+    return StoreImageSuiteResponse(
+        imageSuite=StoreImageSuiteInput(id=suite_id, name=suite_name),
+        locales=[str(row["locale"]) for row in rows],
+        savedLocales=len(rows),
+        uploadedAssets=_uploaded_asset_count(uploaded_assets),
+        warnings=[],
+    )
+
+
 def _require_static_token(request: Request) -> None:
     expected = f"Bearer {request.app.state.settings.static_token}"
     authorization = request.headers.get("Authorization", "")
@@ -152,6 +328,33 @@ def _metadata_payload_from_form(form: object) -> MetadataContentSetImport:
         ) from error
 
 
+async def _store_version_payload_from_request(request: Request) -> StoreVersionDraftImport:
+    try:
+        decoded = await request.json()
+        return StoreVersionDraftImport.model_validate(decoded)
+    except (json.JSONDecodeError, ValidationError) as error:
+        raise ApiError(
+            "invalid_metadata",
+            f"metadata JSON 格式不正确：{error}",
+            status_code=422,
+        ) from error
+
+
+def _store_image_suite_payload_from_form(form: object) -> StoreImageSuiteImport:
+    raw_metadata = str(getattr(form, "get", lambda _key, _default=None: None)("metadata") or "")
+    if not raw_metadata.strip():
+        raise ApiError("missing_metadata", "metadata 字段不能为空", status_code=422)
+    try:
+        decoded = json.loads(raw_metadata)
+        return StoreImageSuiteImport.model_validate(decoded)
+    except (json.JSONDecodeError, ValidationError) as error:
+        raise ApiError(
+            "invalid_metadata",
+            f"metadata JSON 格式不正确：{error}",
+            status_code=422,
+        ) from error
+
+
 async def _store_image_assets_from_form(
     form: object,
     *,
@@ -159,8 +362,9 @@ async def _store_image_assets_from_form(
     account_id: str,
     app_id: str,
     platform: str,
-    version: str,
-    content_set_id: str,
+    version: str | None = None,
+    content_set_id: str | None = None,
+    image_suite_id: str | None = None,
 ) -> dict[str, dict[str, list[dict[str, object]]]]:
     assets_by_locale: dict[str, dict[str, list[dict[str, object]]]] = {}
     if not hasattr(form, "multi_items"):
@@ -196,15 +400,26 @@ async def _store_image_assets_from_form(
                 f"{locale} {Path(filename).name}: {validation.message}",
                 status_code=422,
             )
-        stored = request.app.state.artifact_storage.save(
-            _store_image_storage_folder(
+        folder = (
+            _store_image_suite_storage_folder(
                 account_id=account_id,
                 app_id=app_id,
-                version=version,
-                content_set_id=content_set_id,
+                image_suite_id=image_suite_id,
                 locale=locale,
                 slot_key=slot_key,
-            ),
+            )
+            if image_suite_id is not None
+            else _store_image_storage_folder(
+                account_id=account_id,
+                app_id=app_id,
+                version=str(version or ""),
+                content_set_id=str(content_set_id or DEFAULT_CONTENT_SET_ID),
+                locale=locale,
+                slot_key=slot_key,
+            )
+        )
+        stored = request.app.state.artifact_storage.save(
+            folder,
             filename,
             content,
             content_type=content_type,
@@ -224,6 +439,159 @@ async def _store_image_assets_from_form(
             }
         )
     return assets_by_locale
+
+
+def _version_draft_rows(payload: StoreVersionDraftImport) -> list[dict[str, object]]:
+    locale_inputs = [item for item in payload.locales if item.locale.strip()]
+    if not locale_inputs:
+        raise ApiError("invalid_metadata", "locales 至少需要包含一个语言", status_code=422)
+    source_locale = payload.source_locale.strip() or locale_inputs[0].locale.strip()
+    source = next(
+        (item for item in locale_inputs if item.locale.strip() == source_locale),
+        locale_inputs[0],
+    )
+    source_has_metadata = bool(
+        source.keywords.strip()
+        or source.promotional_text.strip()
+        or source.description.strip()
+    )
+    rows: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for item in locale_inputs:
+        locale = item.locale.strip()
+        if locale in seen:
+            continue
+        seen.add(locale)
+        description = item.description.strip() or source.description.strip()
+        save_metadata = bool(
+            source_has_metadata
+            or item.keywords.strip()
+            or item.promotional_text.strip()
+            or item.description.strip()
+        )
+        if save_metadata and not description:
+            raise ApiError(
+                "invalid_metadata",
+                f"{locale} 的 description 不能为空",
+                status_code=422,
+            )
+        rows.append(
+            {
+                "locale": locale,
+                "save_metadata": save_metadata,
+                "keywords": item.keywords.strip() or source.keywords.strip(),
+                "promotional_text": (
+                    item.promotional_text.strip() or source.promotional_text.strip()
+                ),
+                "description": description,
+                "release_notes": item.release_notes.strip() or source.release_notes.strip(),
+            }
+        )
+    return rows
+
+
+def _image_suite_rows(
+    payload: StoreImageSuiteImport,
+    uploaded_assets: dict[str, dict[str, list[dict[str, object]]]],
+) -> list[dict[str, object]]:
+    locale_inputs = [item for item in payload.locales if item.locale.strip()]
+    if not locale_inputs:
+        raise ApiError("invalid_metadata", "locales 至少需要包含一个语言", status_code=422)
+    source_locale = payload.source_locale.strip() or locale_inputs[0].locale.strip()
+    source = next(
+        (item for item in locale_inputs if item.locale.strip() == source_locale),
+        locale_inputs[0],
+    )
+    source_images = _suite_images_for_locale(payload, source, uploaded_assets)
+    rows: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for item in locale_inputs:
+        locale = item.locale.strip()
+        if locale in seen:
+            continue
+        seen.add(locale)
+        rows.append(
+            {
+                "locale": locale,
+                "store_images": _merge_store_images(
+                    _suite_images_for_locale(payload, item, uploaded_assets),
+                    source_images,
+                ),
+            }
+        )
+    return rows
+
+
+def _save_image_suite(
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    platform: str,
+    suite_id: str,
+    suite_name: str,
+    source: str,
+) -> StoreImageSuite:
+    suite = session.scalar(
+        select(StoreImageSuite).where(
+            StoreImageSuite.developer_account_id == account_id,
+            StoreImageSuite.app_id == app_id,
+            StoreImageSuite.platform == platform,
+            StoreImageSuite.suite_id == suite_id,
+        )
+    )
+    now = datetime.now(UTC)
+    if suite is None:
+        suite = StoreImageSuite(
+            id=f"image-suite-{uuid4().hex[:12]}",
+            developer_account_id=account_id,
+            app_id=app_id,
+            platform=platform,
+            suite_id=suite_id,
+            suite_name=suite_name,
+            source=_normalize_source(source),
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(suite)
+    else:
+        suite.suite_name = suite_name
+        suite.source = _normalize_source(source)
+        suite.updated_at = now
+    session.flush()
+    return suite
+
+
+def _save_image_suite_locale(
+    session: Session,
+    *,
+    suite: StoreImageSuite,
+    locale: str,
+    store_images: object,
+) -> StoreImageSuiteLocale:
+    suite_locale = session.scalar(
+        select(StoreImageSuiteLocale).where(
+            StoreImageSuiteLocale.image_suite_id == suite.id,
+            StoreImageSuiteLocale.locale == locale,
+        )
+    )
+    now = datetime.now(UTC)
+    if suite_locale is None:
+        suite_locale = StoreImageSuiteLocale(
+            id=f"image-suite-locale-{uuid4().hex[:12]}",
+            image_suite_id=suite.id,
+            locale=locale,
+            store_images_json=dict(store_images) if isinstance(store_images, dict) else {},
+            updated_at=now,
+        )
+        session.add(suite_locale)
+    else:
+        suite_locale.store_images_json = (
+            dict(store_images) if isinstance(store_images, dict) else {}
+        )
+        suite_locale.updated_at = now
+    session.flush()
+    return suite_locale
 
 
 def _metadata_rows(
@@ -288,6 +656,35 @@ def _images_for_locale(
 
 def _top_level_images_for_locale(
     payload: MetadataContentSetImport,
+    locale: str,
+) -> dict[str, object]:
+    raw_images = payload.store_images
+    locale_images = raw_images.get(locale)
+    if isinstance(locale_images, dict):
+        return locale_images
+    if any(_normalize_slot_key(key) for key in raw_images):
+        return raw_images
+    return {}
+
+
+def _suite_images_for_locale(
+    payload: StoreImageSuiteImport,
+    item: LocaleStoreImagesInput,
+    uploaded_assets: dict[str, dict[str, list[dict[str, object]]]],
+) -> dict[str, object]:
+    locale = item.locale.strip()
+    merged = _normalize_store_image_payload(_suite_top_level_images_for_locale(payload, locale))
+    merged.update(_normalize_store_image_payload(item.store_images))
+    for slot_key, assets in uploaded_assets.get(locale, {}).items():
+        slot = dict(merged.get(slot_key) if isinstance(merged.get(slot_key), dict) else {})
+        slot["urls"] = _string_list(slot.get("urls"))
+        slot["assets"] = _asset_list(slot.get("assets")) + assets
+        merged[slot_key] = slot
+    return merged
+
+
+def _suite_top_level_images_for_locale(
+    payload: StoreImageSuiteImport,
     locale: str,
 ) -> dict[str, object]:
     raw_images = payload.store_images
@@ -371,6 +768,50 @@ def _store_image_storage_folder(
             _safe_storage_part(slot_key),
         ]
     )
+
+
+def _store_image_suite_storage_folder(
+    *,
+    account_id: str,
+    app_id: str,
+    image_suite_id: str,
+    locale: str,
+    slot_key: str,
+) -> str:
+    return "/".join(
+        [
+            "store-assets",
+            _safe_storage_part(account_id),
+            _safe_storage_part(app_id),
+            "image-suites",
+            _safe_storage_part(image_suite_id),
+            _safe_storage_part(locale),
+            _safe_storage_part(slot_key),
+        ]
+    )
+
+
+def _normalize_suite_id(value: str | None) -> str:
+    normalized = str(value or "").strip()
+    return normalized or DEFAULT_CONTENT_SET_ID
+
+
+def _normalize_suite_name(value: str | None, suite_id: str) -> str:
+    normalized = str(value or "").strip()
+    if normalized:
+        return normalized
+    return "默认商店图" if suite_id == DEFAULT_CONTENT_SET_ID else suite_id
+
+
+def _normalize_source(value: str | None) -> str:
+    normalized = str(value or "").strip()
+    return normalized or "api"
+
+
+def _uploaded_asset_count(
+    uploaded_assets: dict[str, dict[str, list[dict[str, object]]]],
+) -> int:
+    return sum(len(assets) for slots in uploaded_assets.values() for assets in slots.values())
 
 
 def _safe_storage_part(value: str) -> str:

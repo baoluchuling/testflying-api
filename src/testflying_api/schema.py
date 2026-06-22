@@ -272,6 +272,71 @@ class StoreAppMetadataDraft(Base):
     )
 
 
+class StoreImageSuite(Base):
+    __tablename__ = "store_image_suites"
+    __table_args__ = (
+        UniqueConstraint(
+            "developer_account_id",
+            "app_id",
+            "platform",
+            "suite_id",
+            name="uq_store_image_suites_scope",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    developer_account_id: Mapped[str] = mapped_column(
+        ForeignKey("developer_accounts.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    app_id: Mapped[str] = mapped_column(ForeignKey("apps.id", ondelete="CASCADE"), nullable=False)
+    platform: Mapped[str] = mapped_column(String(20), nullable=False)
+    suite_id: Mapped[str] = mapped_column(String(80), nullable=False, default="default")
+    suite_name: Mapped[str] = mapped_column(String(120), nullable=False, default="默认商店图")
+    source: Mapped[str] = mapped_column(String(40), nullable=False, default="api")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+    )
+
+    locales: Mapped[list[StoreImageSuiteLocale]] = relationship(
+        back_populates="image_suite",
+        cascade="all, delete-orphan",
+    )
+
+
+class StoreImageSuiteLocale(Base):
+    __tablename__ = "store_image_suite_locales"
+    __table_args__ = (
+        UniqueConstraint("image_suite_id", "locale", name="uq_store_image_suite_locales_scope"),
+    )
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    image_suite_id: Mapped[str] = mapped_column(
+        ForeignKey("store_image_suites.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    locale: Mapped[str] = mapped_column(String(40), nullable=False)
+    store_images_json: Mapped[dict[str, object]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=dict,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+    )
+
+    image_suite: Mapped[StoreImageSuite] = relationship(back_populates="locales")
+
+
 class StorePreflightCheck(Base):
     __tablename__ = "store_preflight_checks"
 

@@ -20,7 +20,8 @@
 - `GET /v1/test-distribution/developer-accounts`：读取开发者账号续费事实。
 - `GET /v1/test-distribution/developer-accounts/renewals`：读取需要续费提醒的账号。
 - `GET /v1/test-distribution/notifications`：读取服务端通知 feed，支持 `type=build|account|device`。
-- `POST /v1/store-management/developer-accounts/{accountId}/apps/{appId}/metadata-content-sets`：通过接口导入商店内容套件、文案和商店图素材，只保存到 testflying 草稿，不同步到真实商店后台。
+- `POST /v1/store-management/developer-accounts/{accountId}/apps/{appId}/store-versions/{version}/draft`：通过接口导入某个商店版本的文案元数据和版本说明，只保存到 testflying 草稿，不同步到真实商店后台。
+- `POST /v1/store-management/developer-accounts/{accountId}/apps/{appId}/store-image-suites`：通过接口导入 App 级商店图套件，只保存到 testflying，不挂到具体版本，不同步到真实商店后台。
 - `GET /admin`：内置管理后台，用于上传包、查看应用/构建/设备/账号/通知和复制安装资源链接。
 - 管理后台支持新增/编辑开发者账号、上传时绑定账号、绑定/解绑账号下 App、维护 App 商店标识、配置账号 connector，以及同步版本说明和商店元数据。商店元数据支持多语言、多套内容草稿和商店图图片上传预览。
 - `GET /admin/app-logs`：电脑端 App 日志查看页，展示连接二维码、在线设备、客户端异常和实时日志流。

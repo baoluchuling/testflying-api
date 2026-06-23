@@ -5579,12 +5579,14 @@ body.store-sync-confirm-open {
 
 /* Store workspace redesign. Keep this after the legacy store metadata guards. */
 .store-workspace-main {
-  min-width: 1340px;
+  min-width: 0;
   max-width: none;
-  padding: 28px 28px 112px;
+  width: auto;
+  padding: 24px 24px 112px;
   background:
     radial-gradient(circle at 72% 0%, rgba(9, 105, 255, .08), transparent 29%),
     #f6f8fb;
+  overflow-x: clip;
 }
 
 .store-workspace-main .topbar {
@@ -5615,8 +5617,9 @@ body.store-sync-confirm-open {
 }
 
 .store-workspace-main .store-workspace-toolbar {
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 24px;
+  gap: 12px;
   margin-bottom: 14px;
   padding: 18px 20px;
 }
@@ -5624,6 +5627,7 @@ body.store-sync-confirm-open {
 .store-workspace-main .toolbar-left,
 .store-workspace-main .toolbar-right {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
 }
@@ -5639,22 +5643,22 @@ body.store-sync-confirm-open {
 }
 
 .store-workspace-main .content-set-picker {
-  flex: 0 0 260px;
-  width: 260px;
+  flex: 1 1 220px;
+  width: auto;
   max-width: 260px;
 }
 
 .store-workspace-main .language-picker {
-  flex: 0 0 150px;
-  width: 150px;
-  max-width: 150px;
+  flex: 0 1 160px;
+  width: 160px;
+  max-width: 160px;
 }
 
 .store-workspace-main .metadata-preflight-chip {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  max-width: 260px;
+  max-width: 220px;
   min-height: 38px;
   padding: 0 14px;
   border: 0;
@@ -5667,7 +5671,7 @@ body.store-sync-confirm-open {
 }
 
 .store-workspace-main .metadata-preflight-chip.blocked {
-  max-width: 260px;
+  max-width: 220px;
   background: #fff4e5;
   color: #b45309;
 }
@@ -5724,8 +5728,8 @@ body.store-sync-confirm-open {
 
 .store-workspace-main .store-workspace-grid {
   display: grid;
-  grid-template-columns: 244px minmax(600px, 1fr) 278px;
-  gap: 14px;
+  grid-template-columns: 208px minmax(0, 1fr) 252px;
+  gap: 12px;
   align-items: start;
 }
 
@@ -5743,13 +5747,13 @@ body.store-sync-confirm-open {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px 18px 16px;
+  padding: 18px 14px 14px;
   border-bottom: 1px solid #e5eaf2;
 }
 
 .store-workspace-main .rail-header h2 {
   color: #101827;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 760;
 }
 
@@ -5763,7 +5767,7 @@ body.store-sync-confirm-open {
 .store-workspace-main .rail-section {
   display: grid;
   gap: 6px;
-  padding: 16px 10px;
+  padding: 14px 8px;
 }
 
 .store-workspace-main .rail-section + .rail-section {
@@ -5776,12 +5780,12 @@ body.store-sync-confirm-open {
 
 .store-workspace-main .sync-item {
   display: grid;
-  grid-template-columns: 26px minmax(0, 1fr) 8px auto 14px;
+  grid-template-columns: 22px minmax(0, 1fr) 7px auto 12px;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   width: 100%;
-  min-height: 58px;
-  padding: 0 10px;
+  min-height: 52px;
+  padding: 0 8px;
   border: 1px solid transparent;
   border-radius: 8px;
   background: transparent;
@@ -5825,7 +5829,7 @@ body.store-sync-confirm-open {
 .store-workspace-main .sync-copy strong {
   display: block;
   overflow: hidden;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 740;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -5849,7 +5853,7 @@ body.store-sync-confirm-open {
 .store-workspace-main .sync-count,
 .store-workspace-main .image-count {
   color: #4c5a6f;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 720;
   white-space: nowrap;
 }
@@ -6425,7 +6429,7 @@ body.store-sync-confirm-open {
 }
 
 .store-workspace-main .side-card {
-  padding: 20px 16px;
+  padding: 18px 14px;
 }
 
 .store-workspace-main .side-head {
@@ -6437,7 +6441,7 @@ body.store-sync-confirm-open {
 }
 
 .store-workspace-main .side-head h2 {
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 760;
 }
 
@@ -6455,9 +6459,9 @@ body.store-sync-confirm-open {
 .store-workspace-main .scope-option {
   display: grid;
   grid-template-columns: 18px minmax(0, 1fr);
-  gap: 10px;
+  gap: 8px;
   align-items: start;
-  padding: 12px;
+  padding: 10px;
   border: 1px solid #e2e7ef;
   border-radius: 10px;
   background: #fbfdff;
@@ -6577,9 +6581,9 @@ body.store-sync-confirm-open {
 
 .store-workspace-main .store-workspace-bottom {
   position: fixed;
-  right: 28px;
+  right: 24px;
   bottom: 18px;
-  left: 268px;
+  left: 264px;
   z-index: 45;
   display: flex;
   align-items: center;
@@ -6617,7 +6621,38 @@ body.store-sync-confirm-open {
 
 .store-workspace-main .bottom-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
+}
+
+@media (max-width: 1500px) {
+  .store-workspace-main {
+    padding-inline: 20px;
+  }
+
+  .store-workspace-main .store-workspace-grid {
+    grid-template-columns: 196px minmax(0, 1fr) 232px;
+  }
+
+  .store-workspace-main .store-workspace-bottom {
+    right: 20px;
+    left: 260px;
+  }
+}
+
+@media (max-width: 1180px) {
+  .store-workspace-main .store-workspace-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .store-workspace-main .rail,
+  .store-workspace-main .side {
+    position: static;
+  }
+
+  .store-workspace-main .store-workspace-bottom {
+    left: 20px;
+  }
 }
 
 .store-sync-intro {

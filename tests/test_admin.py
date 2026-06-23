@@ -1390,6 +1390,17 @@ def test_admin_store_metadata_page_uses_local_draft_locales_without_connector(
                 content_set_name="默认上架内容",
                 description="Traditional Chinese draft",
             ),
+            StoreAppMetadataDraft(
+                id="draft-historical-fr",
+                developer_account_id="account-apple-enterprise",
+                app_id="app-aurora-ios",
+                platform="ios",
+                version="2.3.0",
+                locale="fr-FR",
+                content_set_id="default",
+                content_set_name="默认上架内容",
+                description="Historical French draft",
+            ),
         ]
     )
     db_session.commit()
@@ -1411,6 +1422,7 @@ def test_admin_store_metadata_page_uses_local_draft_locales_without_connector(
     assert response.status_code == 200
     assert 'name="locales" value="en-US"' in response.text
     assert 'name="locales" value="zh-Hant"' in response.text
+    assert 'name="locales" value="fr-FR"' in response.text
     assert "English draft" in response.text
     assert "Traditional Chinese draft" in response.text
 

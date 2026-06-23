@@ -14,7 +14,9 @@ from testflying_api.schema import (
     DeveloperAccountApp,
     Device,
     Notification,
+    StoreAppMetadataDraft,
     StoreImageSuite,
+    StoreImageSuiteLocale,
     StoreReleaseNoteDraft,
     StoreSyncRun,
 )
@@ -293,6 +295,16 @@ def store_metadata_context(
     connector = account_connector(session, account_id)
     local_locales = _known_store_locales(
         fallback_locale=locale,
+        historical_locales=(
+            _historical_store_locales(
+                session,
+                account_id=account_id,
+                app_id=app_id,
+                platform=app.platform,
+            )
+            if app
+            else []
+        ),
         drafts_by_locale=drafts_by_locale,
         release_note_drafts_by_locale=release_note_drafts_by_locale,
         image_suite_locales_by_locale=image_suite_locales_by_locale,
@@ -399,6 +411,7 @@ def _store_metadata_defaults(
 def _known_store_locales(
     *,
     fallback_locale: str,
+    historical_locales: list[str],
     drafts_by_locale: dict[str, object],
     release_note_drafts_by_locale: dict[str, StoreReleaseNoteDraft],
     image_suite_locales_by_locale: dict[str, object],
@@ -409,6 +422,7 @@ def _known_store_locales(
         *drafts_by_locale.keys(),
         *release_note_drafts_by_locale.keys(),
         *image_suite_locales_by_locale.keys(),
+        *historical_locales,
         fallback_locale,
     ]:
         normalized = str(locale or "").strip()
@@ -416,6 +430,46 @@ def _known_store_locales(
             locales.append(normalized)
             seen.add(normalized)
     return locales or [DEFAULT_LOCALE]
+
+
+def _historical_store_locales(
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    platform: str,
+) -> list[str]:
+    locales: list[str] = []
+    locales.extend(
+        session.scalars(
+            select(StoreAppMetadataDraft.locale).where(
+                StoreAppMetadataDraft.developer_account_id == account_id,
+                StoreAppMetadataDraft.app_id == app_id,
+                StoreAppMetadataDraft.platform == platform,
+            )
+        )
+    )
+    locales.extend(
+        session.scalars(
+            select(StoreReleaseNoteDraft.locale).where(
+                StoreReleaseNoteDraft.developer_account_id == account_id,
+                StoreReleaseNoteDraft.app_id == app_id,
+                StoreReleaseNoteDraft.platform == platform,
+            )
+        )
+    )
+    locales.extend(
+        session.scalars(
+            select(StoreImageSuiteLocale.locale)
+            .join(StoreImageSuite)
+            .where(
+                StoreImageSuite.developer_account_id == account_id,
+                StoreImageSuite.app_id == app_id,
+                StoreImageSuite.platform == platform,
+            )
+        )
+    )
+    return locales
 
 
 def _localized_metadata(

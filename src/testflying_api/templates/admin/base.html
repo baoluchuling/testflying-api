@@ -490,6 +490,53 @@
         syncContentSetControls(form);
       }
 
+      function upsertSuiteCard(form, id, name, localeCount = 0) {
+        const grid = form?.querySelector('.suite-grid');
+        if (!grid || !id || !name) return;
+        grid.querySelectorAll('[data-suite-card]').forEach((card) => {
+          const active = card.dataset.contentSetId === id;
+          card.classList.toggle('active', active);
+          const tag = card.querySelector('.suite-head .tag');
+          if (tag) {
+            tag.classList.toggle('warn', !active);
+            tag.textContent = active ? '当前打开' : '可切换';
+          }
+          const status = card.querySelector('[data-suite-status]');
+          if (status) status.textContent = active ? '编辑中' : '草稿';
+        });
+
+        let card = grid.querySelector(`[data-suite-card][data-content-set-id="${CSS.escape(id)}"]`);
+        if (!card) {
+          card = document.createElement('article');
+          card.className = 'suite-card active';
+          card.dataset.suiteCard = '';
+          card.dataset.contentSetId = id;
+          card.innerHTML = `
+            <div class="suite-head">
+              <div class="suite-title">
+                <strong></strong>
+                <span></span>
+              </div>
+              <span class="tag">当前打开</span>
+            </div>
+            <div class="suite-meta">
+              <div><span>语言</span><strong data-suite-locale-count></strong></div>
+              <div><span>图片项</span><strong data-suite-image-count></strong></div>
+              <div><span>状态</span><strong data-suite-status>编辑中</strong></div>
+            </div>
+          `;
+          grid.prepend(card);
+        }
+        card.classList.add('active');
+        card.querySelector('.suite-title strong').textContent = name;
+        card.querySelector('.suite-title span').textContent = id;
+        card.querySelector('[data-suite-locale-count]').textContent = String(localeCount);
+        card.querySelector('[data-suite-image-count]').textContent = String(
+          form.querySelectorAll('[data-sync-item-type="store-image"]').length
+        );
+        card.querySelector('[data-suite-status]').textContent = '编辑中';
+      }
+
       function replaceContentSetUrl(form, contentSetId) {
         if (!contentSetId) return;
         const url = new URL(window.location.href);
@@ -520,7 +567,9 @@
           return;
         }
         addContentSetOption(form, payload.id || id, payload.name || name, true);
+        upsertSuiteCard(form, payload.id || id, payload.name || name, (payload.locales || []).length);
         replaceContentSetUrl(form, payload.id || id);
+        setStoreWorkspaceMode(form, 'suites');
         if (status) {
           status.textContent = `${copyCurrent ? '已复制为' : '已新建'}：${payload.name || name}`;
         }
@@ -2247,7 +2296,7 @@
         const createSet = event.target.closest('[data-create-content-set]');
         if (createSet) {
           const form = createSet.closest('[data-metadata-form]');
-          const name = window.prompt('新套件名称', '新的商店内容套件');
+          const name = window.prompt('新商店图套件名称', '新的商店图套件');
           persistContentSetOption(form, name?.trim(), false).catch(() => {
             const status = form?.querySelector('[data-content-set-status]');
             if (status) status.textContent = '套件保存失败';

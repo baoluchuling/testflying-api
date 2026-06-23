@@ -71,6 +71,8 @@ def test_admin_shell_supports_inline_navigation_and_upload_dock(client: TestClie
     assert "setLinkBusy" in response.text
     assert "setAdminNavigationBusy" in response.text
     assert "data-admin-loading" in response.text
+    assert "upsertSuiteCard" in response.text
+    assert "新商店图套件名称" in response.text
     assert "beforeunload" in response.text
 
 
@@ -1208,9 +1210,12 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "buildStoreSyncPlan" in response.text
     assert "确认要同步到商店的内容" in response.text
     assert "未接入翻译服务前" not in response.text
-    assert "商店内容套件" in response.text
+    assert "新的商店图套件" in response.text
     assert "新建套件" in response.text
     assert "复制当前套" in response.text
+    assert "商店图套件库" in response.text
+    assert "data-suite-card" in response.text
+    assert "data-suite-status" in response.text
     assert "card toolbar" in response.text
     assert "workspace" in response.text
     assert "main-input" in response.text

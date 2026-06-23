@@ -353,9 +353,9 @@
                     <span class="tag {{ '' if content_set.id == content_set_id else 'warn' }}">{{ "当前打开" if content_set.id == content_set_id else "可切换" }}</span>
                   </div>
                   <div class="suite-meta">
-                    <div><span>语言</span><strong>{{ content_set.locale_count or 0 }}</strong></div>
-                    <div><span>图片项</span><strong>{{ store_image_slots|length }}</strong></div>
-                    <div><span>状态</span><strong>{{ "编辑中" if content_set.id == content_set_id else "草稿" }}</strong></div>
+                    <div><span>语言</span><strong data-suite-locale-count>{{ content_set.locale_count or 0 }}</strong></div>
+                    <div><span>图片项</span><strong data-suite-image-count>{{ store_image_slots|length }}</strong></div>
+                    <div><span>状态</span><strong data-suite-status>{{ "编辑中" if content_set.id == content_set_id else "草稿" }}</strong></div>
                   </div>
                 </article>
               {% endfor %}

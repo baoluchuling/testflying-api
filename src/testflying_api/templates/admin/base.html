@@ -156,6 +156,7 @@
           window.location.href = path;
           return;
         }
+        currentMain.className = nextMain.className;
         currentMain.innerHTML = nextMain.innerHTML;
         document.title = nextDocument.title || document.title;
         updateActiveNav(path);

@@ -62,6 +62,7 @@ def test_admin_shell_supports_inline_navigation_and_upload_dock(client: TestClie
     assert "data-admin-main" in response.text
     assert "data-upload-dock" in response.text
     assert "navigateAdmin" in response.text
+    assert "currentMain.className = nextMain.className" in response.text
     assert "history.pushState" in response.text
     assert "adminUploadState.responseText" in response.text
     assert "sessionStorage" in response.text

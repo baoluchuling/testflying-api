@@ -69,6 +69,8 @@ def test_admin_shell_supports_inline_navigation_and_upload_dock(client: TestClie
     assert "syncHealthView" in response.text
     assert "setSubmitterBusy" in response.text
     assert "setLinkBusy" in response.text
+    assert "setAdminNavigationBusy" in response.text
+    assert "data-admin-loading" in response.text
     assert "beforeunload" in response.text
 
 
@@ -1354,6 +1356,63 @@ def test_supported_locales_use_connector_app_languages_only(db_session: Session)
 
     assert locales == ["en-US", "zh-Hant", "fr-FR"]
     assert "zh-Hans" not in locales
+
+
+def test_admin_store_metadata_page_uses_local_draft_locales_without_connector(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seed_demo_catalog(db_session)
+    connector = db_session.query(StoreConnector).one()
+    connector.base_url = "http://connector.test"
+    db_session.add_all(
+        [
+            StoreAppMetadataDraft(
+                id="draft-local-en-us",
+                developer_account_id="account-apple-enterprise",
+                app_id="app-aurora-ios",
+                platform="ios",
+                version="2.4.0",
+                locale="en-US",
+                content_set_id="default",
+                content_set_name="默认上架内容",
+                description="English draft",
+            ),
+            StoreAppMetadataDraft(
+                id="draft-local-zh-hant",
+                developer_account_id="account-apple-enterprise",
+                app_id="app-aurora-ios",
+                platform="ios",
+                version="2.4.0",
+                locale="zh-Hant",
+                content_set_id="default",
+                content_set_name="默认上架内容",
+                description="Traditional Chinese draft",
+            ),
+        ]
+    )
+    db_session.commit()
+
+    def fail_if_connector_locales_are_loaded(*_args: object, **_kwargs: object) -> list[str]:
+        raise AssertionError("page render should not block on connector locales")
+
+    monkeypatch.setattr(
+        "testflying_api.admin.view_models.supported_locales_for_app",
+        fail_if_connector_locales_are_loaded,
+    )
+
+    response = client.get(
+        "/admin/developer-accounts/account-apple-enterprise"
+        "/apps/app-aurora-ios/store-metadata",
+        headers=_admin_headers(),
+    )
+
+    assert response.status_code == 200
+    assert 'name="locales" value="en-US"' in response.text
+    assert 'name="locales" value="zh-Hant"' in response.text
+    assert "English draft" in response.text
+    assert "Traditional Chinese draft" in response.text
 
 
 def test_supported_locales_falls_back_when_connector_resets(

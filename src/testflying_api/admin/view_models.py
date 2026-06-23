@@ -26,6 +26,7 @@ from testflying_api.store_sync import (
     UPDATE_APP_METADATA,
     account_apps,
     account_connector,
+    cached_preflight_for_app,
     draft_for_scope,
     get_or_refresh_preflight,
     latest_build_for_app,
@@ -289,17 +290,22 @@ def store_metadata_context(
             "name": content_set_id or DEFAULT_CONTENT_SET_NAME,
         }
     )
-    supported_locales = (
-        supported_locales_for_app(
+    connector = account_connector(session, account_id)
+    local_locales = _known_store_locales(
+        fallback_locale=locale,
+        drafts_by_locale=drafts_by_locale,
+        release_note_drafts_by_locale=release_note_drafts_by_locale,
+        image_suite_locales_by_locale=image_suite_locales_by_locale,
+    )
+    supported_locales = local_locales
+    if app and target_version and connector and connector.base_url.startswith("mock://"):
+        supported_locales = supported_locales_for_app(
             session,
             account_id=account_id,
             app_id=app_id,
             version=target_version,
             fallback_locale=locale,
         )
-        if app and target_version
-        else [locale]
-    )
     source_locale = _source_locale(supported_locales)
     active_locale = locale if locale in supported_locales else source_locale
     draft = (
@@ -321,18 +327,27 @@ def store_metadata_context(
         draft=draft,
     )
     preflight = (
-        get_or_refresh_preflight(
+        cached_preflight_for_app(
             session,
             account_id=account_id,
             app_id=app_id,
             version=target_version,
             locale=source_locale,
             operation=UPDATE_APP_METADATA,
-            force_refresh=force_preflight_refresh,
         )
-        if app and target_version
+        if app and target_version and not force_preflight_refresh
         else None
     )
+    if app and target_version and force_preflight_refresh:
+        preflight = get_or_refresh_preflight(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            version=target_version,
+            locale=source_locale,
+            operation=UPDATE_APP_METADATA,
+            force_refresh=True,
+        )
     return {
         "account": account,
         "app": app,
@@ -363,7 +378,7 @@ def store_metadata_context(
             source_locale=source_locale,
         ),
         "preflight": preflight,
-        "connector": account_connector(session, account_id),
+        "connector": connector,
         "sync_runs": recent_sync_runs(session, account_id=account_id, app_id=app_id),
     }
 
@@ -379,6 +394,28 @@ def _store_metadata_defaults(
         "promotional_text": draft.promotional_text if draft else "",
         "description": draft.description if draft else (latest_build.note if latest_build else ""),
     }
+
+
+def _known_store_locales(
+    *,
+    fallback_locale: str,
+    drafts_by_locale: dict[str, object],
+    release_note_drafts_by_locale: dict[str, StoreReleaseNoteDraft],
+    image_suite_locales_by_locale: dict[str, object],
+) -> list[str]:
+    locales: list[str] = []
+    seen: set[str] = set()
+    for locale in [
+        *drafts_by_locale.keys(),
+        *release_note_drafts_by_locale.keys(),
+        *image_suite_locales_by_locale.keys(),
+        fallback_locale,
+    ]:
+        normalized = str(locale or "").strip()
+        if normalized and normalized not in seen:
+            locales.append(normalized)
+            seen.add(normalized)
+    return locales or [DEFAULT_LOCALE]
 
 
 def _localized_metadata(

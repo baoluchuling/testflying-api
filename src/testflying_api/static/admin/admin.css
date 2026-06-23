@@ -107,6 +107,28 @@ body {
   padding: 28px 32px 48px;
 }
 
+.main.is-admin-loading {
+  cursor: progress;
+}
+
+.admin-route-loading {
+  position: fixed;
+  top: 14px;
+  right: 24px;
+  left: 264px;
+  z-index: 120;
+  min-height: 36px;
+  padding: 8px 14px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: rgba(239, 246, 255, .96);
+  color: #0759d4;
+  font-size: 14px;
+  font-weight: 760;
+  box-shadow: 0 12px 32px rgba(37, 99, 235, .14);
+  backdrop-filter: blur(8px);
+}
+
 .topbar {
   display: flex;
   align-items: center;
@@ -4792,6 +4814,11 @@ a.ghost-button {
   .main {
     margin-left: 0;
     padding: 22px 16px 34px;
+  }
+
+  .admin-route-loading {
+    right: 16px;
+    left: 16px;
   }
 
   .stat-grid {

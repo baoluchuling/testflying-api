@@ -620,6 +620,40 @@ def get_or_refresh_preflight(
     return _state_from_check(check, cached=False)
 
 
+def cached_preflight_for_app(
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    version: str,
+    locale: str,
+    operation: str = UPDATE_RELEASE_NOTES,
+) -> PreflightState | None:
+    app = scoped_app(session, account_id, app_id)
+    connector = account_connector(session, account_id)
+    if app is None or connector is None:
+        return None
+    payload = _preflight_payload(
+        account_id=account_id,
+        app=app,
+        connector=connector,
+        operation=operation,
+        version=version,
+        locale=locale,
+    )
+    now = datetime.now(UTC)
+    cached = session.scalar(
+        select(StorePreflightCheck)
+        .where(
+            StorePreflightCheck.request_hash == _request_hash(payload),
+            StorePreflightCheck.expires_at > now,
+        )
+        .order_by(StorePreflightCheck.checked_at.desc())
+        .limit(1)
+    )
+    return _state_from_check(cached, cached=True) if cached is not None else None
+
+
 def sync_release_notes(
     session: Session,
     *,

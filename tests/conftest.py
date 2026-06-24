@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Generator
+from io import BytesIO
 from pathlib import Path
 
 import pytest
@@ -82,9 +83,21 @@ def client(app: FastAPI) -> TestClient:
 class FakeS3Client:
     def __init__(self) -> None:
         self.put_objects: list[dict[str, object]] = []
+        self.objects: dict[tuple[str, str], dict[str, object]] = {}
 
     def put_object(self, **kwargs: object) -> None:
         self.put_objects.append(kwargs)
+        self.objects[(str(kwargs["Bucket"]), str(kwargs["Key"]))] = {
+            "Body": kwargs["Body"],
+            "ContentType": kwargs.get("ContentType"),
+        }
+
+    def get_object(self, **kwargs: object) -> dict[str, object]:
+        item = self.objects[(str(kwargs["Bucket"]), str(kwargs["Key"]))]
+        return {
+            "Body": BytesIO(bytes(item["Body"])),
+            "ContentType": item.get("ContentType"),
+        }
 
 
 @pytest.fixture

@@ -13,6 +13,8 @@ def test_storage_writes_file_and_returns_public_url(tmp_path: Path) -> None:
     assert saved.storage_path is not None
     assert saved.storage_path.exists()
     assert saved.download_url == "https://dist.example.test/artifacts/build-1/app.ipa"
+    assert storage.read(saved.storage_key).content == b"ipa-bytes"
+    assert storage.read(saved.storage_key).content_type == "application/octet-stream"
 
 
 def test_s3_storage_uses_configured_bucket_and_public_base_url(fake_s3_client: object) -> None:
@@ -26,3 +28,4 @@ def test_s3_storage_uses_configured_bucket_and_public_base_url(fake_s3_client: o
 
     assert saved.download_url == "https://objects.example.test/testflying/build-1/app.ipa"
     assert fake_s3_client.put_objects[0]["Bucket"] == "testflying"
+    assert storage.read(saved.storage_key).content == b"ipa-bytes"

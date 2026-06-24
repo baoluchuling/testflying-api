@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from urllib.parse import quote
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -617,7 +618,7 @@ def _store_image_slot(raw_value: object) -> dict[str, object]:
         assets = []
     asset_previews = [
         {
-            "url": asset["downloadUrl"],
+            "url": _admin_artifact_url(asset["storageKey"]) or asset["downloadUrl"],
             "fileName": asset["fileName"],
             "width": asset.get("width"),
             "height": asset.get("height"),
@@ -626,7 +627,7 @@ def _store_image_slot(raw_value: object) -> dict[str, object]:
             "format": asset.get("format"),
         }
         for asset in assets
-        if asset.get("downloadUrl")
+        if asset.get("storageKey") or asset.get("downloadUrl")
     ]
     url_previews = [
         {
@@ -674,14 +675,15 @@ def _asset_list(value: object) -> list[dict[str, object]]:
         if not isinstance(item, dict):
             continue
         download_url = str(item.get("downloadUrl") or "").strip()
-        if not download_url:
+        storage_key = str(item.get("storageKey") or "").strip()
+        if not download_url and not storage_key:
             continue
         assets.append(
             {
                 "fileName": str(item.get("fileName") or "").strip(),
                 "contentType": str(item.get("contentType") or "").strip(),
                 "sizeBytes": int(item.get("sizeBytes") or 0),
-                "storageKey": str(item.get("storageKey") or "").strip(),
+                "storageKey": storage_key,
                 "downloadUrl": download_url,
                 "width": int(item.get("width") or 0) or None,
                 "height": int(item.get("height") or 0) or None,
@@ -691,6 +693,13 @@ def _asset_list(value: object) -> list[dict[str, object]]:
             }
         )
     return assets
+
+
+def _admin_artifact_url(storage_key: object) -> str:
+    value = str(storage_key or "").strip()
+    if not value:
+        return ""
+    return "/admin/artifacts/" + "/".join(quote(part) for part in value.split("/"))
 
 
 def _source_locale(supported_locales: list[str]) -> str:

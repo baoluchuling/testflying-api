@@ -18,6 +18,12 @@ class StoredArtifact:
     storage_path: Path | None = None
 
 
+@dataclass(frozen=True)
+class ArtifactContent:
+    content: bytes
+    content_type: str
+
+
 class ArtifactStorage(Protocol):
     backend: str
 
@@ -29,6 +35,8 @@ class ArtifactStorage(Protocol):
         *,
         content_type: str = "application/octet-stream",
     ) -> StoredArtifact: ...
+
+    def read(self, storage_key: str) -> ArtifactContent: ...
 
 
 class LocalArtifactStorage:
@@ -54,6 +62,16 @@ class LocalArtifactStorage:
             storage_key=storage_key,
             storage_path=storage_path,
             download_url=f"{self._public_base_url}/artifacts/{_quote_path(storage_key)}",
+        )
+
+    def read(self, storage_key: str) -> ArtifactContent:
+        storage_path = (self._root / storage_key).resolve()
+        root = self._root.resolve()
+        if not storage_path.is_relative_to(root) or not storage_path.is_file():
+            raise ApiError("artifact_not_found", "制品不存在", status_code=404)
+        return ArtifactContent(
+            content=storage_path.read_bytes(),
+            content_type=_content_type_from_name(storage_path.name),
         )
 
 
@@ -83,6 +101,18 @@ class S3ArtifactStorage:
         return StoredArtifact(
             storage_key=storage_key,
             download_url=f"{self._public_base_url}/{_quote_path(storage_key)}",
+        )
+
+    def read(self, storage_key: str) -> ArtifactContent:
+        try:
+            response = self._client.get_object(Bucket=self._bucket, Key=storage_key)
+        except Exception as error:
+            raise ApiError("artifact_not_found", "制品不存在", status_code=404) from error
+        body = response.get("Body")
+        content = body.read() if hasattr(body, "read") else bytes(body or b"")
+        return ArtifactContent(
+            content=content,
+            content_type=str(response.get("ContentType") or _content_type_from_name(storage_key)),
         )
 
 
@@ -119,3 +149,16 @@ def _storage_key(build_id: str, file_name: str) -> str:
 
 def _quote_path(path: str) -> str:
     return "/".join(quote(part) for part in path.split("/"))
+
+
+def _content_type_from_name(file_name: str) -> str:
+    suffix = Path(file_name).suffix.lower()
+    if suffix == ".png":
+        return "image/png"
+    if suffix in {".jpg", ".jpeg"}:
+        return "image/jpeg"
+    if suffix == ".ipa":
+        return "application/octet-stream"
+    if suffix == ".apk":
+        return "application/vnd.android.package-archive"
+    return "application/octet-stream"

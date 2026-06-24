@@ -1039,10 +1039,20 @@ def test_admin_store_metadata_uploads_store_images_into_content_set(
     assert "暑期活动投放" in page.text
     assert "phone-1.png" in page.text
     assert "data-store-image-preview-image" in page.text
+    assert 'src="/admin/artifacts/store-assets/' in page.text
+    assert "https://dist.example.test/artifacts/store-assets/" not in page.text
     assert 'data-width="1290"' in page.text
     assert 'data-height="2796"' in page.text
     assert "style=\"aspect-ratio:" in page.text
     assert "1290 x 2796" in page.text
+
+    proxy_response = client.get(
+        f"/admin/artifacts/{phone_assets[0]['storageKey']}",
+        headers=_admin_headers(),
+    )
+    assert proxy_response.status_code == 200
+    assert proxy_response.headers["content-type"] == "image/png"
+    assert proxy_response.content.startswith(b"\x89PNG")
 
 
 def test_admin_store_metadata_rejects_invalid_store_image_dimensions(

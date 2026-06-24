@@ -195,6 +195,20 @@ def upload_page(request: Request, session: SessionDep, _: AdminDep) -> HTMLRespo
     )
 
 
+@router.get("/artifacts/{storage_key:path}")
+def admin_artifact(
+    storage_key: str,
+    request: Request,
+    _: AdminDep,
+) -> Response:
+    artifact = request.app.state.artifact_storage.read(storage_key)
+    return Response(
+        content=artifact.content,
+        media_type=artifact.content_type,
+        headers={"Cache-Control": "private, max-age=300"},
+    )
+
+
 @router.post("/uploads", response_class=HTMLResponse)
 async def upload_package(
     request: Request,

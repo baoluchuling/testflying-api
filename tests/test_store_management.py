@@ -7,8 +7,6 @@ from sqlalchemy.orm import Session
 
 from testflying_api.schema import (
     StoreAppMetadataDraft,
-    StoreImageSuite,
-    StoreImageSuiteLocale,
     StoreMarketingPage,
     StoreMarketingPageLocale,
     StoreReleaseNoteDraft,
@@ -89,7 +87,7 @@ def test_store_management_imports_store_version_draft_without_store_sync(
     assert zh_hant_notes.release_notes == "Fix bugs"
 
 
-def test_store_management_imports_store_image_suite_without_version_scope(
+def test_store_management_store_image_suite_endpoint_is_removed(
     client: TestClient,
     db_session: Session,
 ) -> None:
@@ -101,49 +99,10 @@ def test_store_management_imports_store_image_suite_without_version_scope(
             "/apps/app-aurora-ios/store-image-suites"
         ),
         headers={"Authorization": "Bearer dev-token"},
-        data={"metadata": json.dumps(_image_suite_payload())},
-        files=[
-            (
-                "storeImageFiles__phone_screenshots__en-US",
-                ("phone-1.png", make_png_header_bytes(1290, 2796), "image/png"),
-            ),
-            (
-                "storeImageFiles__phoneScreenshots__zh-Hant",
-                ("phone-hant.png", make_png_header_bytes(1320, 2868), "image/png"),
-            ),
-        ],
+        data={"metadata": "{}"},
     )
 
-    assert response.status_code == 200
-    assert response.json() == {
-        "imageSuite": {"id": "summer-a", "name": "暑期截图方案 A"},
-        "locales": ["en-US", "zh-Hant"],
-        "savedLocales": 2,
-        "uploadedAssets": 2,
-        "warnings": [],
-    }
-    assert db_session.query(StoreSyncRun).count() == 0
-    assert db_session.query(StoreAppMetadataDraft).count() == 0
-
-    suite = db_session.query(StoreImageSuite).one()
-    assert suite.suite_id == "summer-a"
-    assert suite.suite_name == "暑期截图方案 A"
-    assert suite.platform == "ios"
-
-    suite_locales = (
-        db_session.query(StoreImageSuiteLocale).order_by(StoreImageSuiteLocale.locale).all()
-    )
-    assert {item.locale for item in suite_locales} == {"en-US", "zh-Hant"}
-    en_us = next(item for item in suite_locales if item.locale == "en-US")
-    zh_hant = next(item for item in suite_locales if item.locale == "zh-Hant")
-    en_us_phone_assets = en_us.store_images_json["phone_screenshots"]["assets"]
-    zh_hant_phone_assets = zh_hant.store_images_json["phone_screenshots"]["assets"]
-    assert [asset["fileName"] for asset in en_us_phone_assets] == ["phone-1.png"]
-    assert [asset["fileName"] for asset in zh_hant_phone_assets] == ["phone-hant.png"]
-    assert "/image-suites/summer-a/en-US/phone_screenshots/" in en_us_phone_assets[0][
-        "storageKey"
-    ]
-    assert "1.0.0" not in en_us_phone_assets[0]["storageKey"]
+    assert response.status_code == 404
 
 
 def test_store_management_imports_marketing_page_without_store_sync(
@@ -280,10 +239,10 @@ def test_store_management_import_rejects_invalid_store_image_size(
     response = client.post(
         (
             "/v1/store-management/developer-accounts/account-apple-enterprise"
-            "/apps/app-aurora-ios/store-image-suites"
+            "/apps/app-aurora-ios/metadata-content-sets"
         ),
         headers={"Authorization": "Bearer dev-token"},
-        data={"metadata": json.dumps(_image_suite_payload())},
+        data={"metadata": json.dumps(_metadata_payload())},
         files=[
             (
                 "storeImageFiles__phone_screenshots__en-US",
@@ -296,7 +255,6 @@ def test_store_management_import_rejects_invalid_store_image_size(
     assert response.json()["code"] == "store_image_invalid"
     assert "Apple 要求精确尺寸" in response.json()["message"]
     assert db_session.query(StoreAppMetadataDraft).count() == 0
-    assert db_session.query(StoreImageSuite).count() == 0
     assert db_session.query(StoreSyncRun).count() == 0
 
 
@@ -317,29 +275,6 @@ def _version_payload() -> dict[str, object]:
                 "promotionalText": "",
                 "description": "",
                 "releaseNotes": "",
-            },
-        ],
-    }
-
-
-def _image_suite_payload() -> dict[str, object]:
-    return {
-        "imageSuite": {
-            "id": "summer-a",
-            "name": "暑期截图方案 A",
-        },
-        "source": "api",
-        "sourceLocale": "en-US",
-        "locales": [
-            {
-                "locale": "en-US",
-                "storeImages": {
-                    "phoneScreenshots": ["https://cdn.example.test/source-phone.png"]
-                },
-            },
-            {
-                "locale": "zh-Hant",
-                "storeImages": {},
             },
         ],
     }

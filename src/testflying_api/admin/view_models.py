@@ -625,6 +625,7 @@ def _store_image_slot(raw_value: object) -> dict[str, object]:
             "validationMessage": asset.get("validationMessage"),
             "matchedLabel": asset.get("matchedLabel"),
             "format": asset.get("format"),
+            "storageKey": asset.get("storageKey"),
         }
         for asset in assets
         if asset.get("storageKey") or asset.get("downloadUrl")
@@ -638,6 +639,7 @@ def _store_image_slot(raw_value: object) -> dict[str, object]:
             "validationMessage": "",
             "matchedLabel": "",
             "format": "",
+            "storageKey": "",
         }
         for url in urls
     ]

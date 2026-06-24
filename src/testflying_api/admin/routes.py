@@ -47,7 +47,13 @@ from testflying_api.app_logs import build_app_log_connect_context
 from testflying_api.database import get_db_session
 from testflying_api.errors import ApiError
 from testflying_api.models import UploadResponse
-from testflying_api.schema import App, DeveloperAccount, StoreImageSuite, StoreImageSuiteLocale
+from testflying_api.schema import (
+    App,
+    DeveloperAccount,
+    StoreAppMetadataDraft,
+    StoreImageSuite,
+    StoreImageSuiteLocale,
+)
 from testflying_api.store_image_requirements import validate_store_image
 from testflying_api.store_sync import (
     DEFAULT_CONTENT_SET_ID,
@@ -1161,6 +1167,82 @@ async def sync_store_metadata_page(
 
 
 @router.post(
+    "/developer-accounts/{account_id}/apps/{app_id}/store-metadata/store-images/delete",
+    response_class=HTMLResponse,
+)
+def delete_store_metadata_image_page(
+    account_id: str,
+    app_id: str,
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+    version: Annotated[str, Form()],
+    locale: Annotated[str, Form()] = DEFAULT_LOCALE,
+    content_set_id: Annotated[str, Form(alias="contentSetId")] = DEFAULT_CONTENT_SET_ID,
+    target_locale: Annotated[str, Form(alias="storeImageLocale")] = DEFAULT_LOCALE,
+    slot_key: Annotated[str, Form(alias="storeImageSlot")] = "",
+    storage_key: Annotated[str, Form(alias="storageKey")] = "",
+    store_image_delete: Annotated[str, Form(alias="storeImageDelete")] = "",
+) -> HTMLResponse:
+    try:
+        delete_payload = _store_image_delete_payload(store_image_delete)
+        target_locale = delete_payload.get("locale") or target_locale
+        slot_key = delete_payload.get("slot") or slot_key
+        storage_key = delete_payload.get("storageKey") or storage_key
+        app = scoped_app(session, account_id, app_id)
+        if app is None:
+            raise ApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
+        _delete_store_image_asset(
+            session,
+            storage=request.app.state.artifact_storage,
+            account_id=account_id,
+            app=app,
+            version=version,
+            content_set_id=content_set_id,
+            locale=target_locale,
+            slot_key=slot_key,
+            storage_key=storage_key,
+        )
+        session.commit()
+        context = store_metadata_context(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            version=version,
+            locale=locale,
+            content_set_id=content_set_id,
+        )
+        session.commit()
+        return templates.TemplateResponse(
+            request,
+            "admin/store_metadata.html",
+            _context(
+                request,
+                active="developer-accounts",
+                success="已删除中心后台的商店图",
+                **context,
+            ),
+        )
+    except ApiError as error:
+        session.rollback()
+        context = store_metadata_context(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            version=version,
+            locale=locale,
+            content_set_id=content_set_id,
+        )
+        session.commit()
+        return templates.TemplateResponse(
+            request,
+            "admin/store_metadata.html",
+            _context(request, active="developer-accounts", error=error.message, **context),
+            status_code=error.status_code,
+        )
+
+
+@router.post(
     "/developer-accounts/{account_id}/apps/{app_id}/store-metadata/preflight",
     response_class=HTMLResponse,
 )
@@ -1761,6 +1843,139 @@ def _save_store_image_suite_locale_row(
         suite_locale.updated_at = now
     session.flush()
     return suite_locale
+
+
+def _delete_store_image_asset(
+    session: Session,
+    *,
+    storage: object,
+    account_id: str,
+    app: App,
+    version: str,
+    content_set_id: str,
+    locale: str,
+    slot_key: str,
+    storage_key: str,
+) -> None:
+    normalized_slot = slot_key.strip()
+    normalized_storage_key = storage_key.strip()
+    normalized_content_set_id = (
+        (content_set_id or DEFAULT_CONTENT_SET_ID).strip() or DEFAULT_CONTENT_SET_ID
+    )
+    normalized_locale = locale.strip() or DEFAULT_LOCALE
+    if normalized_slot not in _store_image_file_slot_keys():
+        raise ApiError("invalid_store_image_slot", "商店图类型不合法", status_code=422)
+    if not normalized_storage_key:
+        raise ApiError("invalid_store_image", "缺少要删除的商店图", status_code=422)
+
+    suite = session.scalar(
+        select(StoreImageSuite).where(
+            StoreImageSuite.developer_account_id == account_id,
+            StoreImageSuite.app_id == app.id,
+            StoreImageSuite.platform == app.platform,
+            StoreImageSuite.suite_id == normalized_content_set_id,
+        )
+    )
+    if suite is None:
+        raise ApiError("store_image_not_found", "商店图套件不存在", status_code=404)
+
+    suite_locale = session.scalar(
+        select(StoreImageSuiteLocale).where(
+            StoreImageSuiteLocale.image_suite_id == suite.id,
+            StoreImageSuiteLocale.locale == normalized_locale,
+        )
+    )
+    if suite_locale is None:
+        raise ApiError("store_image_not_found", "这个语言下还没有商店图", status_code=404)
+
+    now = datetime.now(UTC)
+    updated_images, removed = _remove_store_image_asset_from_json(
+        suite_locale.store_images_json,
+        slot_key=normalized_slot,
+        storage_key=normalized_storage_key,
+    )
+    if not removed:
+        raise ApiError("store_image_not_found", "这张商店图已经不存在或已被删除", status_code=404)
+    suite_locale.store_images_json = updated_images
+    suite_locale.updated_at = now
+    suite.updated_at = now
+
+    draft = session.scalar(
+        select(StoreAppMetadataDraft).where(
+            StoreAppMetadataDraft.developer_account_id == account_id,
+            StoreAppMetadataDraft.app_id == app.id,
+            StoreAppMetadataDraft.platform == app.platform,
+            StoreAppMetadataDraft.version == version,
+            StoreAppMetadataDraft.locale == normalized_locale,
+            StoreAppMetadataDraft.content_set_id == normalized_content_set_id,
+        )
+    )
+    if draft is not None:
+        draft_images, draft_removed = _remove_store_image_asset_from_json(
+            draft.store_images_json,
+            slot_key=normalized_slot,
+            storage_key=normalized_storage_key,
+        )
+        if draft_removed:
+            draft.store_images_json = draft_images
+            draft.updated_at = now
+
+    if hasattr(storage, "delete"):
+        try:
+            storage.delete(normalized_storage_key)
+        except Exception:
+            pass
+
+
+def _store_image_delete_payload(value: str) -> dict[str, str]:
+    if not value.strip():
+        return {}
+    try:
+        raw_payload = json.loads(value)
+    except json.JSONDecodeError as error:
+        raise ApiError("invalid_store_image_delete", "删除参数不合法", status_code=422) from error
+    if not isinstance(raw_payload, dict):
+        raise ApiError("invalid_store_image_delete", "删除参数不合法", status_code=422)
+    return {
+        "locale": str(raw_payload.get("locale") or "").strip(),
+        "slot": str(raw_payload.get("slot") or "").strip(),
+        "storageKey": str(raw_payload.get("storageKey") or "").strip(),
+    }
+
+
+def _remove_store_image_asset_from_json(
+    store_images: object,
+    *,
+    slot_key: str,
+    storage_key: str,
+) -> tuple[dict[str, object], bool]:
+    if not isinstance(store_images, dict):
+        return {}, False
+    images = dict(store_images)
+    slot = images.get(slot_key)
+    if not isinstance(slot, dict):
+        return images, False
+    assets = slot.get("assets")
+    if not isinstance(assets, list | tuple):
+        return images, False
+
+    kept_assets: list[dict[str, object]] = []
+    removed = False
+    for item in assets:
+        if not isinstance(item, dict):
+            continue
+        asset = dict(item)
+        if str(asset.get("storageKey") or "").strip() == storage_key:
+            removed = True
+            continue
+        kept_assets.append(asset)
+    if not removed:
+        return images, False
+
+    updated_slot = dict(slot)
+    updated_slot["assets"] = kept_assets
+    images[slot_key] = updated_slot
+    return images, True
 
 
 def _store_image_form_value(

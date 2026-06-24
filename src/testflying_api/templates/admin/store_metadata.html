@@ -417,6 +417,18 @@
                             <article class="preview-card">
                               <figure>
                                 <img alt="{{ slot.short_label or slot.label }}预览" src="{{ preview.url }}" data-store-image-preview-image data-width="{{ preview.width or '' }}" data-height="{{ preview.height or '' }}" data-validation-message="{{ preview.validationMessage or '' }}" style="aspect-ratio: {{ preview.width ~ ' / ' ~ preview.height if preview.width and preview.height else slot.requirement.fallbackAspectRatio }}">
+                                {% if preview.storageKey %}
+                                  <button
+                                    class="store-image-delete-button"
+                                    type="submit"
+                                    formaction="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata/store-images/delete"
+                                    formmethod="post"
+                                    name="storeImageDelete"
+                                    value='{{ {"locale": locale, "slot": slot.key, "storageKey": preview.storageKey}|tojson }}'
+                                    aria-label="删除{{ preview.fileName or slot.short_label or slot.label }}"
+                                    title="只删除中心后台的这张图"
+                                  >×</button>
+                                {% endif %}
                               </figure>
                               <div class="preview-meta">
                                 <span>{{ preview.fileName or "image" }}</span>
@@ -451,7 +463,21 @@
                           {% if image_slot.preview_items %}
                             {% for preview in image_slot.preview_items %}
                               <figure class="store-image-thumb-card">
-                                <img class="thumb {{ 'tablet' if slot.key == 'tablet_screenshots' else '' }}" alt="{{ item.locale }} {{ slot.short_label or slot.label }}预览" src="{{ preview.url }}" data-store-image-preview-image data-width="{{ preview.width or '' }}" data-height="{{ preview.height or '' }}" data-validation-message="{{ preview.validationMessage or '' }}" data-matched-label="{{ preview.matchedLabel or '' }}" style="aspect-ratio: {{ preview.width ~ ' / ' ~ preview.height if preview.width and preview.height else slot.requirement.fallbackAspectRatio }}">
+                                <span class="store-image-thumb-frame">
+                                  <img class="thumb {{ 'tablet' if slot.key == 'tablet_screenshots' else '' }}" alt="{{ item.locale }} {{ slot.short_label or slot.label }}预览" src="{{ preview.url }}" data-store-image-preview-image data-width="{{ preview.width or '' }}" data-height="{{ preview.height or '' }}" data-validation-message="{{ preview.validationMessage or '' }}" data-matched-label="{{ preview.matchedLabel or '' }}" style="aspect-ratio: {{ preview.width ~ ' / ' ~ preview.height if preview.width and preview.height else slot.requirement.fallbackAspectRatio }}">
+                                  {% if preview.storageKey %}
+                                    <button
+                                      class="store-image-delete-button"
+                                      type="submit"
+                                      formaction="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata/store-images/delete"
+                                      formmethod="post"
+                                      name="storeImageDelete"
+                                      value='{{ {"locale": item.locale, "slot": slot.key, "storageKey": preview.storageKey}|tojson }}'
+                                      aria-label="删除{{ item.locale }} {{ preview.fileName or slot.short_label or slot.label }}"
+                                      title="只删除中心后台的这张图"
+                                    >×</button>
+                                  {% endif %}
+                                </span>
                                 <figcaption>{{ (preview.width ~ " x " ~ preview.height) if preview.width and preview.height else "待检测" }}</figcaption>
                               </figure>
                             {% endfor %}

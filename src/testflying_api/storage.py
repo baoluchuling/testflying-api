@@ -38,6 +38,8 @@ class ArtifactStorage(Protocol):
 
     def read(self, storage_key: str) -> ArtifactContent: ...
 
+    def delete(self, storage_key: str) -> bool: ...
+
 
 class LocalArtifactStorage:
     backend = "local"
@@ -73,6 +75,16 @@ class LocalArtifactStorage:
             content=storage_path.read_bytes(),
             content_type=_content_type_from_name(storage_path.name),
         )
+
+    def delete(self, storage_key: str) -> bool:
+        storage_path = (self._root / storage_key).resolve()
+        root = self._root.resolve()
+        if not storage_path.is_relative_to(root) or not storage_path.exists():
+            return False
+        if not storage_path.is_file():
+            return False
+        storage_path.unlink()
+        return True
 
 
 class S3ArtifactStorage:
@@ -114,6 +126,13 @@ class S3ArtifactStorage:
             content=content,
             content_type=str(response.get("ContentType") or _content_type_from_name(storage_key)),
         )
+
+    def delete(self, storage_key: str) -> bool:
+        try:
+            self._client.delete_object(Bucket=self._bucket, Key=storage_key)
+        except Exception:
+            return False
+        return True
 
 
 def storage_from_settings(settings: Settings) -> ArtifactStorage:

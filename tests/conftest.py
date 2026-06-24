@@ -83,6 +83,7 @@ def client(app: FastAPI) -> TestClient:
 class FakeS3Client:
     def __init__(self) -> None:
         self.put_objects: list[dict[str, object]] = []
+        self.deleted_objects: list[dict[str, object]] = []
         self.objects: dict[tuple[str, str], dict[str, object]] = {}
 
     def put_object(self, **kwargs: object) -> None:
@@ -98,6 +99,10 @@ class FakeS3Client:
             "Body": BytesIO(bytes(item["Body"])),
             "ContentType": item.get("ContentType"),
         }
+
+    def delete_object(self, **kwargs: object) -> None:
+        self.deleted_objects.append(kwargs)
+        self.objects.pop((str(kwargs["Bucket"]), str(kwargs["Key"])), None)
 
 
 @pytest.fixture

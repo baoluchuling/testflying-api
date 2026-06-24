@@ -4052,6 +4052,7 @@ a.ghost-button {
 }
 
 .store-metadata-main .preview-card figure {
+  position: relative;
   display: grid;
   place-items: center;
   min-height: 142px;
@@ -4148,6 +4149,47 @@ a.ghost-button {
   gap: 5px;
   margin: 0;
   min-width: 0;
+}
+
+.store-metadata-main .store-image-thumb-frame {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  min-width: 0;
+}
+
+.store-metadata-main .store-image-delete-button {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid rgba(220, 38, 38, .28);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .92);
+  color: #b42318;
+  box-shadow: 0 6px 14px rgba(15, 23, 42, .14);
+  cursor: pointer;
+  font-size: 17px;
+  font-weight: 760;
+  line-height: 1;
+  opacity: .82;
+  transition: opacity .16s ease, transform .16s ease, background .16s ease;
+}
+
+.store-metadata-main .store-image-thumb-frame:hover .store-image-delete-button,
+.store-metadata-main .preview-card figure:hover .store-image-delete-button,
+.store-metadata-main .store-image-delete-button:focus-visible {
+  opacity: 1;
+}
+
+.store-metadata-main .store-image-delete-button:hover {
+  background: #fef3f2;
+  transform: scale(1.04);
 }
 
 .store-metadata-main .thumb,

@@ -1447,10 +1447,12 @@
           }
           return;
         }
-        preview.replaceChildren(...files.map((file) => {
+        preview.replaceChildren(...files.map((file, index) => {
           const validation = storeImageFileValidation.get(file) || {};
           const figure = document.createElement('figure');
           figure.className = 'store-image-thumb-card';
+          const frame = document.createElement('span');
+          frame.className = 'store-image-thumb-frame';
           const image = document.createElement('img');
           image.className = input.dataset.slot === 'tablet_screenshots' ? 'thumb tablet' : 'thumb';
           image.alt = file.name;
@@ -1466,9 +1468,32 @@
           caption.textContent = validation.width && validation.height
             ? `${validation.width} x ${validation.height}`
             : '待检测';
-          figure.append(image, caption);
+          const removeButton = document.createElement('button');
+          removeButton.className = 'store-image-delete-button';
+          removeButton.type = 'button';
+          removeButton.dataset.storeImageRemoveLocal = 'true';
+          removeButton.dataset.storeImageFileIndex = String(index);
+          removeButton.dataset.storeImageFileName = file.name;
+          removeButton.setAttribute('aria-label', `移除 ${file.name}`);
+          removeButton.title = '移除这张未保存图片';
+          removeButton.textContent = '×';
+          frame.append(image, removeButton);
+          figure.append(frame, caption);
           return figure;
         }));
+      }
+
+      function removeLocalStoreImage(button) {
+        const row = button.closest('[data-locale-row]');
+        const input = row?.querySelector('[data-store-image-file]');
+        if (!input) return;
+        const files = Array.from(input.files || []);
+        const removeIndex = Number.parseInt(button.dataset.storeImageFileIndex || '-1', 10);
+        if (!Number.isInteger(removeIndex) || removeIndex < 0 || removeIndex >= files.length) return;
+        files.splice(removeIndex, 1);
+        setStoreImageFiles(input, files);
+        renderStoreImagePreview(input);
+        syncMetadataEditor(input.closest('[data-metadata-form]'));
       }
 
       function openStoreImageLightbox(row) {
@@ -2351,6 +2376,12 @@
         if (previewAll) {
           const row = previewAll.closest('[data-locale-row]');
           if (row) openStoreImageLightbox(row);
+          return;
+        }
+
+        const removeLocalImage = event.target.closest('[data-store-image-remove-local]');
+        if (removeLocalImage) {
+          removeLocalStoreImage(removeLocalImage);
           return;
         }
 

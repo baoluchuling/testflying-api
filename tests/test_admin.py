@@ -1040,6 +1040,7 @@ def test_admin_store_metadata_uploads_store_images_into_content_set(
     assert "phone-1.png" in page.text
     assert "data-store-image-preview-image" in page.text
     assert 'src="/admin/artifacts/store-assets/' in page.text
+    assert 'name="storeImageDelete"' in page.text
     assert "https://dist.example.test/artifacts/store-assets/" not in page.text
     assert 'data-width="1290"' in page.text
     assert 'data-height="2796"' in page.text
@@ -1053,6 +1054,41 @@ def test_admin_store_metadata_uploads_store_images_into_content_set(
     assert proxy_response.status_code == 200
     assert proxy_response.headers["content-type"] == "image/png"
     assert proxy_response.content.startswith(b"\x89PNG")
+
+    delete_response = client.post(
+        path + "/store-images/delete",
+        headers=_admin_headers(),
+        data={
+            "version": "2.4.0",
+            "locale": "en-US",
+            "contentSetId": "summer-launch",
+            "storeImageDelete": json.dumps(
+                {
+                    "locale": "en-US",
+                    "slot": "phone_screenshots",
+                    "storageKey": phone_assets[0]["storageKey"],
+                }
+            ),
+        },
+    )
+
+    db_session.expire_all()
+    updated_draft = db_session.query(StoreAppMetadataDraft).one()
+    updated_suite_locale = db_session.query(StoreImageSuiteLocale).one()
+    updated_draft_assets = updated_draft.store_images_json["phone_screenshots"]["assets"]
+    updated_suite_assets = updated_suite_locale.store_images_json["phone_screenshots"]["assets"]
+    assert delete_response.status_code == 200
+    assert "已删除中心后台的商店图" in delete_response.text
+    assert [asset["fileName"] for asset in updated_draft_assets] == ["phone-2.png"]
+    assert [asset["fileName"] for asset in updated_suite_assets] == ["phone-2.png"]
+    assert phone_assets[0]["storageKey"] not in delete_response.text
+    assert "phone-1.png" not in delete_response.text
+    assert "phone-2.png" in delete_response.text
+    deleted_proxy_response = client.get(
+        f"/admin/artifacts/{phone_assets[0]['storageKey']}",
+        headers=_admin_headers(),
+    )
+    assert deleted_proxy_response.status_code == 404
 
 
 def test_admin_store_metadata_rejects_invalid_store_image_dimensions(

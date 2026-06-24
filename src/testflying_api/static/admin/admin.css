@@ -6923,13 +6923,67 @@ body.store-sync-confirm-open {
 }
 
 .marketing-page-main .store-workspace-grid {
-  grid-template-columns: 244px minmax(0, 1fr) 278px;
+  grid-template-columns: 208px minmax(0, 1fr) 278px;
   gap: 14px;
 }
 
 .marketing-page-main .sync-copy strong,
 .marketing-page-main .sync-count {
   min-width: 0;
+}
+
+.marketing-page-main .sync-item {
+  grid-template-columns: 22px minmax(0, 1fr) 7px 14px;
+}
+
+.marketing-page-main .editor-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.marketing-page-main .editor-title h2 {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.marketing-page-main .editor-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: #eef5ff;
+  color: #0969ff;
+}
+
+.marketing-page-main .editor-icon svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.85;
+}
+
+.marketing-page-main .focus-completion {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: #eef2f7;
+  color: #4b5563;
+  font-size: 13px;
+  font-weight: 760;
+  white-space: nowrap;
 }
 
 .marketing-page-main .marketing-settings,
@@ -7031,7 +7085,7 @@ body.store-sync-confirm-open {
 
 @media (max-width: 1180px) {
   .marketing-page-main .store-workspace-grid {
-    grid-template-columns: 244px minmax(0, 1fr);
+    grid-template-columns: 208px minmax(0, 1fr);
   }
 
   .marketing-page-main .side {

@@ -199,12 +199,19 @@ def test_admin_marketing_page_layout_css_prevents_horizontal_overflow(
     assert "overflow-x: hidden" in response.text
     assert "padding: 28px 28px 150px" in response.text
     assert ".marketing-page-main .store-workspace-grid" in response.text
-    assert "grid-template-columns: 244px minmax(0, 1fr) 278px" in response.text
+    assert "grid-template-columns: 208px minmax(0, 1fr) 278px" in response.text
     assert "gap: 14px" in response.text
+    assert ".marketing-page-main .sync-item" in response.text
+    assert "grid-template-columns: 22px minmax(0, 1fr) 7px 14px" in response.text
+    assert ".marketing-page-main .editor-icon svg" in response.text
+    assert "width: 19px" in response.text
+    assert "height: 19px" in response.text
+    assert ".marketing-page-main .focus-completion" in response.text
+    assert "display: inline-flex" in response.text
     assert ".marketing-page-main .store-workspace-bottom" in response.text
     assert "max-width: calc(100vw - 292px)" in response.text
     assert "@media (max-width: 1180px) and (min-width: 981px)" in response.text
-    assert "grid-template-columns: 244px minmax(0, 1fr)" in response.text
+    assert "grid-template-columns: 208px minmax(0, 1fr)" in response.text
     assert "max-width: calc(100vw - 296px)" in response.text
     assert "@media (max-width: 980px)" in response.text
     assert "max-width: calc(100vw - 28px)" in response.text
@@ -1572,6 +1579,8 @@ def test_admin_marketing_page_detail_can_save_locales_and_images(
     assert "手机截图" in detail.text
     assert "store-workspace-toolbar" not in detail.text
     assert "metadata-preflight-chip" not in detail.text
+    assert '<span class="sync-count"' not in detail.text
+    assert "<small data-sync-item-status>" not in detail.text
     assert detail.text.count("保存草稿") == 1
     assert 'data-sync-item-panel="promotional_text"' in detail.text
     assert 'data-sync-editor-pane="promotional_text" data-locale-group' in detail.text

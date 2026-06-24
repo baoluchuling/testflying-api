@@ -65,8 +65,6 @@
             </span>
             <span class="sync-copy"><strong>宣传文本</strong></span>
             <span class="progress-dot" aria-hidden="true"></span>
-            <span class="sync-count" data-sync-item-count>{{ localized_marketing_page|length }}/{{ localized_marketing_page|length }} 语言</span>
-            <small data-sync-item-status>待检查</small>
             <span class="chevron right" aria-hidden="true"></span>
           </button>
         </div>
@@ -80,8 +78,6 @@
               </span>
               <span class="sync-copy"><strong>{{ slot.short_label or slot.label }}</strong></span>
               <span class="progress-dot" aria-hidden="true"></span>
-              <span class="sync-count" data-sync-item-count>0/{{ localized_marketing_page|length }} 语言</span>
-              <small data-sync-item-status>待检查</small>
               <span class="chevron right" aria-hidden="true"></span>
             </button>
           {% endfor %}

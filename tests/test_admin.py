@@ -1573,9 +1573,12 @@ def test_admin_marketing_page_detail_can_save_locales_and_images(
     assert "store-workspace-toolbar" not in detail.text
     assert "metadata-preflight-chip" not in detail.text
     assert detail.text.count("保存草稿") == 1
+    assert 'data-sync-item-panel="promotional_text"' in detail.text
     assert 'data-sync-editor-pane="promotional_text" data-locale-group' in detail.text
     assert 'class="locale-detail-input"' in detail.text
+    assert 'data-sync-item-panel="phone_screenshots"' in detail.text
     assert 'data-sync-editor-pane="phone_screenshots" data-locale-group' in detail.text
+    assert "event.target.closest('[data-locale-toggle]')" in detail.text
 
     response = client.post(
         "/admin/developer-accounts/account-apple-enterprise"

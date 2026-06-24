@@ -1004,7 +1004,7 @@
           item.dataset.state = status === '已填写' ? 'complete' : (status === '未填写' ? 'empty' : 'partial');
           item.querySelector('[data-sync-item-count]')?.replaceChildren(document.createTextNode(progressLabel(progress)));
           item.querySelector('[data-sync-item-status]')?.replaceChildren(document.createTextNode(status));
-          const panel = form.querySelector(`[data-sync-item-panel="${item.dataset.syncItemKey}"]`);
+          const panel = syncItemPanelForKey(form, item.dataset.syncItemKey);
           const focusCompletion = panel?.querySelector('[data-focus-completion]');
           if (focusCompletion) focusCompletion.textContent = `${progressLabel(progress)} · ${status}`;
         });
@@ -1068,16 +1068,29 @@
           }
         });
 
-        form.querySelectorAll('[data-sync-item-panel]').forEach((panel) => {
-          const isSelected = panel.dataset.syncItemPanel === selectedKey;
+        syncItemPanels(form).forEach((panel) => {
+          const panelKey = panel.dataset.syncItemPanel || panel.dataset.syncEditorPane;
+          const isSelected = panelKey === selectedKey;
           panel.hidden = !isSelected;
           panel.classList.toggle('is-focused', isSelected);
+          panel.classList.toggle('active', isSelected);
           panel.querySelectorAll('[data-current-locale-label]').forEach((label) => {
             label.textContent = activeLocale;
           });
         });
         syncCurrentMetadataEditors(form, activeLocale);
         syncCurrentReleaseNoteEditors(form, activeLocale);
+      }
+
+      function syncItemPanels(form) {
+        if (!form) return [];
+        return Array.from(form.querySelectorAll('[data-sync-item-panel], [data-sync-editor-pane]'));
+      }
+
+      function syncItemPanelForKey(form, key) {
+        return syncItemPanels(form).find((panel) => (
+          panel.dataset.syncItemPanel === key || panel.dataset.syncEditorPane === key
+        ));
       }
 
       function flashButtonText(button, message) {
@@ -2247,6 +2260,15 @@
           if (group) {
             setLocaleGroupExpanded(group, group.dataset.expanded !== 'true');
             syncMetadataEditor();
+          }
+          return;
+        }
+
+        const localeRowToggle = event.target.closest('[data-locale-toggle]');
+        if (localeRowToggle) {
+          const row = localeRowToggle.closest('[data-locale-row]');
+          if (row) {
+            toggleLocaleRow(row);
           }
           return;
         }

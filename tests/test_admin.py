@@ -22,6 +22,7 @@ from testflying_api.schema import (
     StoreImageSuite,
     StoreImageSuiteLocale,
     StoreMarketingPage,
+    StoreMarketingPageLocale,
     StorePreflightCheck,
     StoreReleaseNoteDraft,
     StoreSyncRun,
@@ -1518,6 +1519,207 @@ def test_admin_store_metadata_can_create_marketing_page(
     assert page.page_name == "新用户转化页"
     assert page.page_type == "product_page_optimization"
     assert page.app_id == "app-aurora-ios"
+
+
+def test_admin_marketing_page_detail_can_save_locales_and_images(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+    client.post(
+        "/admin/developer-accounts/account-apple-enterprise"
+        "/apps/app-aurora-ios/store-metadata/marketing-pages",
+        headers=_admin_headers(),
+        data={
+            "locale": "en-US",
+            "marketingPageType": "custom_product_page",
+            "marketingPageName": "冷启动投放页",
+        },
+    )
+    page = db_session.query(StoreMarketingPage).one()
+
+    detail = client.get(
+        "/admin/developer-accounts/account-apple-enterprise"
+        f"/apps/app-aurora-ios/store-metadata/marketing-pages/{page.page_id}",
+        headers=_admin_headers(),
+    )
+    assert detail.status_code == 200
+    assert "营销页面同步确认" in detail.text
+    assert "宣传文本" in detail.text
+    assert "手机截图" in detail.text
+
+    response = client.post(
+        "/admin/developer-accounts/account-apple-enterprise"
+        f"/apps/app-aurora-ios/store-metadata/marketing-pages/{page.page_id}",
+        headers=_admin_headers(),
+        data={
+            "locale": "en-US",
+            "pageName": "冷启动投放页 v2",
+            "pageType": "custom_product_page",
+            "keywords": "stories,books",
+            "applePageId": "",
+            "deepLinkUrl": "anystories:///home",
+            "locales": ["en-US", "zh-Hans"],
+            "promotionalText": ["Read stories anytime.", "随时阅读故事。"],
+            "phoneScreenshots": ["", ""],
+            "tabletScreenshots": ["", ""],
+        },
+        files=[
+            (
+                "storeImageFiles__phone_screenshots__en-US",
+                ("iphone-69.png", make_png_header_bytes(1290, 2796), "image/png"),
+            )
+        ],
+    )
+
+    db_session.refresh(page)
+    locales = (
+        db_session.query(StoreMarketingPageLocale)
+        .order_by(StoreMarketingPageLocale.locale)
+        .all()
+    )
+    en_locale = next(item for item in locales if item.locale == "en-US")
+    assert response.status_code == 200
+    assert "营销页面草稿已保存" in response.text
+    assert page.page_name == "冷启动投放页 v2"
+    assert page.keywords == "stories,books"
+    assert page.deep_link_url == "anystories:///home"
+    assert [item.locale for item in locales] == ["en-US", "zh-Hans"]
+    assert en_locale.promotional_text == "Read stories anytime."
+    phone_assets = en_locale.store_images_json["phone_screenshots"]["assets"]
+    assert phone_assets[0]["fileName"] == "iphone-69.png"
+    assert "iphone-69.png" in response.text
+    assert "store-metadata/marketing-pages/" in response.text
+
+    delete_response = client.post(
+        "/admin/developer-accounts/account-apple-enterprise"
+        f"/apps/app-aurora-ios/store-metadata/marketing-pages/{page.page_id}/store-images/delete",
+        headers=_admin_headers(),
+        data={
+            "locale": "en-US",
+            "storeImageDelete": json.dumps(
+                {
+                    "locale": "en-US",
+                    "slot": "phone_screenshots",
+                    "storageKey": phone_assets[0]["storageKey"],
+                }
+            ),
+        },
+    )
+
+    db_session.refresh(en_locale)
+    assert delete_response.status_code == 200
+    assert "已删除中心后台的营销页面截图" in delete_response.text
+    assert en_locale.store_images_json["phone_screenshots"]["assets"] == []
+
+
+def test_admin_marketing_page_sync_creates_sync_runs(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+    client.post(
+        "/admin/developer-accounts/account-apple-enterprise"
+        "/apps/app-aurora-ios/store-metadata/marketing-pages",
+        headers=_admin_headers(),
+        data={
+            "locale": "en-US",
+            "marketingPageType": "custom_product_page",
+            "marketingPageName": "冷启动投放页",
+        },
+    )
+    page = db_session.query(StoreMarketingPage).one()
+
+    preflight = client.post(
+        "/admin/developer-accounts/account-apple-enterprise"
+        f"/apps/app-aurora-ios/store-metadata/marketing-pages/{page.page_id}/preflight",
+        headers=_admin_headers(),
+        data={"locale": "en-US"},
+    )
+    assert preflight.status_code == 200
+    assert "已实时查询营销页面同步状态" in preflight.text
+
+    response = client.post(
+        "/admin/developer-accounts/account-apple-enterprise"
+        f"/apps/app-aurora-ios/store-metadata/marketing-pages/{page.page_id}/sync",
+        headers=_admin_headers(),
+        data={
+            "locale": "en-US",
+            "pageName": "冷启动投放页",
+            "pageType": "custom_product_page",
+            "keywords": "stories,books",
+            "locales": ["en-US"],
+            "promotionalText": ["Read stories anytime."],
+            "phoneScreenshots": [""],
+            "tabletScreenshots": [""],
+            "syncScopes": ["marketing_text", "store_images"],
+        },
+    )
+
+    run = db_session.query(StoreSyncRun).filter_by(operation="update_marketing_page").one()
+    db_session.refresh(page)
+    assert response.status_code == 200
+    assert "营销页面已同步 1 个语言" in response.text
+    assert page.status == "synced"
+    assert run.version == page.page_id
+    assert run.locale == "en-US"
+    assert run.sync_scopes_json == {"scopes": ["marketing_text", "store_images"]}
+    assert run.payload_snapshot_json["marketingPage"]["pageName"] == "冷启动投放页"
+    assert run.payload_snapshot_json["marketingPage"]["promotionalText"] == "Read stories anytime."
+
+
+def test_admin_marketing_page_can_copy_and_delete(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+    client.post(
+        "/admin/developer-accounts/account-apple-enterprise"
+        "/apps/app-aurora-ios/store-metadata/marketing-pages",
+        headers=_admin_headers(),
+        data={
+            "locale": "en-US",
+            "marketingPageType": "custom_product_page",
+            "marketingPageName": "冷启动投放页",
+        },
+    )
+    page = db_session.query(StoreMarketingPage).one()
+    page_db_id = page.id
+    db_session.add(
+        StoreMarketingPageLocale(
+            id="marketing-locale-copy-source",
+            marketing_page_id=page.id,
+            locale="en-US",
+            promotional_text="Read stories anytime.",
+            store_images_json={},
+        )
+    )
+    db_session.commit()
+
+    copy_response = client.post(
+        "/admin/developer-accounts/account-apple-enterprise"
+        f"/apps/app-aurora-ios/store-metadata/marketing-pages/{page.page_id}/copy",
+        headers=_admin_headers(),
+    )
+    pages = db_session.query(StoreMarketingPage).order_by(StoreMarketingPage.created_at).all()
+    copied = next(item for item in pages if item.page_id != page.page_id)
+    assert copy_response.status_code == 200
+    assert "已复制营销页面" in copy_response.text
+    assert len(pages) == 2
+    assert copied.page_name == "冷启动投放页 副本"
+    assert db_session.query(StoreMarketingPageLocale).count() == 2
+
+    delete_response = client.post(
+        "/admin/developer-accounts/account-apple-enterprise"
+        f"/apps/app-aurora-ios/store-metadata/marketing-pages/{page.page_id}/delete",
+        headers=_admin_headers(),
+    )
+
+    assert delete_response.status_code == 200
+    assert "已删除中心后台的营销页面" in delete_response.text
+    db_session.expire_all()
+    assert db_session.get(StoreMarketingPage, page_db_id) is None
+    assert db_session.query(StoreMarketingPage).count() == 1
 
 
 def test_admin_store_metadata_page_uses_google_play_terms_for_android(

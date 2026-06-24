@@ -36,6 +36,18 @@ type StoreMetadata struct {
 	StoreImages     *StoreImages `json:"storeImages"`
 }
 
+type MarketingPage struct {
+	PageID          string       `json:"pageId"`
+	PageName        string       `json:"pageName"`
+	PageType        string       `json:"pageType"`
+	ApplePageID     string       `json:"applePageId"`
+	DeepLinkURL     string       `json:"deepLinkUrl"`
+	Locale          string       `json:"locale"`
+	Keywords        string       `json:"keywords"`
+	PromotionalText string       `json:"promotionalText"`
+	StoreImages     *StoreImages `json:"storeImages"`
+}
+
 type ContentSet struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
@@ -62,9 +74,11 @@ type StoreImageAsset struct {
 
 type SyncRunRequest struct {
 	PreflightRequest
-	RunID        string         `json:"runId"`
-	ReleaseNotes string         `json:"releaseNotes"`
-	Metadata     *StoreMetadata `json:"metadata"`
+	RunID         string         `json:"runId"`
+	ReleaseNotes  string         `json:"releaseNotes"`
+	Metadata      *StoreMetadata `json:"metadata"`
+	MarketingPage *MarketingPage `json:"marketingPage"`
+	SyncScopes    []string       `json:"syncScopes"`
 }
 
 type SyncRunResponse struct {

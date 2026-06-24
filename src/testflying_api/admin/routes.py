@@ -38,6 +38,7 @@ from testflying_api.admin.view_models import (
     list_builds,
     list_devices,
     list_notifications,
+    marketing_page_context,
     platform_label,
     release_notes_context,
     store_metadata_context,
@@ -54,6 +55,7 @@ from testflying_api.schema import (
     StoreImageSuite,
     StoreImageSuiteLocale,
     StoreMarketingPage,
+    StoreMarketingPageLocale,
 )
 from testflying_api.store_image_requirements import validate_store_image
 from testflying_api.store_sync import (
@@ -63,13 +65,19 @@ from testflying_api.store_sync import (
     DEFAULT_LOCALE,
     account_connector,
     check_connector_health,
+    delete_marketing_page,
+    duplicate_marketing_page,
+    marketing_page_for_scope,
+    marketing_page_locales,
     metadata_draft_for_scope,
     resolve_connector_base_url,
     save_connector,
     save_current_app_metadata_draft,
+    save_marketing_page,
     save_release_note_draft,
     scoped_app,
     sync_current_app_metadata,
+    sync_marketing_page,
     sync_release_notes,
 )
 from testflying_api.translation import translate_store_metadata_text
@@ -1065,16 +1073,17 @@ async def create_store_marketing_page(
         )
         session.add(page)
         session.commit()
-        context = store_metadata_context(
+        context = marketing_page_context(
             session,
             account_id=account_id,
             app_id=app_id,
+            page_id=page.page_id,
             locale=locale,
         )
         session.commit()
         return templates.TemplateResponse(
             request,
-            "admin/store_metadata.html",
+            "admin/marketing_page.html",
             _context(
                 request,
                 active="developer-accounts",
@@ -1096,6 +1105,377 @@ async def create_store_marketing_page(
             "admin/store_metadata.html",
             _context(request, active="developer-accounts", error=error.message, **context),
             status_code=error.status_code,
+        )
+
+
+@router.get(
+    "/developer-accounts/{account_id}/apps/{app_id}/store-metadata/marketing-pages/{page_id}",
+    response_class=HTMLResponse,
+)
+def marketing_page_detail(
+    account_id: str,
+    app_id: str,
+    page_id: str,
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+    locale: str = DEFAULT_LOCALE,
+) -> HTMLResponse:
+    context = marketing_page_context(
+        session,
+        account_id=account_id,
+        app_id=app_id,
+        page_id=page_id,
+        locale=locale,
+    )
+    if context["account"] is None or context["app"] is None or context["page"] is None:
+        raise ApiError("marketing_page_not_found", "营销页面不存在", status_code=404)
+    return templates.TemplateResponse(
+        request,
+        "admin/marketing_page.html",
+        _context(request, active="developer-accounts", **context),
+    )
+
+
+@router.post(
+    "/developer-accounts/{account_id}/apps/{app_id}/store-metadata/marketing-pages/{page_id}",
+    response_class=HTMLResponse,
+)
+async def save_marketing_page_detail(
+    account_id: str,
+    app_id: str,
+    page_id: str,
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+) -> HTMLResponse:
+    form = await request.form()
+    locale = _form_value(form, "locale", DEFAULT_LOCALE)
+    try:
+        app = scoped_app(session, account_id, app_id)
+        if app is None:
+            raise ApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
+        store_image_assets = await _store_image_assets_from_form(
+            form,
+            storage=request.app.state.artifact_storage,
+            account_id=account_id,
+            app_id=app.id,
+            platform=app.platform,
+            version="marketing",
+            content_set_id=page_id,
+        )
+        page = marketing_page_for_scope(
+            session,
+            account_id=account_id,
+            app_id=app.id,
+            page_id=page_id,
+        )
+        if page is None:
+            raise ApiError("marketing_page_not_found", "营销页面不存在", status_code=404)
+        rows = _marketing_rows_from_request_form(
+            form,
+            current_locale=locale,
+            existing_locales=marketing_page_locales(session, page.id),
+            store_image_assets_by_locale=store_image_assets,
+        )
+        save_marketing_page(
+            session,
+            account_id=account_id,
+            app_id=app.id,
+            page_id=page_id,
+            page_name=_form_value(form, "pageName", page.page_name),
+            page_type=_form_value(form, "pageType", page.page_type),
+            keywords=_form_value(form, "keywords", page.keywords),
+            apple_page_id=_form_value(form, "applePageId", page.apple_page_id),
+            deep_link_url=_form_value(form, "deepLinkUrl", page.deep_link_url),
+            locale_rows=rows,
+        )
+        session.commit()
+        context = marketing_page_context(
+            session,
+            account_id=account_id,
+            app_id=app.id,
+            page_id=page_id,
+            locale=locale,
+        )
+        session.commit()
+        return templates.TemplateResponse(
+            request,
+            "admin/marketing_page.html",
+            _context(request, active="developer-accounts", success="营销页面草稿已保存", **context),
+        )
+    except ApiError as error:
+        session.rollback()
+        return _marketing_page_error_response(
+            request,
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            page_id=page_id,
+            locale=locale,
+            error=error,
+        )
+
+
+@router.post(
+    "/developer-accounts/{account_id}/apps/{app_id}/store-metadata/marketing-pages/{page_id}/copy",
+    response_class=HTMLResponse,
+)
+def copy_marketing_page_detail(
+    account_id: str,
+    app_id: str,
+    page_id: str,
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+) -> HTMLResponse:
+    try:
+        copied = duplicate_marketing_page(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            page_id=page_id,
+        )
+        session.commit()
+        context = marketing_page_context(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            page_id=copied.page_id,
+        )
+        session.commit()
+        return templates.TemplateResponse(
+            request,
+            "admin/marketing_page.html",
+            _context(request, active="developer-accounts", success="已复制营销页面", **context),
+        )
+    except ApiError as error:
+        session.rollback()
+        return _marketing_page_error_response(
+            request,
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            page_id=page_id,
+            locale=DEFAULT_LOCALE,
+            error=error,
+        )
+
+
+@router.post(
+    "/developer-accounts/{account_id}/apps/{app_id}/store-metadata/marketing-pages/{page_id}/delete",
+    response_class=HTMLResponse,
+)
+def delete_marketing_page_detail(
+    account_id: str,
+    app_id: str,
+    page_id: str,
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+) -> HTMLResponse:
+    try:
+        delete_marketing_page(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            page_id=page_id,
+        )
+        session.commit()
+        context = store_metadata_context(session, account_id=account_id, app_id=app_id)
+        session.commit()
+        return templates.TemplateResponse(
+            request,
+            "admin/store_metadata.html",
+            _context(
+                request,
+                active="developer-accounts",
+                success="已删除中心后台的营销页面",
+                **context,
+            ),
+        )
+    except ApiError as error:
+        session.rollback()
+        return _marketing_page_error_response(
+            request,
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            page_id=page_id,
+            locale=DEFAULT_LOCALE,
+            error=error,
+        )
+
+
+@router.post(
+    "/developer-accounts/{account_id}/apps/{app_id}/store-metadata/marketing-pages/{page_id}/preflight",
+    response_class=HTMLResponse,
+)
+def refresh_marketing_page_preflight(
+    account_id: str,
+    app_id: str,
+    page_id: str,
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+    locale: Annotated[str, Form()] = DEFAULT_LOCALE,
+) -> HTMLResponse:
+    context = marketing_page_context(
+        session,
+        account_id=account_id,
+        app_id=app_id,
+        page_id=page_id,
+        locale=locale,
+        force_preflight_refresh=True,
+    )
+    if context["account"] is None or context["app"] is None or context["page"] is None:
+        raise ApiError("marketing_page_not_found", "营销页面不存在", status_code=404)
+    session.commit()
+    preflight = context.get("preflight")
+    success = (
+        "1 分钟内已查询过，已显示最近一次结果"
+        if getattr(preflight, "throttled", False)
+        else "已实时查询营销页面同步状态"
+    )
+    return templates.TemplateResponse(
+        request,
+        "admin/marketing_page.html",
+        _context(request, active="developer-accounts", success=success, **context),
+    )
+
+
+@router.post(
+    "/developer-accounts/{account_id}/apps/{app_id}/store-metadata/marketing-pages/{page_id}/sync",
+    response_class=HTMLResponse,
+)
+async def sync_marketing_page_detail(
+    account_id: str,
+    app_id: str,
+    page_id: str,
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+) -> HTMLResponse:
+    form = await request.form()
+    locale = _form_value(form, "locale", DEFAULT_LOCALE)
+    try:
+        await _save_marketing_page_from_form(
+            account_id=account_id,
+            app_id=app_id,
+            page_id=page_id,
+            request=request,
+            session=session,
+            form=form,
+            locale=locale,
+        )
+        requested_sync_scopes = _form_values(form, "syncScopes") or []
+        locales = _unique_non_empty(_form_values(form, "locales")) or [locale]
+        sync_runs = [
+            sync_marketing_page(
+                session,
+                account_id=account_id,
+                app_id=app_id,
+                page_id=page_id,
+                locale=item_locale,
+                sync_scopes=requested_sync_scopes,
+                actor="admin",
+            )
+            for item_locale in locales
+        ]
+        session.commit()
+        context = marketing_page_context(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            page_id=page_id,
+            locale=locale,
+        )
+        session.commit()
+        success_count = sum(1 for run in sync_runs if run.status == "succeeded")
+        message = (
+            f"营销页面已同步 {len(sync_runs)} 个语言"
+            if success_count == len(sync_runs)
+            else f"营销页面同步完成，成功 {success_count}/{len(sync_runs)} 个语言"
+        )
+        return templates.TemplateResponse(
+            request,
+            "admin/marketing_page.html",
+            _context(request, active="developer-accounts", success=message, **context),
+        )
+    except ApiError as error:
+        session.rollback()
+        return _marketing_page_error_response(
+            request,
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            page_id=page_id,
+            locale=locale,
+            error=error,
+        )
+
+
+@router.post(
+    "/developer-accounts/{account_id}/apps/{app_id}/store-metadata/marketing-pages/{page_id}/store-images/delete",
+    response_class=HTMLResponse,
+)
+def delete_marketing_page_image(
+    account_id: str,
+    app_id: str,
+    page_id: str,
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+    locale: Annotated[str, Form()] = DEFAULT_LOCALE,
+    target_locale: Annotated[str, Form(alias="storeImageLocale")] = DEFAULT_LOCALE,
+    slot_key: Annotated[str, Form(alias="storeImageSlot")] = "",
+    storage_key: Annotated[str, Form(alias="storageKey")] = "",
+    store_image_delete: Annotated[str, Form(alias="storeImageDelete")] = "",
+) -> HTMLResponse:
+    try:
+        delete_payload = _store_image_delete_payload(store_image_delete)
+        target_locale = delete_payload.get("locale") or target_locale
+        slot_key = delete_payload.get("slot") or slot_key
+        storage_key = delete_payload.get("storageKey") or storage_key
+        _delete_marketing_store_image_asset(
+            session,
+            storage=request.app.state.artifact_storage,
+            account_id=account_id,
+            app_id=app_id,
+            page_id=page_id,
+            locale=target_locale,
+            slot_key=slot_key,
+            storage_key=storage_key,
+        )
+        session.commit()
+        context = marketing_page_context(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            page_id=page_id,
+            locale=locale,
+        )
+        session.commit()
+        return templates.TemplateResponse(
+            request,
+            "admin/marketing_page.html",
+            _context(
+                request,
+                active="developer-accounts",
+                success="已删除中心后台的营销页面截图",
+                **context,
+            ),
+        )
+    except ApiError as error:
+        session.rollback()
+        return _marketing_page_error_response(
+            request,
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            page_id=page_id,
+            locale=locale,
+            error=error,
         )
 
 
@@ -1452,6 +1832,51 @@ def _safe_filename(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "-", value).strip(".-") or "connector"
 
 
+def _marketing_page_error_response(
+    request: Request,
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    page_id: str,
+    locale: str,
+    error: ApiError,
+) -> HTMLResponse:
+    context = marketing_page_context(
+        session,
+        account_id=account_id,
+        app_id=app_id,
+        page_id=page_id,
+        locale=locale,
+    )
+    session.commit()
+    if context.get("page") is None or context.get("app") is None:
+        fallback_context = store_metadata_context(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            locale=locale,
+        )
+        session.commit()
+        return templates.TemplateResponse(
+            request,
+            "admin/store_metadata.html",
+            _context(
+                request,
+                active="developer-accounts",
+                error=error.message,
+                **fallback_context,
+            ),
+            status_code=error.status_code,
+        )
+    return templates.TemplateResponse(
+        request,
+        "admin/marketing_page.html",
+        _context(request, active="developer-accounts", error=error.message, **context),
+        status_code=error.status_code,
+    )
+
+
 def _windows_install_script(*, account_id: str, root: str) -> str:
     task_name = f"testflying-connector-{_safe_filename(account_id)}"
     template = r'''$ErrorActionPreference = "Stop"
@@ -1619,6 +2044,128 @@ def _metadata_rows_from_request_form(
         tablet_screenshots=_form_values(form, "tabletScreenshots"),
         store_image_assets_by_locale=store_image_assets_by_locale,
     )
+
+
+async def _save_marketing_page_from_form(
+    *,
+    account_id: str,
+    app_id: str,
+    page_id: str,
+    request: Request,
+    session: Session,
+    form: object,
+    locale: str,
+) -> None:
+    app = scoped_app(session, account_id, app_id)
+    if app is None:
+        raise ApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
+    page = marketing_page_for_scope(
+        session,
+        account_id=account_id,
+        app_id=app.id,
+        page_id=page_id,
+    )
+    if page is None:
+        raise ApiError("marketing_page_not_found", "营销页面不存在", status_code=404)
+    store_image_assets = await _store_image_assets_from_form(
+        form,
+        storage=request.app.state.artifact_storage,
+        account_id=account_id,
+        app_id=app.id,
+        platform=app.platform,
+        version="marketing",
+        content_set_id=page_id,
+    )
+    rows = _marketing_rows_from_request_form(
+        form,
+        current_locale=locale,
+        existing_locales=marketing_page_locales(session, page.id),
+        store_image_assets_by_locale=store_image_assets,
+    )
+    save_marketing_page(
+        session,
+        account_id=account_id,
+        app_id=app.id,
+        page_id=page_id,
+        page_name=_form_value(form, "pageName", page.page_name),
+        page_type=_form_value(form, "pageType", page.page_type),
+        keywords=_form_value(form, "keywords", page.keywords),
+        apple_page_id=_form_value(form, "applePageId", page.apple_page_id),
+        deep_link_url=_form_value(form, "deepLinkUrl", page.deep_link_url),
+        locale_rows=rows,
+    )
+
+
+def _marketing_rows_from_request_form(
+    form: object,
+    *,
+    current_locale: str,
+    existing_locales: dict[str, StoreMarketingPageLocale],
+    store_image_assets_by_locale: dict[str, dict[str, list[dict[str, object]]]] | None = None,
+) -> list[dict[str, object]]:
+    locales = _unique_non_empty(_form_values(form, "locales")) or [
+        current_locale.strip() or DEFAULT_LOCALE
+    ]
+    promotional_text = _form_values(form, "promotionalText")
+    phone_screenshots = _form_values(form, "phoneScreenshots")
+    tablet_screenshots = _form_values(form, "tabletScreenshots")
+    rows: list[dict[str, object]] = []
+    for index, locale in enumerate(locales):
+        current_images = {
+            "feature_graphic_url": {"urls": [], "assets": []},
+            "phone_screenshots": _store_image_form_value(
+                phone_screenshots,
+                index,
+                locale,
+                "phone_screenshots",
+                store_image_assets_by_locale,
+            ),
+            "tablet_screenshots": _store_image_form_value(
+                tablet_screenshots,
+                index,
+                locale,
+                "tablet_screenshots",
+                store_image_assets_by_locale,
+            ),
+        }
+        rows.append(
+            {
+                "locale": locale,
+                "promotional_text": _form_list_value(promotional_text, index),
+                "store_images": _merge_marketing_store_images(
+                    existing_locales.get(locale),
+                    current_images,
+                ),
+            }
+        )
+    base_row = next(
+        (row for row in rows if row["locale"] == (current_locale.strip() or DEFAULT_LOCALE)),
+        rows[0],
+    )
+    for row in rows:
+        if not row["promotional_text"]:
+            row["promotional_text"] = base_row["promotional_text"]
+    return rows
+
+
+def _merge_marketing_store_images(
+    existing_locale: StoreMarketingPageLocale | None,
+    current_images: dict[str, object],
+) -> dict[str, object]:
+    existing = existing_locale.store_images_json if existing_locale else {}
+    merged: dict[str, object] = {}
+    for slot_key in _store_image_file_slot_keys():
+        current_slot = current_images.get(slot_key) if isinstance(current_images, dict) else None
+        existing_slot = existing.get(slot_key) if isinstance(existing, dict) else None
+        current_urls = _slot_urls(current_slot)
+        current_assets = _slot_assets(current_slot)
+        existing_urls = _slot_urls(existing_slot)
+        existing_assets = _slot_assets(existing_slot)
+        merged[slot_key] = {
+            "urls": current_urls or existing_urls,
+            "assets": _dedupe_store_image_assets([*existing_assets, *current_assets]),
+        }
+    return merged
 
 
 async def _store_image_assets_from_form(
@@ -1995,6 +2542,59 @@ def _delete_store_image_asset(
             pass
 
 
+def _delete_marketing_store_image_asset(
+    session: Session,
+    *,
+    storage: object,
+    account_id: str,
+    app_id: str,
+    page_id: str,
+    locale: str,
+    slot_key: str,
+    storage_key: str,
+) -> None:
+    normalized_slot = slot_key.strip()
+    normalized_storage_key = storage_key.strip()
+    normalized_locale = locale.strip() or DEFAULT_LOCALE
+    if normalized_slot not in _store_image_file_slot_keys():
+        raise ApiError("invalid_store_image_slot", "商店图类型不合法", status_code=422)
+    if not normalized_storage_key:
+        raise ApiError("invalid_store_image", "缺少要删除的商店图", status_code=422)
+    page = marketing_page_for_scope(
+        session,
+        account_id=account_id,
+        app_id=app_id,
+        page_id=page_id,
+    )
+    if page is None:
+        raise ApiError("marketing_page_not_found", "营销页面不存在", status_code=404)
+    locale_row = session.scalar(
+        select(StoreMarketingPageLocale).where(
+            StoreMarketingPageLocale.marketing_page_id == page.id,
+            StoreMarketingPageLocale.locale == normalized_locale,
+        )
+    )
+    if locale_row is None:
+        raise ApiError("store_image_not_found", "这个语言下还没有营销页面截图", status_code=404)
+    updated_images, removed = _remove_store_image_asset_from_json(
+        locale_row.store_images_json,
+        slot_key=normalized_slot,
+        storage_key=normalized_storage_key,
+    )
+    if not removed:
+        raise ApiError("store_image_not_found", "这张截图已经不存在或已被删除", status_code=404)
+    now = datetime.now(UTC)
+    locale_row.store_images_json = updated_images
+    locale_row.updated_at = now
+    page.status = "draft"
+    page.updated_at = now
+    if hasattr(storage, "delete"):
+        try:
+            storage.delete(normalized_storage_key)
+        except Exception:
+            pass
+
+
 def _store_image_delete_payload(value: str) -> dict[str, str]:
     if not value.strip():
         return {}
@@ -2044,6 +2644,38 @@ def _remove_store_image_asset_from_json(
     updated_slot["assets"] = kept_assets
     images[slot_key] = updated_slot
     return images, True
+
+
+def _slot_urls(value: object) -> list[str]:
+    if isinstance(value, dict):
+        return _split_lines("\n".join(str(item or "") for item in value.get("urls", [])))
+    return _split_lines(str(value or ""))
+
+
+def _slot_assets(value: object) -> list[dict[str, object]]:
+    if not isinstance(value, dict):
+        return []
+    raw_assets = value.get("assets")
+    if not isinstance(raw_assets, list | tuple):
+        return []
+    return [dict(item) for item in raw_assets if isinstance(item, dict)]
+
+
+def _dedupe_store_image_assets(assets: list[dict[str, object]]) -> list[dict[str, object]]:
+    deduped: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for asset in assets:
+        key = str(
+            asset.get("storageKey")
+            or asset.get("downloadUrl")
+            or asset.get("fileName")
+            or ""
+        )
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        deduped.append(asset)
+    return deduped
 
 
 def _store_image_form_value(

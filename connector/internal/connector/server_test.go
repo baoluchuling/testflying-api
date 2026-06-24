@@ -178,6 +178,42 @@ func TestConnectorMetadataSyncRunSucceeds(t *testing.T) {
 	}
 }
 
+func TestConnectorMarketingPageSyncRunSucceeds(t *testing.T) {
+	server := testServer(t, testSettings())
+	payload := testPayload("page-launch")
+	payload["operation"] = "update_marketing_page"
+	payload["runId"] = "sync-marketing-001"
+	payload["syncScopes"] = []string{"marketing_text", "store_images"}
+	payload["marketingPage"] = map[string]any{
+		"pageId":          "page-launch",
+		"pageName":        "冷启动投放页",
+		"pageType":        "custom_product_page",
+		"applePageId":     "",
+		"deepLinkUrl":     "",
+		"locale":          "en-US",
+		"keywords":        "books,stories",
+		"promotionalText": "Read stories anytime.",
+		"storeImages": map[string]any{
+			"feature_graphic_url": map[string]any{"urls": []string{}, "assets": []any{}},
+			"phone_screenshots":   map[string]any{"urls": []string{}, "assets": []any{}},
+			"tablet_screenshots":  map[string]any{"urls": []string{}, "assets": []any{}},
+		},
+	}
+
+	response := performJSON(server, http.MethodPost, "/v1/sync-runs", testHeaders(), payload)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	var result SyncRunResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "succeeded" || result.Message != "营销页面已同步。" {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
 func TestConnectorListsSupportedLocales(t *testing.T) {
 	server := testServer(t, testSettings())
 

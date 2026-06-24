@@ -23,6 +23,8 @@ from testflying_api.schema import (
     DeveloperAccountApp,
     StoreAppMetadataDraft,
     StoreConnector,
+    StoreMarketingPage,
+    StoreMarketingPageLocale,
     StorePreflightCheck,
     StoreReleaseNoteDraft,
     StoreSyncRun,
@@ -32,6 +34,7 @@ PREFLIGHT_TTL = timedelta(minutes=5)
 PREFLIGHT_FORCE_REFRESH_COOLDOWN = timedelta(minutes=1)
 UPDATE_RELEASE_NOTES = "update_release_notes"
 UPDATE_APP_METADATA = "update_app_metadata"
+UPDATE_MARKETING_PAGE = "update_marketing_page"
 DEFAULT_LOCALE = "zh-Hans"
 DEFAULT_CONTENT_SET_ID = "default"
 DEFAULT_CONTENT_SET_NAME = "默认上架内容"
@@ -42,6 +45,8 @@ APP_STORE_KEYWORDS_MAX_LENGTH = 100
 APP_STORE_PROMOTIONAL_TEXT_MAX_LENGTH = 170
 GOOGLE_PLAY_FULL_DESCRIPTION_MAX_LENGTH = 4000
 GOOGLE_PLAY_FULL_DESCRIPTION_MIN_LENGTH = 10
+MARKETING_SYNC_TEXT_SCOPE = "marketing_text"
+MARKETING_SYNC_IMAGE_SCOPE = "store_images"
 
 
 @dataclass(frozen=True)
@@ -566,6 +571,187 @@ def save_current_app_metadata_draft(
     )
 
 
+def marketing_page_for_scope(
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    page_id: str,
+) -> StoreMarketingPage | None:
+    app = scoped_app(session, account_id, app_id)
+    if app is None:
+        return None
+    return session.scalar(
+        select(StoreMarketingPage).where(
+            StoreMarketingPage.developer_account_id == account_id,
+            StoreMarketingPage.app_id == app.id,
+            StoreMarketingPage.platform == app.platform,
+            StoreMarketingPage.page_id == page_id,
+        )
+    )
+
+
+def marketing_page_locales(
+    session: Session,
+    marketing_page_id: str,
+) -> dict[str, StoreMarketingPageLocale]:
+    rows = session.scalars(
+        select(StoreMarketingPageLocale).where(
+            StoreMarketingPageLocale.marketing_page_id == marketing_page_id
+        )
+    )
+    return {row.locale: row for row in rows}
+
+
+def save_marketing_page(
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    page_id: str,
+    page_name: str,
+    page_type: str,
+    locale_rows: list[dict[str, object]],
+    keywords: str = "",
+    apple_page_id: str = "",
+    deep_link_url: str = "",
+) -> StoreMarketingPage:
+    app = scoped_app(session, account_id, app_id)
+    if app is None:
+        raise ApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
+    if app.platform != "ios":
+        raise ApiError(
+            "unsupported_marketing_page",
+            "营销页面控制台当前仅支持 App Store Connect",
+            status_code=422,
+        )
+    page = marketing_page_for_scope(
+        session,
+        account_id=account_id,
+        app_id=app.id,
+        page_id=page_id,
+    )
+    if page is None:
+        raise ApiError("marketing_page_not_found", "营销页面不存在", status_code=404)
+
+    normalized_page_name = page_name.strip() or page.page_name
+    normalized_keywords = keywords.strip()
+    _validate_text_length(
+        locale=DEFAULT_LOCALE,
+        label="关键词",
+        value=normalized_keywords,
+        max_length=APP_STORE_KEYWORDS_MAX_LENGTH,
+    )
+    page.page_name = normalized_page_name[:160]
+    page.page_type = _normalize_marketing_page_type(page_type)
+    page.keywords = normalized_keywords
+    page.apple_page_id = apple_page_id.strip()
+    page.deep_link_url = deep_link_url.strip()
+    page.status = "draft"
+    page.updated_at = datetime.now(UTC)
+
+    existing_locales = marketing_page_locales(session, page.id)
+    for row in locale_rows:
+        locale = str(row.get("locale") or "").strip()
+        if not locale:
+            continue
+        promotional_text = str(row.get("promotional_text") or "").strip()
+        _validate_text_length(
+            locale=locale,
+            label="Promotional Text（宣传文本）",
+            value=promotional_text,
+            max_length=APP_STORE_PROMOTIONAL_TEXT_MAX_LENGTH,
+        )
+        store_images = _normalize_store_images(
+            row.get("store_images") if isinstance(row.get("store_images"), dict) else {}
+        )
+        locale_row = existing_locales.get(locale)
+        if locale_row is None:
+            locale_row = StoreMarketingPageLocale(
+                id=f"marketing-locale-{uuid4().hex[:12]}",
+                marketing_page_id=page.id,
+                locale=locale,
+                promotional_text=promotional_text,
+                store_images_json=store_images,
+            )
+            session.add(locale_row)
+        else:
+            locale_row.promotional_text = promotional_text
+            locale_row.store_images_json = store_images
+            locale_row.updated_at = datetime.now(UTC)
+
+    session.flush()
+    return page
+
+
+def duplicate_marketing_page(
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    page_id: str,
+) -> StoreMarketingPage:
+    source = marketing_page_for_scope(
+        session,
+        account_id=account_id,
+        app_id=app_id,
+        page_id=page_id,
+    )
+    if source is None:
+        raise ApiError("marketing_page_not_found", "营销页面不存在", status_code=404)
+    now = datetime.now(UTC)
+    copied = StoreMarketingPage(
+        id=f"marketing-page-{uuid4().hex[:12]}",
+        developer_account_id=source.developer_account_id,
+        app_id=source.app_id,
+        platform=source.platform,
+        page_id=f"page-{uuid4().hex[:8]}",
+        page_name=f"{source.page_name} 副本"[:160],
+        page_type=source.page_type,
+        status="draft",
+        apple_page_id="",
+        deep_link_url=source.deep_link_url,
+        keywords=source.keywords,
+        store_images_json=dict(source.store_images_json or {}),
+        created_at=now,
+        updated_at=now,
+    )
+    session.add(copied)
+    session.flush()
+    for locale_row in marketing_page_locales(session, source.id).values():
+        session.add(
+            StoreMarketingPageLocale(
+                id=f"marketing-locale-{uuid4().hex[:12]}",
+                marketing_page_id=copied.id,
+                locale=locale_row.locale,
+                promotional_text=locale_row.promotional_text,
+                store_images_json=dict(locale_row.store_images_json or {}),
+                updated_at=now,
+            )
+        )
+    session.flush()
+    return copied
+
+
+def delete_marketing_page(
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    page_id: str,
+) -> None:
+    page = marketing_page_for_scope(
+        session,
+        account_id=account_id,
+        app_id=app_id,
+        page_id=page_id,
+    )
+    if page is None:
+        raise ApiError("marketing_page_not_found", "营销页面不存在", status_code=404)
+    session.delete(page)
+    session.flush()
+
+
 def get_or_refresh_preflight(
     session: Session,
     *,
@@ -952,6 +1138,133 @@ def sync_current_app_metadata(
     )
 
 
+def sync_marketing_page(
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    page_id: str,
+    locale: str,
+    sync_scopes: list[str],
+    actor: str,
+    client: StoreConnectorClient | None = None,
+) -> StoreSyncRun:
+    app = scoped_app(session, account_id, app_id)
+    if app is None:
+        raise ApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
+    if app.platform != "ios":
+        raise ApiError(
+            "unsupported_marketing_page",
+            "营销页面控制台当前仅支持 App Store Connect",
+            status_code=422,
+        )
+    connector = account_connector(session, account_id)
+    if connector is None:
+        raise ApiError("connector_missing", "当前开发者账号还没有配置 connector", status_code=422)
+    page = marketing_page_for_scope(
+        session,
+        account_id=account_id,
+        app_id=app.id,
+        page_id=page_id,
+    )
+    if page is None:
+        raise ApiError("marketing_page_not_found", "营销页面不存在", status_code=404)
+    locale_row = marketing_page_locales(session, page.id).get(locale)
+    if locale_row is None:
+        raise ApiError(
+            "marketing_page_locale_missing",
+            f"{locale} 还没有营销页面内容",
+            status_code=422,
+        )
+    normalized_scopes = _normalize_marketing_sync_scopes(sync_scopes)
+    if MARKETING_SYNC_TEXT_SCOPE in normalized_scopes:
+        _validate_text_length(
+            locale=locale,
+            label="Promotional Text（宣传文本）",
+            value=locale_row.promotional_text.strip(),
+            max_length=APP_STORE_PROMOTIONAL_TEXT_MAX_LENGTH,
+        )
+        _validate_text_length(
+            locale=locale,
+            label="关键词",
+            value=page.keywords.strip(),
+            max_length=APP_STORE_KEYWORDS_MAX_LENGTH,
+        )
+
+    preflight = get_or_refresh_preflight(
+        session,
+        account_id=account_id,
+        app_id=app.id,
+        version=page.page_id,
+        locale=locale,
+        operation=UPDATE_MARKETING_PAGE,
+        client=client,
+    )
+    if not preflight.can_sync:
+        raise ApiError("preflight_failed", preflight.message, status_code=422)
+
+    run = StoreSyncRun(
+        id=f"sync-{uuid4().hex[:12]}",
+        developer_account_id=account_id,
+        app_id=app.id,
+        connector_id=connector.id,
+        platform=app.platform,
+        operation=UPDATE_MARKETING_PAGE,
+        version=page.page_id,
+        locale=locale,
+        status="running",
+    )
+    session.add(run)
+    session.flush()
+
+    marketing_payload = _marketing_page_payload(
+        page,
+        locale_row=locale_row,
+        sync_scopes=normalized_scopes,
+    )
+    payload = _sync_payload(
+        run=run,
+        account_id=account_id,
+        app=app,
+        operation=UPDATE_MARKETING_PAGE,
+        version=page.page_id,
+        locale=locale,
+        marketing_page=marketing_payload,
+        sync_scopes=normalized_scopes,
+    )
+    run.sync_scopes_json = {"scopes": normalized_scopes}
+    run.payload_snapshot_json = {
+        "pageId": page.page_id,
+        "locale": locale,
+        "marketingPage": marketing_payload,
+    }
+    connector_client = client or StoreConnectorClient()
+    try:
+        response = connector_client.sync_store_operation(connector, payload)
+    except ConnectorCallError as error:
+        run.status = "failed"
+        run.error_code = "connector_error"
+        run.error_summary = error.message
+    else:
+        _apply_sync_response(run, response)
+        if run.status == "succeeded":
+            page.status = "synced"
+            page.updated_at = datetime.now(UTC)
+    run.finished_at = datetime.now(UTC)
+    session.add(
+        AuditLog(
+            id=f"audit-{uuid4().hex[:12]}",
+            developer_account_id=account_id,
+            actor=actor,
+            action="store.marketing_page.sync",
+            target_type="store_sync_run",
+            target_id=run.id,
+        )
+    )
+    session.flush()
+    return run
+
+
 def validate_app_metadata_for_sync(
     *,
     platform: str,
@@ -1118,6 +1431,7 @@ def _sync_payload(
     locale: str,
     release_notes: str | None = None,
     metadata: dict[str, object] | None = None,
+    marketing_page: dict[str, object] | None = None,
     sync_scopes: list[str] | None = None,
 ) -> dict[str, object]:
     payload: dict[str, object] = {
@@ -1133,6 +1447,8 @@ def _sync_payload(
         payload["releaseNotes"] = release_notes
     if metadata is not None:
         payload["metadata"] = metadata
+    if marketing_page is not None:
+        payload["marketingPage"] = marketing_page
     if sync_scopes is not None:
         payload["syncScopes"] = sync_scopes
     return payload
@@ -1170,6 +1486,51 @@ def _metadata_payload(
     if include_store_images:
         payload["storeImages"] = draft.store_images_json
     return payload
+
+
+def _marketing_page_payload(
+    page: StoreMarketingPage,
+    *,
+    locale_row: StoreMarketingPageLocale,
+    sync_scopes: list[str],
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "pageId": page.page_id,
+        "pageName": page.page_name,
+        "pageType": page.page_type,
+        "applePageId": page.apple_page_id,
+        "deepLinkUrl": page.deep_link_url,
+        "locale": locale_row.locale,
+    }
+    if MARKETING_SYNC_TEXT_SCOPE in sync_scopes:
+        payload.update(
+            {
+                "keywords": page.keywords,
+                "promotionalText": locale_row.promotional_text,
+            }
+        )
+    if MARKETING_SYNC_IMAGE_SCOPE in sync_scopes:
+        payload["storeImages"] = _normalize_store_images(locale_row.store_images_json)
+    return payload
+
+
+def _normalize_marketing_page_type(value: str) -> str:
+    normalized = str(value or "").strip()
+    if normalized in {"custom_product_page", "product_page_optimization"}:
+        return normalized
+    return "custom_product_page"
+
+
+def _normalize_marketing_sync_scopes(values: list[str] | None) -> list[str]:
+    allowed = [MARKETING_SYNC_TEXT_SCOPE, MARKETING_SYNC_IMAGE_SCOPE]
+    selected = [value for value in values or [] if value in allowed]
+    deduped: list[str] = []
+    for value in selected:
+        if value not in deduped:
+            deduped.append(value)
+    if not deduped:
+        raise ApiError("missing_sync_scope", "请至少勾选一个要同步的营销页面内容", status_code=422)
+    return deduped
 
 
 def _normalize_store_images(raw_images: dict[str, object] | None) -> dict[str, object]:
@@ -1343,6 +1704,17 @@ def _mock_preflight(payload: dict[str, object]) -> dict[str, object]:
     version = str(payload.get("version") or "")
     operation = str(payload.get("operation") or UPDATE_RELEASE_NOTES)
     operation_label = _operation_label(operation)
+    if operation == UPDATE_MARKETING_PAGE:
+        return {
+            "canSync": True,
+            "reasonCode": None,
+            "message": "营销页面可同步；同步前会按勾选项提交文案或商店图。",
+            "storeState": {
+                "versionExists": True,
+                "editable": True,
+                "currentStatus": "marketing_page_editable",
+            },
+        }
     if not version or "missing" in version.lower():
         return {
             "canSync": False,
@@ -1407,7 +1779,11 @@ def _apply_sync_response(run: StoreSyncRun, response: dict[str, object]) -> None
 
 
 def _operation_label(operation: str) -> str:
-    return "商店元数据" if operation == UPDATE_APP_METADATA else "版本说明"
+    if operation == UPDATE_APP_METADATA:
+        return "商店元数据"
+    if operation == UPDATE_MARKETING_PAGE:
+        return "营销页面"
+    return "版本说明"
 
 
 def _request_hash(payload: dict[str, object]) -> str:

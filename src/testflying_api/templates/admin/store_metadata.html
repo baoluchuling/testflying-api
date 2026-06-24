@@ -577,7 +577,7 @@
       {% else %}
         <div class="suite-grid marketing-page-grid">
           {% for page in marketing_pages %}
-            <article class="suite-card">
+            <a class="suite-card marketing-page-card-link" href="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata/marketing-pages/{{ page.page_id }}">
               <div class="suite-head">
                 <div class="suite-title">
                   <strong>{{ page.page_name }}</strong>
@@ -590,7 +590,7 @@
                 <div><span>关键词</span><strong>{{ "已填" if page.keywords else "未填" }}</strong></div>
                 <div><span>更新</span><strong>{{ page.updated_at|datetime }}</strong></div>
               </div>
-            </article>
+            </a>
           {% else %}
             <div class="empty">还没有营销页面。先创建一个自定义产品页面或产品页面优化实验。</div>
           {% endfor %}

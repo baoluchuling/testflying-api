@@ -18,11 +18,12 @@ from testflying_api.errors import ApiError
 from testflying_api.schema import StoreImageSuite, StoreImageSuiteLocale
 from testflying_api.store_image_requirements import validate_store_image
 from testflying_api.store_sync import (
+    CURRENT_METADATA_VERSION,
     DEFAULT_CONTENT_SET_ID,
     DEFAULT_CONTENT_SET_NAME,
     DEFAULT_LOCALE,
     metadata_draft_for_scope,
-    save_app_metadata_draft,
+    save_current_app_metadata_draft,
     save_release_note_draft,
     scoped_app,
 )
@@ -64,7 +65,7 @@ class LocaleMetadataInput(CamelModel):
 
 
 class MetadataContentSetImport(CamelModel):
-    version: str
+    version: str = CURRENT_METADATA_VERSION
     content_set: ContentSetInput = Field(default_factory=ContentSetInput, alias="contentSet")
     source_locale: str = Field(default=DEFAULT_LOCALE, alias="sourceLocale")
     locales: list[LocaleMetadataInput]
@@ -153,19 +154,16 @@ async def import_metadata_content_set(
         account_id=account_id,
         app_id=app_id,
         platform=app.platform,
-        version=payload.version,
-        content_set_id=payload.content_set.id,
+        version=CURRENT_METADATA_VERSION,
+        content_set_id=DEFAULT_CONTENT_SET_ID,
     )
     rows = _metadata_rows(payload, uploaded_assets)
     for row in rows:
-        save_app_metadata_draft(
+        save_current_app_metadata_draft(
             session,
             account_id=account_id,
             app_id=app_id,
-            version=payload.version,
             locale=row["locale"],
-            content_set_id=payload.content_set.id,
-            content_set_name=payload.content_set.name,
             keywords=row["keywords"],
             promotional_text=row["promotional_text"],
             description=row["description"],
@@ -213,18 +211,15 @@ async def import_store_version_draft(
                 account_id=account_id,
                 app_id=app_id,
                 platform=app.platform,
-                version=version,
+                version=CURRENT_METADATA_VERSION,
                 locale=str(row["locale"]),
                 content_set_id=DEFAULT_CONTENT_SET_ID,
             )
-            save_app_metadata_draft(
+            save_current_app_metadata_draft(
                 session,
                 account_id=account_id,
                 app_id=app_id,
-                version=version,
                 locale=str(row["locale"]),
-                content_set_id=DEFAULT_CONTENT_SET_ID,
-                content_set_name=DEFAULT_CONTENT_SET_NAME,
                 keywords=str(row["keywords"]),
                 promotional_text=str(row["promotional_text"]),
                 description=str(row["description"]),

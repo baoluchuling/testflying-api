@@ -13,6 +13,7 @@ from testflying_api.schema import (
     StoreSyncRun,
 )
 from testflying_api.seed import seed_demo_catalog
+from testflying_api.store_sync import CURRENT_METADATA_VERSION
 from tests.fixtures import make_png_header_bytes
 
 
@@ -70,6 +71,8 @@ def test_store_management_imports_store_version_draft_without_store_sync(
 
     en_us = next(draft for draft in metadata_drafts if draft.locale == "en-US")
     zh_hant = next(draft for draft in metadata_drafts if draft.locale == "zh-Hant")
+    assert en_us.version == CURRENT_METADATA_VERSION
+    assert zh_hant.version == CURRENT_METADATA_VERSION
     assert en_us.content_set_id == "default"
     assert en_us.description == "Long store description for import testing."
     assert all(
@@ -183,8 +186,10 @@ def test_store_management_imports_metadata_content_set_without_store_sync(
 
     en_us = next(draft for draft in drafts if draft.locale == "en-US")
     zh_hant = next(draft for draft in drafts if draft.locale == "zh-Hant")
-    assert en_us.content_set_id == "summer-a"
-    assert en_us.content_set_name == "暑期截图方案 A"
+    assert en_us.version == CURRENT_METADATA_VERSION
+    assert zh_hant.version == CURRENT_METADATA_VERSION
+    assert en_us.content_set_id == "default"
+    assert en_us.content_set_name == "默认上架内容"
     assert en_us.keywords == "novel,reader,story"
     assert en_us.promotional_text == "Read better stories every day."
     assert en_us.description == "Long store description for import testing."

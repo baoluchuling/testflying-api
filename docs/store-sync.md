@@ -24,15 +24,19 @@
 - 页面进入时自动发起预检查。
 - 商店元数据页进入时通过 connector 拉取商店 App 实际支持语言；后台不再把本地默认语言混入商店返回结果。
 - 商店元数据页默认优先使用 `en-US` 作为源文案语言，并按 App 平台展示商店术语。iOS 使用 App Store Connect 的 `Keywords`、`Promotional Text` 和 `Description`；Android 使用 Google Play 的 `Full description`。标题、副标题、隐私政策 URL、支持 URL、营销 URL、App 图标和素材备注当前不支持设置。
-- 商店元数据和版本说明按商店版本保存；同一个账号、App、平台、版本和语言下保存一份版本内容草稿。
-- 商店图按 App 级套件保存，和商店版本平行；第一版只支持多套截图方案的保存和选择，不做 AB 实验。
+- 商店元数据按 App 保存当前草稿，不再跟随商店版本。关键词、宣传文本、描述和商店图都保存在同一份当前草稿里。
+- 版本说明继续按商店版本保存；同步时由操作人填写目标版本。
+- 每次同步会保存同步历史快照，按版本、同步时间、语言、同步范围和状态展示。历史只用于查看和回填，不直接编辑。
+- 商店图不再支持套件；手机截图、平板截图和 Android 功能宣传图与文案一样，直接作为当前商店内容的一部分维护。
+- Apple App 增加营销页面控制台。自定义产品页面和产品页面优化独立于 App 版本，可以创建多个页面。
 - 商店元数据页默认只展示当前语言；每个字段可以单独展开查看所有语言，并提供“从英文填充其他语言”按钮；第一版未接入翻译服务时只把英文源文案填充到空白语言。
-- 商店图套件页支持商店图素材上传草稿，并按平台展示术语。iOS 展示 `iPhone screenshots` 和 `iPad screenshots`；Android 展示 `Feature graphic`、`Phone screenshots` 和 `Tablet screenshots`。图片可以直接拖拽上传，也可以拖入按语言命名的文件夹，后台会按语言和素材类型归类并上传到对象存储。
+- 商店图区域支持商店图素材上传草稿，并按平台展示术语。iOS 展示 `iPhone screenshots` 和 `iPad screenshots`；Android 展示 `Feature graphic`、`Phone screenshots` 和 `Tablet screenshots`。图片可以直接拖拽上传，也可以拖入按语言命名的文件夹，后台会按语言和素材类型归类并上传到对象存储。
 - 相同账号、App、平台、版本、语言和操作的预检查结果缓存 5 分钟。
 - 商店元数据页提供“实时查询”按钮，可以绕过 5 分钟缓存重新查询商店状态；同一账号、App、版本、语言和操作 1 分钟内只能触发一次手动实时查询。
 - 只有预检查通过时才允许同步。
 - 同步前复用同一套 5 分钟预检查规则。
 - 商店元数据同步前，中心后台会先做平台字段校验。iOS 会校验 `Keywords`、`Promotional Text` 和 `Description` 的长度；Android 会校验 `Full description` 的长度。校验失败时不调用 connector，也不会创建同步记录。草稿保存阶段仍允许保存半成品，只要求描述非空。
+- 商店元数据同步前必须勾选同步范围。当前支持 `metadata`、`store_images`、`release_notes`，可以单独同步或组合同步。
 - 同步结果写入 `store_sync_runs`，操作写入 `audit_logs`。
 
 暂不做：
@@ -49,10 +53,11 @@
 - `apps.store_app_id` / `apps.store_package_name`：商店侧 App 标识。
 - `store_connectors`：账号对应 connector 地址和调用 token。
 - `store_release_note_drafts`：版本说明草稿。
-- `store_app_metadata_drafts`：商店版本元数据草稿，包括平台适用的文案字段。表内保留的标题、副标题、URL、`store_images_json` 和内容套件列仅用于兼容历史数据，当前新接口不再把商店图写入版本草稿。唯一范围是账号、App、平台、版本、语言和 `content_set_id`。
-- `store_image_suites` / `store_image_suite_locales`：App 级商店图套件，保存不同语言下的截图和功能宣传图素材。唯一范围是账号、App、平台和 `suite_id`，不包含版本。
+- `store_app_metadata_drafts`：App 级当前商店元数据草稿。新流程使用内部固定版本 `__current__` 和默认内容范围保存当前草稿；旧版本草稿保留用于历史兼容和回填。
+- `store_image_suites` / `store_image_suite_locales`：历史兼容表，主 UI 不再展示商店图套件。
+- `store_marketing_pages` / `store_marketing_page_locales`：Apple 营销页面草稿，独立于 App 版本。
 - `store_preflight_checks`：5 分钟预检查缓存。
-- `store_sync_runs`：同步执行记录。
+- `store_sync_runs`：同步执行记录，并保存同步范围和 payload 快照。
 - `audit_logs`：后台操作审计。
 
 旧表 `developer_account_apps` 暂时保留，用于兼容现有客户端账号续费接口。商店同步新流程以 `apps.developer_account_id` 为准。

@@ -53,9 +53,11 @@ from testflying_api.schema import (
     StoreAppMetadataDraft,
     StoreImageSuite,
     StoreImageSuiteLocale,
+    StoreMarketingPage,
 )
 from testflying_api.store_image_requirements import validate_store_image
 from testflying_api.store_sync import (
+    CURRENT_METADATA_VERSION,
     DEFAULT_CONTENT_SET_ID,
     DEFAULT_CONTENT_SET_NAME,
     DEFAULT_LOCALE,
@@ -63,11 +65,11 @@ from testflying_api.store_sync import (
     check_connector_health,
     metadata_draft_for_scope,
     resolve_connector_base_url,
-    save_app_metadata_draft,
     save_connector,
+    save_current_app_metadata_draft,
     save_release_note_draft,
     scoped_app,
-    sync_app_metadata,
+    sync_current_app_metadata,
     sync_release_notes,
 )
 from testflying_api.translation import translate_store_metadata_text
@@ -866,10 +868,9 @@ async def save_store_metadata_page(
     _: AdminDep,
 ) -> HTMLResponse:
     form = await request.form()
-    version = _form_value(form, "version")
+    version = _form_value(form, "syncVersion", _form_value(form, "version"))
     locale = _form_value(form, "locale", DEFAULT_LOCALE)
-    content_set_id = _form_value(form, "contentSetId", DEFAULT_CONTENT_SET_ID)
-    content_set_name = _form_value(form, "contentSetName", DEFAULT_CONTENT_SET_NAME)
+    content_set_id = DEFAULT_CONTENT_SET_ID
     try:
         app = scoped_app(session, account_id, app_id)
         if app is None:
@@ -880,7 +881,7 @@ async def save_store_metadata_page(
             account_id=account_id,
             app_id=app_id,
             platform=app.platform,
-            version=version,
+            version=CURRENT_METADATA_VERSION,
             content_set_id=content_set_id,
         )
         metadata_rows = _metadata_rows_from_request_form(
@@ -888,36 +889,26 @@ async def save_store_metadata_page(
             current_locale=locale,
             store_image_assets_by_locale=store_image_assets,
         )
-        _save_store_image_suite_rows(
-            session,
-            account_id=account_id,
-            app=app,
-            suite_id=content_set_id,
-            suite_name=content_set_name,
-            metadata_rows=metadata_rows,
-        )
         for row in metadata_rows:
-            save_app_metadata_draft(
+            save_current_app_metadata_draft(
                 session,
                 account_id=account_id,
                 app_id=app_id,
-                version=version,
                 locale=row["locale"],
-                content_set_id=content_set_id,
-                content_set_name=content_set_name,
                 keywords=row["keywords"],
                 promotional_text=row["promotional_text"],
                 description=row["description"],
                 store_images=row["store_images"],
             )
-            save_release_note_draft(
-                session,
-                account_id=account_id,
-                app_id=app_id,
-                version=version,
-                locale=row["locale"],
-                release_notes=row["release_notes"],
-            )
+            if version:
+                save_release_note_draft(
+                    session,
+                    account_id=account_id,
+                    app_id=app_id,
+                    version=version,
+                    locale=row["locale"],
+                    release_notes=row["release_notes"],
+                )
         session.commit()
         context = store_metadata_context(
             session,
@@ -1029,6 +1020,86 @@ async def translate_store_metadata_field(
 
 
 @router.post(
+    "/developer-accounts/{account_id}/apps/{app_id}/store-metadata/marketing-pages",
+    response_class=HTMLResponse,
+)
+async def create_store_marketing_page(
+    account_id: str,
+    app_id: str,
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+) -> HTMLResponse:
+    form = await request.form()
+    locale = _form_value(form, "locale", DEFAULT_LOCALE)
+    page_name = _form_value(form, "marketingPageName", "新的自定义产品页面")
+    page_type = _form_value(form, "marketingPageType", "custom_product_page")
+    try:
+        app = scoped_app(session, account_id, app_id)
+        if app is None:
+            raise ApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
+        if app.platform != "ios":
+            raise ApiError(
+                "unsupported_marketing_page",
+                "营销页面控制台当前仅支持 App Store Connect",
+                status_code=422,
+            )
+        now = datetime.now(UTC)
+        normalized_page_type = (
+            page_type
+            if page_type in {"custom_product_page", "product_page_optimization"}
+            else "custom_product_page"
+        )
+        page = StoreMarketingPage(
+            id=f"marketing-page-{uuid4().hex[:12]}",
+            developer_account_id=account_id,
+            app_id=app.id,
+            platform=app.platform,
+            page_id=f"page-{uuid4().hex[:8]}",
+            page_name=page_name.strip() or "新的自定义产品页面",
+            page_type=normalized_page_type,
+            status="draft",
+            store_images_json={},
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(page)
+        session.commit()
+        context = store_metadata_context(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            locale=locale,
+        )
+        session.commit()
+        return templates.TemplateResponse(
+            request,
+            "admin/store_metadata.html",
+            _context(
+                request,
+                active="developer-accounts",
+                success="营销页面已创建",
+                **context,
+            ),
+        )
+    except ApiError as error:
+        session.rollback()
+        context = store_metadata_context(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            locale=locale,
+        )
+        session.commit()
+        return templates.TemplateResponse(
+            request,
+            "admin/store_metadata.html",
+            _context(request, active="developer-accounts", error=error.message, **context),
+            status_code=error.status_code,
+        )
+
+
+@router.post(
     "/developer-accounts/{account_id}/apps/{app_id}/store-metadata/sync",
     response_class=HTMLResponse,
 )
@@ -1040,11 +1111,12 @@ async def sync_store_metadata_page(
     _: AdminDep,
 ) -> HTMLResponse:
     form = await request.form()
-    version = _form_value(form, "version")
+    version = _form_value(form, "syncVersion", _form_value(form, "version"))
     locale = _form_value(form, "locale", DEFAULT_LOCALE)
-    content_set_id = _form_value(form, "contentSetId", DEFAULT_CONTENT_SET_ID)
-    content_set_name = _form_value(form, "contentSetName", DEFAULT_CONTENT_SET_NAME)
+    content_set_id = DEFAULT_CONTENT_SET_ID
     try:
+        if not version:
+            raise ApiError("missing_version", "同步到商店前需要填写目标商店版本", status_code=422)
         app = scoped_app(session, account_id, app_id)
         if app is None:
             raise ApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
@@ -1054,7 +1126,7 @@ async def sync_store_metadata_page(
             account_id=account_id,
             app_id=app_id,
             platform=app.platform,
-            version=version,
+            version=CURRENT_METADATA_VERSION,
             content_set_id=content_set_id,
         )
         metadata_rows = _metadata_rows_from_request_form(
@@ -1063,45 +1135,44 @@ async def sync_store_metadata_page(
             store_image_assets_by_locale=store_image_assets,
         )
         requested_sync_scopes = _form_values(form, "syncScopes")
-        sync_scopes = set(requested_sync_scopes or ["metadata"])
-        include_store_images = requested_sync_scopes is None or "store_images" in sync_scopes
-        if "store_images" in sync_scopes:
-            _save_store_image_suite_rows(
-                session,
-                account_id=account_id,
-                app=app,
-                suite_id=content_set_id,
-                suite_name=content_set_name,
-                metadata_rows=metadata_rows,
-            )
+        sync_scopes = set(requested_sync_scopes or [])
+        if not sync_scopes:
+            raise ApiError("missing_sync_scope", "请至少勾选一个要同步的内容", status_code=422)
+        include_store_images = "store_images" in sync_scopes
         sync_runs = []
         for row in metadata_rows:
             if "metadata" in sync_scopes:
-                store_images_for_draft = _metadata_store_images_for_sync(
-                    session,
-                    account_id=account_id,
-                    app=app,
-                    version=version,
-                    locale=row["locale"],
-                    content_set_id=content_set_id,
-                    row_store_images=row["store_images"],
-                    include_store_images=include_store_images,
-                )
                 sync_runs.append(
-                    sync_app_metadata(
+                    sync_current_app_metadata(
                         session,
                         account_id=account_id,
                         app_id=app_id,
                         version=version,
                         locale=row["locale"],
-                        content_set_id=content_set_id,
-                        content_set_name=content_set_name,
                         keywords=row["keywords"],
                         promotional_text=row["promotional_text"],
                         description=row["description"],
                         actor="admin",
-                        store_images=store_images_for_draft,
+                        store_images=row["store_images"],
                         include_store_images_in_payload=include_store_images,
+                        sync_scopes=sorted(sync_scopes & {"metadata", "store_images"}),
+                    )
+                )
+            elif "store_images" in sync_scopes:
+                sync_runs.append(
+                    sync_current_app_metadata(
+                        session,
+                        account_id=account_id,
+                        app_id=app_id,
+                        version=version,
+                        locale=row["locale"],
+                        keywords=row["keywords"],
+                        promotional_text=row["promotional_text"],
+                        description=row["description"],
+                        actor="admin",
+                        store_images=row["store_images"],
+                        include_store_images_in_payload=True,
+                        sync_scopes=["store_images"],
                     )
                 )
             if "release_notes" in sync_scopes:
@@ -1141,7 +1212,7 @@ async def sync_store_metadata_page(
                     else f"同步已完成，成功 {success_count}/{len(sync_runs)} 个任务"
                 )
         else:
-            message = "商店图套件草稿已保存；当前 connector 暂未实现商店图单独同步"
+            message = "商店图草稿已保存；当前 connector 暂未实现商店图单独同步"
         return templates.TemplateResponse(
             request,
             "admin/store_metadata.html",
@@ -1868,6 +1939,29 @@ def _delete_store_image_asset(
     if not normalized_storage_key:
         raise ApiError("invalid_store_image", "缺少要删除的商店图", status_code=422)
 
+    now = datetime.now(UTC)
+    draft = session.scalar(
+        select(StoreAppMetadataDraft).where(
+            StoreAppMetadataDraft.developer_account_id == account_id,
+            StoreAppMetadataDraft.app_id == app.id,
+            StoreAppMetadataDraft.platform == app.platform,
+            StoreAppMetadataDraft.version == CURRENT_METADATA_VERSION,
+            StoreAppMetadataDraft.locale == normalized_locale,
+            StoreAppMetadataDraft.content_set_id == DEFAULT_CONTENT_SET_ID,
+        )
+    )
+    if draft is None:
+        raise ApiError("store_image_not_found", "这个语言下还没有商店图", status_code=404)
+    draft_images, removed = _remove_store_image_asset_from_json(
+        draft.store_images_json,
+        slot_key=normalized_slot,
+        storage_key=normalized_storage_key,
+    )
+    if not removed:
+        raise ApiError("store_image_not_found", "这张商店图已经不存在或已被删除", status_code=404)
+    draft.store_images_json = draft_images
+    draft.updated_at = now
+
     suite = session.scalar(
         select(StoreImageSuite).where(
             StoreImageSuite.developer_account_id == account_id,
@@ -1876,49 +1970,23 @@ def _delete_store_image_asset(
             StoreImageSuite.suite_id == normalized_content_set_id,
         )
     )
-    if suite is None:
-        raise ApiError("store_image_not_found", "商店图套件不存在", status_code=404)
-
-    suite_locale = session.scalar(
-        select(StoreImageSuiteLocale).where(
-            StoreImageSuiteLocale.image_suite_id == suite.id,
-            StoreImageSuiteLocale.locale == normalized_locale,
+    if suite is not None:
+        suite_locale = session.scalar(
+            select(StoreImageSuiteLocale).where(
+                StoreImageSuiteLocale.image_suite_id == suite.id,
+                StoreImageSuiteLocale.locale == normalized_locale,
+            )
         )
-    )
-    if suite_locale is None:
-        raise ApiError("store_image_not_found", "这个语言下还没有商店图", status_code=404)
-
-    now = datetime.now(UTC)
-    updated_images, removed = _remove_store_image_asset_from_json(
-        suite_locale.store_images_json,
-        slot_key=normalized_slot,
-        storage_key=normalized_storage_key,
-    )
-    if not removed:
-        raise ApiError("store_image_not_found", "这张商店图已经不存在或已被删除", status_code=404)
-    suite_locale.store_images_json = updated_images
-    suite_locale.updated_at = now
-    suite.updated_at = now
-
-    draft = session.scalar(
-        select(StoreAppMetadataDraft).where(
-            StoreAppMetadataDraft.developer_account_id == account_id,
-            StoreAppMetadataDraft.app_id == app.id,
-            StoreAppMetadataDraft.platform == app.platform,
-            StoreAppMetadataDraft.version == version,
-            StoreAppMetadataDraft.locale == normalized_locale,
-            StoreAppMetadataDraft.content_set_id == normalized_content_set_id,
-        )
-    )
-    if draft is not None:
-        draft_images, draft_removed = _remove_store_image_asset_from_json(
-            draft.store_images_json,
-            slot_key=normalized_slot,
-            storage_key=normalized_storage_key,
-        )
-        if draft_removed:
-            draft.store_images_json = draft_images
-            draft.updated_at = now
+        if suite_locale is not None:
+            suite_images, suite_removed = _remove_store_image_asset_from_json(
+                suite_locale.store_images_json,
+                slot_key=normalized_slot,
+                storage_key=normalized_storage_key,
+            )
+            if suite_removed:
+                suite_locale.store_images_json = suite_images
+                suite_locale.updated_at = now
+                suite.updated_at = now
 
     if hasattr(storage, "delete"):
         try:

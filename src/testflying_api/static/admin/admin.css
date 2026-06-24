@@ -6765,3 +6765,76 @@ body.store-sync-confirm-open {
   font-size: 13px;
   line-height: 1.55;
 }
+
+.store-metadata-main .sync-version-input {
+  gap: 10px;
+  padding-right: 14px;
+}
+
+.store-metadata-main .sync-version-input span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.store-metadata-main .sync-version-input input {
+  width: 110px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 800;
+}
+
+.store-section-tabs {
+  margin-top: 18px;
+}
+
+.store-section-panel {
+  margin-top: 18px;
+}
+
+.history-groups {
+  display: grid;
+  gap: 16px;
+}
+
+.history-group {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px;
+  background: #fff;
+}
+
+.history-group-head,
+.marketing-create {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.history-group-head strong {
+  color: var(--text);
+  font-size: 18px;
+}
+
+.history-group-head span {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.marketing-create {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.marketing-create .text-input {
+  min-width: 180px;
+}
+
+.marketing-page-grid {
+  margin-top: 18px;
+}

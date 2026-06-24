@@ -18,11 +18,13 @@ from testflying_api.schema import (
     StoreAppMetadataDraft,
     StoreImageSuite,
     StoreImageSuiteLocale,
+    StoreMarketingPage,
     StoreReleaseNoteDraft,
     StoreSyncRun,
 )
 from testflying_api.store_image_requirements import store_image_requirement
 from testflying_api.store_sync import (
+    CURRENT_METADATA_VERSION,
     DEFAULT_CONTENT_SET_ID,
     DEFAULT_CONTENT_SET_NAME,
     DEFAULT_LOCALE,
@@ -30,10 +32,10 @@ from testflying_api.store_sync import (
     account_apps,
     account_connector,
     cached_preflight_for_app,
+    current_metadata_drafts_for_app,
     draft_for_scope,
     get_or_refresh_preflight,
     latest_build_for_app,
-    metadata_content_sets_for_scope,
     metadata_draft_for_scope,
     metadata_drafts_for_scope,
     recent_sync_runs,
@@ -226,18 +228,23 @@ def store_metadata_context(
     app = next((item for item in account_apps(session, account_id) if item.id == app_id), None)
     latest_build = latest_build_for_app(session, app_id)
     target_version = version or (latest_build.version if latest_build else "")
-    drafts_by_locale = (
-        metadata_drafts_for_scope(
+    drafts_by_locale: dict[str, StoreAppMetadataDraft] = {}
+    if app:
+        drafts_by_locale = current_metadata_drafts_for_app(
             session,
             account_id=account_id,
             app_id=app_id,
             platform=app.platform,
-            version=target_version,
-            content_set_id=content_set_id,
         )
-        if app and target_version
-        else {}
-    )
+        if not drafts_by_locale and target_version:
+            drafts_by_locale = metadata_drafts_for_scope(
+                session,
+                account_id=account_id,
+                app_id=app_id,
+                platform=app.platform,
+                version=target_version,
+                content_set_id=DEFAULT_CONTENT_SET_ID,
+            )
     release_note_drafts_by_locale = (
         _release_note_drafts_for_scope(
             session,
@@ -249,50 +256,13 @@ def store_metadata_context(
         if app and target_version
         else {}
     )
-    content_sets = (
-        metadata_content_sets_for_scope(
-            session,
-            account_id=account_id,
-            app_id=app_id,
-            platform=app.platform,
-            version=target_version,
-        )
-        if app and target_version
-        else [{"id": DEFAULT_CONTENT_SET_ID, "name": DEFAULT_CONTENT_SET_NAME}]
-    )
-    image_suites = (
-        _store_image_suites_for_app(
-            session,
-            account_id=account_id,
-            app_id=app_id,
-            platform=app.platform,
-        )
-        if app
-        else [{"id": DEFAULT_CONTENT_SET_ID, "name": DEFAULT_CONTENT_SET_NAME}]
-    )
-    active_image_suite = next(
-        (item for item in image_suites if item["id"] == content_set_id),
-        None,
-    )
-    image_suite_locales_by_locale = (
-        active_image_suite.get("locales_by_locale", {}) if active_image_suite else {}
-    )
-    active_content_set = next(
-        (item for item in content_sets if item["id"] == content_set_id),
-        next(
-            (
-                {"id": item["id"], "name": item["name"]}
-                for item in image_suites
-                if item["id"] == content_set_id
-            ),
-            None,
-        ),
-    ) or (
-        {
-            "id": content_set_id or DEFAULT_CONTENT_SET_ID,
-            "name": content_set_id or DEFAULT_CONTENT_SET_NAME,
-        }
-    )
+    content_sets = [{"id": DEFAULT_CONTENT_SET_ID, "name": DEFAULT_CONTENT_SET_NAME}]
+    image_suites: list[dict[str, object]] = []
+    image_suite_locales_by_locale: dict[str, object] = {}
+    active_content_set = {
+        "id": DEFAULT_CONTENT_SET_ID,
+        "name": DEFAULT_CONTENT_SET_NAME,
+    }
     connector = account_connector(session, account_id)
     local_locales = _known_store_locales(
         fallback_locale=locale,
@@ -327,11 +297,11 @@ def store_metadata_context(
             account_id=account_id,
             app_id=app_id,
             platform=app.platform,
-            version=target_version,
+            version=CURRENT_METADATA_VERSION,
             locale=source_locale,
-            content_set_id=content_set_id,
+            content_set_id=DEFAULT_CONTENT_SET_ID,
         )
-        if app and target_version
+        if app
         else None
     )
     base_metadata = _store_metadata_defaults(
@@ -371,11 +341,8 @@ def store_metadata_context(
         "content_set_id": active_content_set["id"],
         "content_set_name": active_content_set["name"],
         "content_sets": content_sets,
-        "content_set_options": _merge_content_set_options(content_sets, image_suites),
-        "image_suites": [
-            {key: value for key, value in item.items() if key != "locales_by_locale"}
-            for item in image_suites
-        ],
+        "content_set_options": content_sets,
+        "image_suites": image_suites,
         "draft": draft,
         "metadata": base_metadata,
         "metadata_fields": _metadata_fields(app.platform if app else ""),
@@ -393,6 +360,17 @@ def store_metadata_context(
         "preflight": preflight,
         "connector": connector,
         "sync_runs": recent_sync_runs(session, account_id=account_id, app_id=app_id),
+        "sync_history_groups": _sync_history_groups(
+            recent_sync_runs(session, account_id=account_id, app_id=app_id, limit=50)
+        ),
+        "marketing_pages": _marketing_pages_for_app(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            platform=app.platform,
+        )
+        if app
+        else [],
     }
 
 
@@ -562,6 +540,40 @@ def _store_image_suites_for_app(
             },
         )
     return rows
+
+
+def _marketing_pages_for_app(
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    platform: str,
+) -> list[StoreMarketingPage]:
+    return list(
+        session.scalars(
+            select(StoreMarketingPage)
+            .where(
+                StoreMarketingPage.developer_account_id == account_id,
+                StoreMarketingPage.app_id == app_id,
+                StoreMarketingPage.platform == platform,
+            )
+            .order_by(StoreMarketingPage.updated_at.desc(), StoreMarketingPage.page_name.asc())
+        )
+    )
+
+
+def _sync_history_groups(runs: list[StoreSyncRun]) -> list[dict[str, object]]:
+    grouped: dict[str, list[StoreSyncRun]] = {}
+    for run in runs:
+        grouped.setdefault(run.version or "-", []).append(run)
+    return [
+        {
+            "version": version,
+            "runs": version_runs,
+            "latest_at": version_runs[0].started_at if version_runs else None,
+        }
+        for version, version_runs in grouped.items()
+    ]
 
 
 def _release_note_drafts_for_scope(

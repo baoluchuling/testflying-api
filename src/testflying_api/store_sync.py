@@ -35,6 +35,7 @@ UPDATE_APP_METADATA = "update_app_metadata"
 DEFAULT_LOCALE = "zh-Hans"
 DEFAULT_CONTENT_SET_ID = "default"
 DEFAULT_CONTENT_SET_NAME = "默认上架内容"
+CURRENT_METADATA_VERSION = "__current__"
 APP_STORE_DESCRIPTION_MAX_LENGTH = 4000
 APP_STORE_DESCRIPTION_MIN_LENGTH = 10
 APP_STORE_KEYWORDS_MAX_LENGTH = 100
@@ -350,6 +351,23 @@ def metadata_drafts_for_scope(
     return {draft.locale: draft for draft in drafts}
 
 
+def current_metadata_drafts_for_app(
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    platform: str,
+) -> dict[str, StoreAppMetadataDraft]:
+    return metadata_drafts_for_scope(
+        session,
+        account_id=account_id,
+        app_id=app_id,
+        platform=platform,
+        version=CURRENT_METADATA_VERSION,
+        content_set_id=DEFAULT_CONTENT_SET_ID,
+    )
+
+
 def metadata_content_sets_for_scope(
     session: Session,
     *,
@@ -520,6 +538,32 @@ def save_app_metadata_draft(
         draft.updated_at = datetime.now(UTC)
     session.flush()
     return draft
+
+
+def save_current_app_metadata_draft(
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    locale: str,
+    keywords: str,
+    promotional_text: str,
+    description: str,
+    store_images: dict[str, object] | None = None,
+) -> StoreAppMetadataDraft:
+    return save_app_metadata_draft(
+        session,
+        account_id=account_id,
+        app_id=app_id,
+        version=CURRENT_METADATA_VERSION,
+        locale=locale,
+        content_set_id=DEFAULT_CONTENT_SET_ID,
+        content_set_name=DEFAULT_CONTENT_SET_NAME,
+        keywords=keywords,
+        promotional_text=promotional_text,
+        description=description,
+        store_images=store_images,
+    )
 
 
 def get_or_refresh_preflight(
@@ -713,7 +757,14 @@ def sync_release_notes(
         version=version,
         locale=locale,
         release_notes=draft.release_notes,
+        sync_scopes=["release_notes"],
     )
+    run.sync_scopes_json = {"scopes": ["release_notes"]}
+    run.payload_snapshot_json = {
+        "version": version,
+        "locale": locale,
+        "releaseNotes": draft.release_notes,
+    }
     connector_client = client or StoreConnectorClient()
     try:
         response = connector_client.sync_release_notes(connector, payload)
@@ -759,6 +810,8 @@ def sync_app_metadata(
     actor: str,
     store_images: dict[str, object] | None = None,
     include_store_images_in_payload: bool = True,
+    sync_scopes: list[str] | None = None,
+    draft_version: str | None = None,
     client: StoreConnectorClient | None = None,
 ) -> StoreSyncRun:
     app = scoped_app(session, account_id, app_id)
@@ -767,18 +820,23 @@ def sync_app_metadata(
     connector = account_connector(session, account_id)
     if connector is None:
         raise ApiError("connector_missing", "当前开发者账号还没有配置 connector", status_code=422)
-    validate_app_metadata_for_sync(
-        platform=app.platform,
-        locale=locale,
-        keywords=keywords,
-        promotional_text=promotional_text,
-        description=description,
+    normalized_scopes = sync_scopes or (
+        ["metadata", "store_images"] if include_store_images_in_payload else ["metadata"]
     )
+    include_text_metadata_in_payload = "metadata" in normalized_scopes
+    if include_text_metadata_in_payload:
+        validate_app_metadata_for_sync(
+            platform=app.platform,
+            locale=locale,
+            keywords=keywords,
+            promotional_text=promotional_text,
+            description=description,
+        )
     draft = save_app_metadata_draft(
         session,
         account_id=account_id,
         app_id=app.id,
-        version=version,
+        version=draft_version or version,
         locale=locale,
         content_set_id=content_set_id,
         content_set_name=content_set_name,
@@ -823,9 +881,17 @@ def sync_app_metadata(
         locale=locale,
         metadata=_metadata_payload(
             draft,
+            include_text_metadata=include_text_metadata_in_payload,
             include_store_images=include_store_images_in_payload,
         ),
+        sync_scopes=normalized_scopes,
     )
+    run.sync_scopes_json = {"scopes": normalized_scopes}
+    run.payload_snapshot_json = {
+        "version": version,
+        "locale": locale,
+        "metadata": payload.get("metadata", {}),
+    }
     connector_client = client or StoreConnectorClient()
     try:
         response = connector_client.sync_store_operation(connector, payload)
@@ -848,6 +914,42 @@ def sync_app_metadata(
     )
     session.flush()
     return run
+
+
+def sync_current_app_metadata(
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    version: str,
+    locale: str,
+    keywords: str,
+    promotional_text: str,
+    description: str,
+    actor: str,
+    store_images: dict[str, object] | None = None,
+    include_store_images_in_payload: bool = True,
+    sync_scopes: list[str] | None = None,
+    client: StoreConnectorClient | None = None,
+) -> StoreSyncRun:
+    return sync_app_metadata(
+        session,
+        account_id=account_id,
+        app_id=app_id,
+        version=version,
+        draft_version=CURRENT_METADATA_VERSION,
+        locale=locale,
+        content_set_id=DEFAULT_CONTENT_SET_ID,
+        content_set_name=DEFAULT_CONTENT_SET_NAME,
+        keywords=keywords,
+        promotional_text=promotional_text,
+        description=description,
+        actor=actor,
+        store_images=store_images,
+        include_store_images_in_payload=include_store_images_in_payload,
+        sync_scopes=sync_scopes,
+        client=client,
+    )
 
 
 def validate_app_metadata_for_sync(
@@ -941,12 +1043,13 @@ def recent_sync_runs(
     *,
     account_id: str,
     app_id: str | None = None,
+    limit: int = 8,
 ) -> list[StoreSyncRun]:
     statement = (
         select(StoreSyncRun)
         .where(StoreSyncRun.developer_account_id == account_id)
         .order_by(StoreSyncRun.started_at.desc())
-        .limit(8)
+        .limit(limit)
     )
     if app_id is not None:
         statement = statement.where(StoreSyncRun.app_id == app_id)
@@ -1015,6 +1118,7 @@ def _sync_payload(
     locale: str,
     release_notes: str | None = None,
     metadata: dict[str, object] | None = None,
+    sync_scopes: list[str] | None = None,
 ) -> dict[str, object]:
     payload: dict[str, object] = {
         "runId": run.id,
@@ -1029,6 +1133,8 @@ def _sync_payload(
         payload["releaseNotes"] = release_notes
     if metadata is not None:
         payload["metadata"] = metadata
+    if sync_scopes is not None:
+        payload["syncScopes"] = sync_scopes
     return payload
 
 
@@ -1044,6 +1150,7 @@ def _app_payload(app: App) -> dict[str, object]:
 def _metadata_payload(
     draft: StoreAppMetadataDraft,
     *,
+    include_text_metadata: bool = True,
     include_store_images: bool = True,
 ) -> dict[str, object]:
     payload: dict[str, object] = {
@@ -1051,10 +1158,15 @@ def _metadata_payload(
             "id": draft.content_set_id,
             "name": draft.content_set_name,
         },
-        "keywords": draft.keywords,
-        "promotionalText": draft.promotional_text,
-        "description": draft.description,
     }
+    if include_text_metadata:
+        payload.update(
+            {
+                "keywords": draft.keywords,
+                "promotionalText": draft.promotional_text,
+                "description": draft.description,
+            }
+        )
     if include_store_images:
         payload["storeImages"] = draft.store_images_json
     return payload

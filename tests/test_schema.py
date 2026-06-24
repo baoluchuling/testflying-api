@@ -26,6 +26,8 @@ def test_catalog_schema_contains_no_user_state_tables() -> None:
         "store_app_metadata_drafts",
         "store_image_suites",
         "store_image_suite_locales",
+        "store_marketing_pages",
+        "store_marketing_page_locales",
         "store_preflight_checks",
         "store_sync_runs",
         "audit_logs",
@@ -88,4 +90,47 @@ def test_store_image_suite_locales_store_images_by_locale() -> None:
     assert "store_images_json" in columns
     assert any(
         constraint["column_names"] == ["image_suite_id", "locale"] for constraint in constraints
+    )
+
+
+def test_store_sync_runs_store_scope_and_payload_snapshots() -> None:
+    engine = create_engine_for_url("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+
+    columns = {column["name"] for column in inspect(engine).get_columns("store_sync_runs")}
+
+    assert "sync_scopes_json" in columns
+    assert "payload_snapshot_json" in columns
+
+
+def test_store_marketing_pages_are_unique_per_app_scope() -> None:
+    engine = create_engine_for_url("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+
+    constraints = inspect(engine).get_unique_constraints("store_marketing_pages")
+
+    assert any(
+        constraint["column_names"] == [
+            "developer_account_id",
+            "app_id",
+            "platform",
+            "page_id",
+        ]
+        for constraint in constraints
+    )
+
+
+def test_store_marketing_page_locales_store_page_content_by_locale() -> None:
+    engine = create_engine_for_url("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+
+    columns = {
+        column["name"] for column in inspect(engine).get_columns("store_marketing_page_locales")
+    }
+    constraints = inspect(engine).get_unique_constraints("store_marketing_page_locales")
+
+    assert {"promotional_text", "store_images_json"}.issubset(columns)
+    assert any(
+        constraint["column_names"] == ["marketing_page_id", "locale"]
+        for constraint in constraints
     )

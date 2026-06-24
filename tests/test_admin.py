@@ -21,12 +21,13 @@ from testflying_api.schema import (
     StoreConnector,
     StoreImageSuite,
     StoreImageSuiteLocale,
+    StoreMarketingPage,
     StorePreflightCheck,
     StoreReleaseNoteDraft,
     StoreSyncRun,
 )
 from testflying_api.seed import seed_demo_catalog
-from testflying_api.store_sync import supported_locales_for_app
+from testflying_api.store_sync import CURRENT_METADATA_VERSION, supported_locales_for_app
 from tests.fixtures import make_android_apk_bytes, make_png_header_bytes
 
 
@@ -76,7 +77,7 @@ def test_admin_shell_supports_inline_navigation_and_upload_dock(client: TestClie
     assert "upsertSuiteCard" in response.text
     assert "setContentSetFeedback" in response.text
     assert "data-content-set-feedback" in response.text
-    assert "新商店图套件名称" in response.text
+    assert "新图片组名称" in response.text
     assert "beforeunload" in response.text
 
 
@@ -823,6 +824,30 @@ def test_admin_preflight_uses_friendly_blocked_copy(
     assert "商店中还没有创建 missing-2.4.0" not in response.text
 
 
+def test_admin_release_notes_save_uses_target_version(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+
+    response = client.post(
+        "/admin/developer-accounts/account-apple-enterprise"
+        "/apps/app-aurora-ios/release-notes",
+        headers=_admin_headers(),
+        data={
+            "version": "2.4.0",
+            "locale": "en-US",
+            "releaseNotes": "Fix known issues.",
+        },
+    )
+
+    draft = db_session.query(StoreReleaseNoteDraft).one()
+    assert response.status_code == 200
+    assert draft.version == "2.4.0"
+    assert draft.version != CURRENT_METADATA_VERSION
+    assert draft.release_notes == "Fix known issues."
+
+
 def test_admin_release_notes_save_and_sync_creates_records(
     client: TestClient,
     db_session: Session,
@@ -838,6 +863,7 @@ def test_admin_release_notes_save_and_sync_creates_records(
         headers=_admin_headers(),
         data={
             "version": "2.4.0",
+            "syncScopes": ["metadata"],
             "locale": "zh-Hans",
             "releaseNotes": "修复已知问题，优化安装体验。",
         },
@@ -866,6 +892,7 @@ def test_admin_store_metadata_save_and_sync_creates_records(
         headers=_admin_headers(),
         data={
             "version": "2.4.0",
+            "syncScopes": ["metadata"],
             "locale": "zh-Hans",
             "locales": ["zh-Hans", "en-US", "ja", "ko"],
             "keywords": ["internal,test", "", "internal,ja", "internal,ko"],
@@ -900,6 +927,7 @@ def test_admin_store_metadata_save_and_sync_creates_records(
     zh_hans_draft = next(draft for draft in drafts if draft.locale == "zh-Hans")
     en_us_draft = next(draft for draft in drafts if draft.locale == "en-US")
     assert zh_hans_draft.title == "Aurora Mobile"
+    assert zh_hans_draft.version == CURRENT_METADATA_VERSION
     assert zh_hans_draft.subtitle == ""
     assert zh_hans_draft.description == "用于内部测试包分发和回归验证。"
     assert en_us_draft.keywords == "internal,test"
@@ -919,6 +947,75 @@ def test_admin_store_metadata_save_and_sync_creates_records(
     assert [run.operation for run in runs[-4:]] == ["update_app_metadata"] * 4
     assert {run.locale for run in runs[-4:]} == {"zh-Hans", "en-US", "ja", "ko"}
     assert {run.status for run in runs[-4:]} == {"succeeded"}
+    assert all(run.sync_scopes_json == {"scopes": ["metadata"]} for run in runs[-4:])
+    assert all(run.payload_snapshot_json.get("metadata") for run in runs[-4:])
+
+
+def test_admin_store_metadata_sync_requires_selected_scope(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+
+    response = client.post(
+        "/admin/developer-accounts/account-apple-enterprise"
+        "/apps/app-aurora-ios/store-metadata/sync",
+        headers=_admin_headers(),
+        data={
+            "version": "2.4.0",
+            "locale": "en-US",
+            "locales": ["en-US"],
+            "keywords": ["internal,test"],
+            "promotionalText": ["Faster internal installs."],
+            "description": ["Internal distribution metadata for testing installs."],
+            "featureGraphicUrl": [""],
+            "phoneScreenshots": [""],
+            "tabletScreenshots": [""],
+        },
+    )
+
+    assert response.status_code == 422
+    assert "请至少勾选一个要同步的内容" in response.text
+    assert db_session.query(StoreAppMetadataDraft).count() == 0
+    assert db_session.query(StoreSyncRun).count() == 0
+
+
+def test_admin_store_metadata_sync_can_send_store_images_without_copy_payload(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+
+    response = client.post(
+        "/admin/developer-accounts/account-apple-enterprise"
+        "/apps/app-aurora-ios/store-metadata/sync",
+        headers=_admin_headers(),
+        data={
+            "version": "2.4.0",
+            "syncScopes": ["store_images"],
+            "locale": "en-US",
+            "locales": ["en-US"],
+            "keywords": ["internal,test"],
+            "promotionalText": ["Faster internal installs."],
+            "description": ["Internal distribution metadata for testing installs."],
+            "featureGraphicUrl": [""],
+            "phoneScreenshots": ["https://cdn.example.test/phone-1.png"],
+            "tabletScreenshots": [""],
+        },
+    )
+
+    run = db_session.query(StoreSyncRun).one()
+    payload_metadata = run.payload_snapshot_json["metadata"]
+    assert response.status_code == 200
+    assert "已同步 1 个任务" in response.text
+    assert run.sync_scopes_json == {"scopes": ["store_images"]}
+    assert "storeImages" in payload_metadata
+    assert payload_metadata["storeImages"]["phone_screenshots"]["urls"] == [
+        "https://cdn.example.test/phone-1.png"
+    ]
+    assert "keywords" not in payload_metadata
+    assert "promotionalText" not in payload_metadata
+    assert "description" not in payload_metadata
 
 
 def test_admin_store_metadata_sync_rejects_too_short_description(
@@ -933,6 +1030,7 @@ def test_admin_store_metadata_sync_rejects_too_short_description(
         headers=_admin_headers(),
         data={
             "version": "2.4.0",
+            "syncScopes": ["metadata"],
             "locale": "en-US",
             "locales": ["en-US"],
             "keywords": ["internal,test"],
@@ -963,6 +1061,7 @@ def test_admin_store_metadata_sync_rejects_overlong_ios_keywords(
         headers=_admin_headers(),
         data={
             "version": "2.4.0",
+            "syncScopes": ["metadata"],
             "locale": "en-US",
             "locales": ["en-US"],
             "keywords": ["x" * 101],
@@ -1025,9 +1124,10 @@ def test_admin_store_metadata_uploads_store_images_into_content_set(
     phone_assets = draft.store_images_json["phone_screenshots"]["assets"]
     assert response.status_code == 200
     assert "商店元数据草稿已保存 1 个语言" in response.text
-    assert "暑期活动投放" in response.text
-    assert draft.content_set_id == "summer-launch"
-    assert draft.content_set_name == "暑期活动投放"
+    assert "暑期活动投放" not in response.text
+    assert draft.version == CURRENT_METADATA_VERSION
+    assert draft.content_set_id == "default"
+    assert draft.content_set_name == "默认上架内容"
     assert "app_icon_url" not in draft.store_images_json
     assert [asset["fileName"] for asset in phone_assets] == ["phone-1.png", "phone-2.png"]
 
@@ -1036,7 +1136,7 @@ def test_admin_store_metadata_uploads_store_images_into_content_set(
         headers=_admin_headers(),
     )
     assert page.status_code == 200
-    assert "暑期活动投放" in page.text
+    assert "当前商店内容" in page.text
     assert "phone-1.png" in page.text
     assert "data-store-image-preview-image" in page.text
     assert 'src="/admin/artifacts/store-assets/' in page.text
@@ -1074,13 +1174,11 @@ def test_admin_store_metadata_uploads_store_images_into_content_set(
 
     db_session.expire_all()
     updated_draft = db_session.query(StoreAppMetadataDraft).one()
-    updated_suite_locale = db_session.query(StoreImageSuiteLocale).one()
     updated_draft_assets = updated_draft.store_images_json["phone_screenshots"]["assets"]
-    updated_suite_assets = updated_suite_locale.store_images_json["phone_screenshots"]["assets"]
     assert delete_response.status_code == 200
     assert "已删除中心后台的商店图" in delete_response.text
     assert [asset["fileName"] for asset in updated_draft_assets] == ["phone-2.png"]
-    assert [asset["fileName"] for asset in updated_suite_assets] == ["phone-2.png"]
+    assert db_session.query(StoreImageSuiteLocale).count() == 0
     assert phone_assets[0]["storageKey"] not in delete_response.text
     assert "phone-1.png" not in delete_response.text
     assert "phone-2.png" in delete_response.text
@@ -1178,8 +1276,9 @@ def test_admin_store_metadata_content_set_creation_persists(
         headers=_admin_headers(),
     )
     assert page.status_code == 200
-    assert "节日投放" in page.text
-    assert "holiday-copy" in page.text
+    assert "节日投放" not in page.text
+    assert "holiday-copy" not in page.text
+    assert "商店图套件库" not in page.text
 
 
 def test_admin_store_metadata_content_set_creation_allows_empty_metadata(
@@ -1299,14 +1398,14 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "data-store-metadata-sync-submit" in response.text
     assert "data-store-sync-confirm" in response.text
     assert "buildStoreSyncPlan" in response.text
-    assert "确认要同步到商店的内容" in response.text
+    assert "确认目标版本、语言和勾选的同步内容" in response.text
     assert "未接入翻译服务前" not in response.text
-    assert "新的商店图套件" in response.text
-    assert "新建套件" in response.text
-    assert "复制当前套" in response.text
-    assert "商店图套件库" in response.text
-    assert "data-suite-card" in response.text
-    assert "data-suite-status" in response.text
+    assert "当前商店内容" in response.text
+    assert "同步历史" in response.text
+    assert "营销页面控制台" in response.text
+    assert "新建套件" not in response.text
+    assert "复制当前套" not in response.text
+    assert "商店图套件库" not in response.text
     assert "card toolbar" in response.text
     assert "workspace" in response.text
     assert "main-input" in response.text
@@ -1317,7 +1416,7 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "class=\"side\"" in response.text
     assert "class=\"checks\"" in response.text
     assert "class=\"check" in response.text
-    assert "最近同步记录" in response.text
+    assert "按版本和同步时间保存快照" in response.text
     assert "class=\"card rail\"" in response.text
     assert "class=\"sync-item" in response.text
     assert "class=\"card editor\"" in response.text
@@ -1393,6 +1492,32 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "商店版本" in response.text
     assert "内容范围" not in response.text
     assert "文案、链接、商店图" not in response.text
+
+
+def test_admin_store_metadata_can_create_marketing_page(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+
+    response = client.post(
+        "/admin/developer-accounts/account-apple-enterprise"
+        "/apps/app-aurora-ios/store-metadata/marketing-pages",
+        headers=_admin_headers(),
+        data={
+            "locale": "en-US",
+            "marketingPageType": "product_page_optimization",
+            "marketingPageName": "新用户转化页",
+        },
+    )
+
+    page = db_session.query(StoreMarketingPage).one()
+    assert response.status_code == 200
+    assert "营销页面已创建" in response.text
+    assert "新用户转化页" in response.text
+    assert page.page_name == "新用户转化页"
+    assert page.page_type == "product_page_optimization"
+    assert page.app_id == "app-aurora-ios"
 
 
 def test_admin_store_metadata_page_uses_google_play_terms_for_android(

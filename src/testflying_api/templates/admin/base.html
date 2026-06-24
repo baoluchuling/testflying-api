@@ -464,7 +464,9 @@
       function syncMetadataPreflightForm(form) {
         const preflight = document.querySelector('#metadata-preflight-form');
         if (!form || !preflight) return;
-        const version = form.querySelector('[name="version"]')?.value || '';
+        const version = form.querySelector('[name="syncVersion"]')?.value
+          || form.querySelector('[name="version"]')?.value
+          || '';
         const locale = form.querySelector('[name="locale"]')?.value || form.dataset.sourceLocale || '';
         const contentSetId = form.querySelector('[name="contentSetId"]')?.value || '';
         const versionInput = preflight.querySelector('[data-preflight-version]');
@@ -564,7 +566,7 @@
         const formData = new FormData(form);
         formData.set('contentSetId', id);
         formData.set('contentSetName', name);
-        if (status) status.textContent = copyCurrent ? '正在复制套件...' : '正在新建套件...';
+        if (status) status.textContent = copyCurrent ? '正在复制内容...' : '正在新建内容...';
         setContentSetFeedback(form, '');
         const response = await fetch(`${form.action}/content-sets`, {
           method: 'POST',
@@ -573,7 +575,7 @@
         });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
-          const message = payload.error || payload.message || '套件保存失败';
+          const message = payload.error || payload.message || '内容保存失败';
           if (status) status.textContent = message;
           setContentSetFeedback(form, message, 'error');
           return;
@@ -616,17 +618,12 @@
         const checked = Array.from(form?.querySelectorAll('[data-sync-scope]:checked') || [])
           .map((input) => input.value)
           .filter(Boolean);
-        if (checked.length) return new Set(checked);
-        const mode = form?.dataset.storeWorkspaceMode || 'copy';
-        return new Set(mode === 'suites' ? ['store_images'] : ['metadata', 'release_notes']);
+        return new Set(checked);
       }
 
       function syncStoreScopeInputs(form) {
         if (!form) return;
-        const mode = form.dataset.storeWorkspaceMode || 'copy';
-        const defaults = mode === 'suites'
-          ? new Set(['store_images'])
-          : new Set(['metadata', 'release_notes']);
+        const defaults = new Set(['metadata', 'store_images']);
         form.querySelectorAll('[data-sync-scope]').forEach((input) => {
           if (input.dataset.userChanged !== 'true') {
             input.checked = defaults.has(input.value);
@@ -636,7 +633,7 @@
         const labels = [];
         if (scopes.has('metadata')) labels.push('文案元数据');
         if (scopes.has('release_notes')) labels.push('版本说明');
-        if (scopes.has('store_images')) labels.push('商店图套件');
+        if (scopes.has('store_images')) labels.push('商店图');
         const summary = labels.length ? labels.join('、') : '未选择';
         form.querySelectorAll('[data-sync-scope-summary]').forEach((node) => {
           node.textContent = summary;
@@ -897,7 +894,7 @@
         const selectedLabels = [];
         if (plan.scopes.has('metadata')) selectedLabels.push('文案元数据');
         if (plan.releaseNoteSelected) selectedLabels.push('版本说明');
-        if (plan.scopes.has('store_images')) selectedLabels.push('商店图套件');
+        if (plan.scopes.has('store_images')) selectedLabels.push('商店图');
         const summaryMain = createStoreSyncNode(
           'strong',
           '',
@@ -2080,7 +2077,7 @@
           );
           syncMetadataEditor(form);
         }
-        if (event.target.closest('[data-metadata-version], [data-metadata-source-locale]')) {
+        if (event.target.closest('[name="syncVersion"], [data-metadata-version], [data-metadata-source-locale]')) {
           syncMetadataPreflightForm(event.target.closest('[data-metadata-form]'));
         }
       });
@@ -2334,10 +2331,10 @@
         const createSet = event.target.closest('[data-create-content-set]');
         if (createSet) {
           const form = createSet.closest('[data-metadata-form]');
-          const name = window.prompt('新商店图套件名称', '新的商店图套件');
+          const name = window.prompt('新图片组名称', '新的图片组');
           persistContentSetOption(form, name?.trim(), false).catch(() => {
             const status = form?.querySelector('[data-content-set-status]');
-            const message = '套件保存失败，请稍后重试';
+            const message = '内容保存失败，请稍后重试';
             if (status) status.textContent = message;
             setContentSetFeedback(form, message, 'error');
           });
@@ -2347,11 +2344,11 @@
         const duplicateSet = event.target.closest('[data-duplicate-content-set]');
         if (duplicateSet) {
           const form = duplicateSet.closest('[data-metadata-form]');
-          const currentName = form?.querySelector('[data-content-set-name]')?.value || '当前套件';
-          const name = window.prompt('复制后的套件名称', `${currentName} 副本`);
+          const currentName = form?.querySelector('[data-content-set-name]')?.value || '当前内容';
+          const name = window.prompt('复制后的内容名称', `${currentName} 副本`);
           persistContentSetOption(form, name?.trim(), true).catch(() => {
             const status = form?.querySelector('[data-content-set-status]');
-            const message = '套件保存失败，请稍后重试';
+            const message = '内容保存失败，请稍后重试';
             if (status) status.textContent = message;
             setContentSetFeedback(form, message, 'error');
           });

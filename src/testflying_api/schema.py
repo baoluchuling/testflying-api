@@ -337,6 +337,85 @@ class StoreImageSuiteLocale(Base):
     image_suite: Mapped[StoreImageSuite] = relationship(back_populates="locales")
 
 
+class StoreMarketingPage(Base):
+    __tablename__ = "store_marketing_pages"
+    __table_args__ = (
+        UniqueConstraint(
+            "developer_account_id",
+            "app_id",
+            "platform",
+            "page_id",
+            name="uq_store_marketing_pages_scope",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    developer_account_id: Mapped[str] = mapped_column(
+        ForeignKey("developer_accounts.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    app_id: Mapped[str] = mapped_column(ForeignKey("apps.id", ondelete="CASCADE"), nullable=False)
+    platform: Mapped[str] = mapped_column(String(20), nullable=False)
+    page_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    page_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    page_type: Mapped[str] = mapped_column(
+        String(60),
+        nullable=False,
+        default="custom_product_page",
+    )
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="draft")
+    apple_page_id: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    deep_link_url: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    keywords: Mapped[str] = mapped_column(String(240), nullable=False, default="")
+    store_images_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+    )
+
+    locales: Mapped[list[StoreMarketingPageLocale]] = relationship(
+        back_populates="marketing_page",
+        cascade="all, delete-orphan",
+    )
+
+
+class StoreMarketingPageLocale(Base):
+    __tablename__ = "store_marketing_page_locales"
+    __table_args__ = (
+        UniqueConstraint(
+            "marketing_page_id",
+            "locale",
+            name="uq_store_marketing_page_locales_scope",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    marketing_page_id: Mapped[str] = mapped_column(
+        ForeignKey("store_marketing_pages.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    locale: Mapped[str] = mapped_column(String(40), nullable=False)
+    promotional_text: Mapped[str] = mapped_column(String(240), nullable=False, default="")
+    store_images_json: Mapped[dict[str, object]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=dict,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+    )
+
+    marketing_page: Mapped[StoreMarketingPage] = relationship(back_populates="locales")
+
+
 class StorePreflightCheck(Base):
     __tablename__ = "store_preflight_checks"
 
@@ -399,6 +478,12 @@ class StoreSyncRun(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error_code: Mapped[str | None] = mapped_column(String(80))
     error_summary: Mapped[str | None] = mapped_column(String(280))
+    sync_scopes_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    payload_snapshot_json: Mapped[dict[str, object]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=dict,
+    )
 
 
 class AuditLog(Base):

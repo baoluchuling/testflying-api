@@ -161,6 +161,10 @@ def test_admin_store_metadata_focus_layout_css_contract(client: TestClient) -> N
     assert "flex: 0 0 138px" in response.text
     assert ".store-metadata-main .sync-item" in response.text
     assert "grid-template-columns: 26px minmax(0, 1fr) 8px auto 14px" in response.text
+    assert "grid-template-columns: 232px minmax(0, 1fr) 252px" in response.text
+    assert "grid-template-columns: 220px minmax(0, 1fr) 232px" in response.text
+    assert "grid-template-columns: 184px minmax(0, 1fr) 252px" not in response.text
+    assert "grid-template-columns: 180px minmax(0, 1fr) 232px" not in response.text
     assert ".store-metadata-main .editor" in response.text
     assert "min-height: 608px" in response.text
     assert "height: 168px" in response.text
@@ -205,7 +209,7 @@ def test_admin_marketing_page_layout_css_prevents_horizontal_overflow(
     assert "overflow-x: hidden" in response.text
     assert "padding: 28px 28px 150px" in response.text
     assert ".marketing-page-main .store-workspace-grid" in response.text
-    assert "grid-template-columns: 184px minmax(0, 1fr) 278px" in response.text
+    assert "grid-template-columns: 220px minmax(0, 1fr) 278px" in response.text
     assert "gap: 14px" in response.text
     assert ".marketing-page-main .sync-item" in response.text
     assert "grid-template-columns: 22px minmax(0, 1fr) 7px 14px" in response.text
@@ -226,7 +230,7 @@ def test_admin_marketing_page_layout_css_prevents_horizontal_overflow(
     assert ".marketing-page-main .store-workspace-bottom" in response.text
     assert "max-width: calc(100vw - 236px)" in response.text
     assert "@media (max-width: 1180px) and (min-width: 981px)" in response.text
-    assert "grid-template-columns: 184px minmax(0, 1fr)" in response.text
+    assert "grid-template-columns: 220px minmax(0, 1fr)" in response.text
     assert "max-width: calc(100vw - 240px)" in response.text
     assert "@media (max-width: 980px)" in response.text
     assert "max-width: calc(100vw - 28px)" in response.text
@@ -1479,8 +1483,15 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "data-store-section-jump" not in response.text
     assert "营销页面控制台" not in response.text
     assert "/store/marketing" in response.text
-    assert "/developer-accounts/account-apple-enterprise" in response.text
+    assert (
+        "/developer-accounts/account-apple-enterprise/apps/app-aurora-ios/store/connection"
+        in response.text
+    )
+    assert 'href="/admin/developer-accounts/account-apple-enterprise"' not in response.text
     assert "section=history" not in response.text
+    assert "sync-scope-card" not in response.text
+    assert "同步到商店前会打开确认清单" in response.text
+    assert "同步范围只在确认弹窗里选择" in response.text
     assert "新建套件" not in response.text
     assert "复制当前套" not in response.text
     assert "商店图套件库" not in response.text
@@ -1625,6 +1636,37 @@ def test_admin_store_metadata_shows_backfilled_keywords_readonly(
     assert 'name="keywords"' not in response.text
 
 
+def test_admin_store_connection_page_stays_in_store_workspace(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+
+    response = client.get(
+        "/admin/developer-accounts/account-apple-enterprise"
+        "/apps/app-aurora-ios/store/connection",
+        headers=_admin_headers(),
+    )
+
+    assert response.status_code == 200
+    assert "商店管理" in response.text
+    assert "App Store Connect 商店连接" in response.text
+    assert "Connector、语言、版本检查" in response.text
+    assert (
+        'class="resource-link active" href="/admin/developer-accounts/'
+        'account-apple-enterprise/apps/app-aurora-ios/store/connection" aria-current="page"'
+        in response.text
+    )
+    assert (
+        'action="/admin/developer-accounts/account-apple-enterprise/apps/'
+        'app-aurora-ios/store/connection/check"'
+        in response.text
+    )
+    assert 'href="/admin/developer-accounts/account-apple-enterprise#connector"' in response.text
+    assert "Internal Store Connector" in response.text
+    assert "商店语言" in response.text
+
+
 def test_admin_store_marketing_page_lists_marketing_pages(
     client: TestClient,
     db_session: Session,
@@ -1667,6 +1709,10 @@ def test_admin_store_marketing_page_lists_marketing_pages(
     assert "store-management-nav" not in response.text
     assert "section=history" not in response.text
     assert "同步历史" not in response.text
+    assert (
+        "/developer-accounts/account-apple-enterprise/apps/app-aurora-ios/store/connection"
+        in response.text
+    )
     assert "store-marketing-side" not in response.text
     assert "/store/marketing-pages/" in response.text
 
@@ -1782,6 +1828,9 @@ def test_admin_marketing_page_detail_can_save_locales_and_images(
     assert 'name="applePageId"' not in detail.text
     assert "store-workspace-toolbar" not in detail.text
     assert "metadata-preflight-chip" not in detail.text
+    assert "sync-scope-card" not in detail.text
+    assert "同步到商店前会打开确认清单" in detail.text
+    assert "同步范围只在确认弹窗里选择" in detail.text
     assert '<span class="sync-count"' not in detail.text
     assert "<small data-sync-item-status>" not in detail.text
     assert detail.text.count("保存草稿") == 1

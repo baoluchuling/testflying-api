@@ -640,10 +640,6 @@
         form.querySelectorAll('[data-sync-scope-summary]').forEach((node) => {
           node.textContent = summary;
         });
-        const copy = form.querySelector('.copy-bottom-copy strong');
-        if (copy) copy.textContent = `本次同步范围：${summary}`;
-        const suite = form.querySelector('.suite-bottom-copy strong');
-        if (suite) suite.textContent = `本次同步范围：${summary}`;
       }
 
       async function requestMetadataTranslation(form, field, sourceLocale, text, targetLocales) {
@@ -2126,7 +2122,11 @@
         const syncScope = event.target.closest('[data-sync-scope]');
         if (syncScope) {
           syncScope.dataset.userChanged = 'true';
-          syncStoreScopeInputs(syncScope.closest('[data-metadata-form]'));
+          const form = syncScope.closest('[data-metadata-form]');
+          syncStoreScopeInputs(form);
+          if (syncScope.closest('[data-store-sync-confirm]')) {
+            renderStoreSyncConfirm(form, buildStoreSyncPlan(form));
+          }
         }
         if (event.target.closest('[data-app-log-levels] input')) {
           renderAppLogs();

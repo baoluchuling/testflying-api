@@ -299,23 +299,6 @@
       </section>
 
       <aside class="side">
-        <section class="card side-card sync-scope-card">
-          <div class="side-head">
-            <h2>同步选项</h2>
-            <span data-sync-scope-summary>文案、商店图</span>
-          </div>
-          <div class="scope-list">
-            <label class="scope-option">
-              <input type="checkbox" name="syncScopes" value="marketing_text" data-sync-scope="marketing_text" checked>
-              <span><strong>文案</strong><small>宣传文本</small></span>
-            </label>
-            <label class="scope-option">
-              <input type="checkbox" name="syncScopes" value="store_images" data-sync-scope="store_images" checked>
-              <span><strong>商店图</strong><small>iPhone / iPad 屏幕快照</small></span>
-            </label>
-          </div>
-        </section>
-
         <section class="card side-card">
           <div class="side-head">
             <h2>同步前检查</h2>
@@ -361,8 +344,8 @@
     <div class="bottom-bar store-workspace-bottom">
       <div class="bottom-copy copy-bottom-copy">
         <span>当前操作</span>
-        <strong>本次同步范围：文案、商店图</strong>
-        <small>同步前会展示确认清单；创建页面不会自动同步到商店。</small>
+        <strong>同步到商店前会打开确认清单</strong>
+        <small>同步范围只在确认弹窗里选择；创建页面不会自动同步到商店。</small>
       </div>
       <div class="bottom-actions">
         <button class="button danger ghost" type="submit" formaction="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store/marketing-pages/{{ page.page_id }}/delete" onclick="return confirm('只删除中心后台的这个营销页面，确认继续？')">删除页面</button>
@@ -381,6 +364,16 @@
             <span>确认后才会调用 connector。</span>
           </div>
           <span class="store-sync-confirm-badge empty">营销页面</span>
+        </div>
+        <div class="store-sync-confirm-scopes" aria-label="同步范围">
+          <label class="scope-option">
+            <input type="checkbox" name="syncScopes" value="marketing_text" data-sync-scope="marketing_text" checked>
+            <span><strong>文案</strong><small>宣传文本</small></span>
+          </label>
+          <label class="scope-option">
+            <input type="checkbox" name="syncScopes" value="store_images" data-sync-scope="store_images" checked>
+            <span><strong>商店图</strong><small>iPhone / iPad 屏幕快照</small></span>
+          </label>
         </div>
         <div class="store-sync-confirm-summary" data-store-sync-confirm-summary></div>
         <div class="store-sync-confirm-body" data-store-sync-confirm-body></div>

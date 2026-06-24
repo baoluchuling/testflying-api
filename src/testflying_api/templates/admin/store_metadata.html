@@ -39,7 +39,7 @@
           <strong>营销页面</strong>
           <span>自定义产品页面、产品页面优化</span>
         </a>
-        <a class="resource-link" href="/admin/developer-accounts/{{ account.id }}">
+        <a class="resource-link" href="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store/connection">
           <strong>商店连接</strong>
           <span>Connector、语言、版本检查</span>
         </a>
@@ -160,7 +160,6 @@
               </span>
               <span class="sync-copy"><strong>{{ field.short_label or field.label }}</strong></span>
               <span class="progress-dot" aria-hidden="true"></span>
-              <span class="sync-count" data-sync-item-count>{{ localized_metadata|length }}/{{ localized_metadata|length }} 语言</span>
               <small data-sync-item-status>待检查</small>
               <span class="chevron right" aria-hidden="true"></span>
             </button>
@@ -178,7 +177,6 @@
             </span>
             <span class="sync-copy"><strong>版本说明</strong></span>
             <span class="progress-dot" aria-hidden="true"></span>
-            <span class="sync-count" data-sync-item-count>{{ localized_metadata|length }}/{{ localized_metadata|length }} 语言</span>
             <small data-sync-item-status>待检查</small>
             <span class="chevron right" aria-hidden="true"></span>
           </button>
@@ -200,7 +198,6 @@
               </span>
               <span class="sync-copy"><strong>{{ slot.short_label or slot.label }}</strong></span>
               <span class="progress-dot" aria-hidden="true"></span>
-              <span class="sync-count" data-sync-item-count>{{ localized_metadata|length }}/{{ localized_metadata|length }} 语言</span>
               <small data-sync-item-status>待检查</small>
               <span class="chevron right" aria-hidden="true"></span>
             </button>
@@ -468,27 +465,6 @@
       </section>
 
       <aside class="side">
-        <section class="card side-card sync-scope-card">
-          <div class="side-head">
-            <h2>同步选项</h2>
-            <span data-sync-scope-summary>文案元数据、商店图</span>
-          </div>
-          <div class="scope-list">
-            <label class="scope-option">
-              <input type="checkbox" name="syncScopes" value="metadata" data-sync-scope="metadata" checked>
-              <span><strong>文案元数据</strong><small>宣传文本、描述</small></span>
-            </label>
-            <label class="scope-option">
-              <input type="checkbox" name="syncScopes" value="store_images" data-sync-scope="store_images" checked>
-              <span><strong>商店图</strong><small>当前草稿中的截图</small></span>
-            </label>
-            <label class="scope-option">
-              <input type="checkbox" name="syncScopes" value="release_notes" data-sync-scope="release_notes">
-              <span><strong>版本说明</strong><small>Release Notes</small></span>
-            </label>
-          </div>
-        </section>
-
         <section class="card side-card">
           <div class="side-head">
             <h2>同步前检查</h2>
@@ -530,8 +506,8 @@
     <div class="bottom-bar store-workspace-bottom">
       <div class="bottom-copy copy-bottom-copy">
         <span>当前操作</span>
-        <strong>本次同步范围：文案元数据、商店图</strong>
-        <small>点击同步后会再次展示确认清单，可以最后调整勾选项。</small>
+        <strong>同步到商店前会打开确认清单</strong>
+        <small>同步范围只在确认弹窗里选择，确认后才会调用 connector。</small>
       </div>
       <div class="bottom-actions">
         <button class="button ghost" type="submit">保存草稿</button>
@@ -552,6 +528,20 @@
         <div class="store-sync-intro">
           <section><strong>同步范围可调整</strong><p>文案、商店图、版本说明可以单独或组合同步。</p></section>
           <section><strong>当前草稿不跟版本</strong><p>目标版本只用于本次同步，不改变草稿内容。</p></section>
+        </div>
+        <div class="store-sync-confirm-scopes" aria-label="同步范围">
+          <label class="scope-option">
+            <input type="checkbox" name="syncScopes" value="metadata" data-sync-scope="metadata" checked>
+            <span><strong>文案元数据</strong><small>宣传文本、描述</small></span>
+          </label>
+          <label class="scope-option">
+            <input type="checkbox" name="syncScopes" value="store_images" data-sync-scope="store_images" checked>
+            <span><strong>商店图</strong><small>当前草稿中的截图</small></span>
+          </label>
+          <label class="scope-option">
+            <input type="checkbox" name="syncScopes" value="release_notes" data-sync-scope="release_notes">
+            <span><strong>版本说明</strong><small>Release Notes</small></span>
+          </label>
         </div>
         <div class="store-sync-confirm-summary" data-store-sync-confirm-summary></div>
         <div class="store-sync-confirm-body" data-store-sync-confirm-body></div>

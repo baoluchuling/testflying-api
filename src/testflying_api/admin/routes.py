@@ -1070,6 +1070,83 @@ def store_marketing_page(
     )
 
 
+@router.get(
+    "/developer-accounts/{account_id}/apps/{app_id}/store/connection",
+    response_class=HTMLResponse,
+)
+def store_connection_page(
+    account_id: str,
+    app_id: str,
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+    locale: str = DEFAULT_LOCALE,
+) -> HTMLResponse:
+    context = store_metadata_context(
+        session,
+        account_id=account_id,
+        app_id=app_id,
+        locale=locale,
+    )
+    if context["account"] is None or context["app"] is None:
+        raise ApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
+    session.commit()
+    return templates.TemplateResponse(
+        request,
+        "admin/store_connection.html",
+        _context(request, active="developer-accounts", **context),
+    )
+
+
+@router.post(
+    "/developer-accounts/{account_id}/apps/{app_id}/store/connection/check",
+    response_class=HTMLResponse,
+)
+def check_store_connection_page(
+    account_id: str,
+    app_id: str,
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+    locale: str = DEFAULT_LOCALE,
+) -> HTMLResponse:
+    status_code = 200
+    message: str | None = None
+    error_message: str | None = None
+    try:
+        result = check_connector_health(session, account_id=account_id)
+        session.commit()
+        message = result.message if result.ok else None
+        error_message = None if result.ok else result.message
+        status_code = 200 if result.ok else 502
+    except ApiError as error:
+        session.rollback()
+        error_message = error.message
+        status_code = error.status_code
+
+    context = store_metadata_context(
+        session,
+        account_id=account_id,
+        app_id=app_id,
+        locale=locale,
+    )
+    if context["account"] is None or context["app"] is None:
+        raise ApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
+    session.commit()
+    return templates.TemplateResponse(
+        request,
+        "admin/store_connection.html",
+        _context(
+            request,
+            active="developer-accounts",
+            success=message,
+            error=error_message,
+            **context,
+        ),
+        status_code=status_code,
+    )
+
+
 @router.post(
     "/developer-accounts/{account_id}/apps/{app_id}/store/marketing-pages",
     response_class=HTMLResponse,

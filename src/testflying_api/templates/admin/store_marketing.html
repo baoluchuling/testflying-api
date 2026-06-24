@@ -60,19 +60,10 @@
       <div class="editor-head">
         <div>
           <h2>营销页面</h2>
-          <p class="muted">自定义产品页面和产品页面优化在这里单独管理，不再藏在商店元数据页面里。</p>
+          <p class="muted">自定义产品页面在这里单独管理，不再藏在商店元数据页面里。</p>
         </div>
         {% if app.platform == "ios" %}
           <div class="actions marketing-create-actions">
-            <form action="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store/marketing-pages" method="post">
-              <input type="hidden" name="locale" value="{{ source_locale }}">
-              <input type="hidden" name="marketingPageType" value="product_page_optimization">
-              <input type="hidden" name="marketingPageName" value="新的产品页面优化">
-              {% for item in supported_locales %}
-                <input type="hidden" name="locales" value="{{ item }}">
-              {% endfor %}
-              <button class="button ghost" type="submit">新建产品页面优化</button>
-            </form>
             <form action="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store/marketing-pages" method="post">
               <input type="hidden" name="locale" value="{{ source_locale }}">
               <input type="hidden" name="marketingPageType" value="custom_product_page">
@@ -89,7 +80,7 @@
       {% if app.platform != "ios" %}
         <div class="empty marketing-empty">
           <strong>营销页面当前仅支持 App Store Connect</strong>
-          <span>Google Play 暂不展示自定义产品页面和产品页面优化。</span>
+          <span>Google Play 暂不展示自定义产品页面。</span>
         </div>
       {% elif marketing_pages %}
         <div class="store-marketing-table-scroll">
@@ -108,7 +99,15 @@
             <tbody>
               {% for item in marketing_pages %}
                 {% set page = item.page %}
-                <tr>
+                {% set page_href = "/admin/developer-accounts/" ~ account.id ~ "/apps/" ~ app.id ~ "/store/marketing-pages/" ~ page.page_id %}
+                <tr
+                  class="store-marketing-row"
+                  data-marketing-page-row
+                  data-href="{{ page_href }}"
+                  role="link"
+                  tabindex="0"
+                  aria-label="打开 {{ page.page_name }}"
+                >
                   <td>
                     <div class="page-name">
                       <strong>{{ page.page_name }}</strong>
@@ -135,7 +134,7 @@
                   <td>{{ item.language_count }} 语言 / {{ item.asset_count }} 张图</td>
                   <td>{{ page.updated_at|datetime }}</td>
                   <td>
-                    <a class="button ghost small" href="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store/marketing-pages/{{ page.page_id }}">打开</a>
+                    <a class="button ghost small" href="{{ page_href }}">打开</a>
                   </td>
                 </tr>
               {% endfor %}
@@ -145,7 +144,7 @@
       {% else %}
         <div class="empty marketing-empty">
           <strong>还没有营销页面</strong>
-          <span>先创建自定义产品页面或产品页面优化；保存后只留在 testflying，手动同步时才会提交到商店。</span>
+          <span>先创建自定义产品页面；保存后只留在 testflying，手动同步时才会提交到商店。</span>
         </div>
       {% endif %}
     </section>

@@ -7074,6 +7074,21 @@ body.store-sync-confirm-open {
   border-bottom: 0;
 }
 
+.store-marketing-row {
+  cursor: pointer;
+  transition: background 0.16s ease;
+}
+
+.store-marketing-row:hover,
+.store-marketing-row:focus-visible {
+  background: #f4f8ff;
+}
+
+.store-marketing-row:focus-visible {
+  outline: 2px solid #2f7df6;
+  outline-offset: -2px;
+}
+
 .store-marketing-table .page-name {
   display: grid;
   gap: 4px;

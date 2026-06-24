@@ -1701,8 +1701,11 @@ def test_admin_store_marketing_page_lists_marketing_pages(
     assert "自定义产品页面" in response.text
     assert "resource-layout store-management-resource-layout" in response.text
     assert "table-card store-marketing-table-card" in response.text
-    assert "新建产品页面优化" in response.text
+    assert "新建产品页面优化" not in response.text
+    assert 'name="marketingPageType" value="product_page_optimization"' not in response.text
     assert "新建自定义产品页面" in response.text
+    assert "data-marketing-page-row" in response.text
+    assert 'role="link"' in response.text
     assert "2 语言 / 0 张图" in response.text
     assert "未同步后回填" in response.text
     assert "营销页面控制台" not in response.text

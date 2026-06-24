@@ -2448,9 +2448,39 @@
           return;
         }
 
+        const marketingRow = event.target.closest('[data-marketing-page-row]');
+        if (
+          marketingRow
+          && !event.target.closest('a, button, form, input, select, textarea')
+        ) {
+          const href = marketingRow.dataset.href;
+          if (!href) return;
+          event.preventDefault();
+          try {
+            await navigateAdmin(href);
+          } catch (error) {
+            window.location.href = href;
+          }
+          return;
+        }
+
         const row = event.target.closest('[data-account-row]');
         if (!row || event.target.closest('a, button, form, input, select, textarea')) return;
         selectAccountPreview(row.dataset.accountId);
+      });
+
+      document.addEventListener('keydown', async (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        const marketingRow = event.target.closest('[data-marketing-page-row]');
+        if (!marketingRow) return;
+        const href = marketingRow.dataset.href;
+        if (!href) return;
+        event.preventDefault();
+        try {
+          await navigateAdmin(href);
+        } catch (error) {
+          window.location.href = href;
+        }
       });
 
       document.addEventListener('dragenter', (event) => {

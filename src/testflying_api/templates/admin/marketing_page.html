@@ -148,7 +148,7 @@
           </label>
         </div>
 
-        <section class="editor-pane active" data-sync-editor-pane="promotional_text">
+        <section class="editor-pane active" data-sync-editor-pane="promotional_text" data-locale-group>
           <div class="editor-head">
             <div>
               <div class="editor-title">
@@ -182,6 +182,7 @@
                   </button>
                 </div>
                 <textarea
+                  class="locale-detail-input"
                   name="promotionalText"
                   rows="5"
                   placeholder="App Store Connect promotional text"
@@ -198,7 +199,7 @@
         {% for slot in store_image_slots %}
           {% set current_item = (localized_marketing_page|selectattr("locale", "equalto", locale)|list|first) or localized_marketing_page[0] %}
           {% set current_image = current_item.store_images[slot.key] %}
-          <section class="editor-pane image-editor-pane" data-sync-editor-pane="{{ slot.key }}" hidden>
+          <section class="editor-pane image-editor-pane" data-sync-editor-pane="{{ slot.key }}" data-locale-group hidden>
             <div class="editor-head">
               <div>
                 <div class="editor-title">

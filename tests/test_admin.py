@@ -144,11 +144,11 @@ def test_admin_store_metadata_focus_layout_css_contract(client: TestClient) -> N
 
     assert response.status_code == 200
     assert ".sidebar {" in response.text
-    assert "width: 200px" in response.text
+    assert "width: 184px" in response.text
     assert ".main {" in response.text
-    assert "margin-left: 200px" in response.text
+    assert "margin-left: 184px" in response.text
     assert ".admin-route-loading" in response.text
-    assert "left: 224px" in response.text
+    assert "left: 208px" in response.text
     assert ".store-metadata-main" in response.text
     assert "max-width: 1262px" in response.text
     assert ".store-metadata-main .toolbar" in response.text
@@ -206,7 +206,7 @@ def test_admin_marketing_page_layout_css_prevents_horizontal_overflow(
     assert "overflow-x: hidden" in response.text
     assert "padding: 28px 28px 150px" in response.text
     assert ".marketing-page-main .store-workspace-grid" in response.text
-    assert "grid-template-columns: 208px minmax(0, 1fr) 278px" in response.text
+    assert "grid-template-columns: 184px minmax(0, 1fr) 278px" in response.text
     assert "gap: 14px" in response.text
     assert ".marketing-page-main .sync-item" in response.text
     assert "grid-template-columns: 22px minmax(0, 1fr) 7px 14px" in response.text
@@ -225,10 +225,10 @@ def test_admin_marketing_page_layout_css_prevents_horizontal_overflow(
     assert ".marketing-page-main .focus-completion" in response.text
     assert "display: inline-flex" in response.text
     assert ".marketing-page-main .store-workspace-bottom" in response.text
-    assert "max-width: calc(100vw - 252px)" in response.text
+    assert "max-width: calc(100vw - 236px)" in response.text
     assert "@media (max-width: 1180px) and (min-width: 981px)" in response.text
-    assert "grid-template-columns: 208px minmax(0, 1fr)" in response.text
-    assert "max-width: calc(100vw - 256px)" in response.text
+    assert "grid-template-columns: 184px minmax(0, 1fr)" in response.text
+    assert "max-width: calc(100vw - 240px)" in response.text
     assert "@media (max-width: 980px)" in response.text
     assert "max-width: calc(100vw - 28px)" in response.text
 
@@ -327,7 +327,9 @@ def test_admin_developer_account_detail_renders_store_sync_entry(
     assert "Internal Store Connector" in response.text
     assert "检查连接" in response.text
     assert "Aurora Mobile" in response.text
-    assert "同步商店信息" in response.text
+    assert "默认商店页" in response.text
+    assert "营销页面" in response.text
+    assert "/store/marketing" in response.text
     assert "app-sync-action" in response.text
     account_level_sync_href = (
         'account-wide-action" href="/admin/developer-accounts/account-apple-enterprise/apps/'
@@ -1449,7 +1451,8 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "未接入翻译服务前" not in response.text
     assert "当前商店内容" in response.text
     assert "同步历史" in response.text
-    assert "营销页面控制台" in response.text
+    assert "营销页面控制台" not in response.text
+    assert "/store/marketing" in response.text
     assert "新建套件" not in response.text
     assert "复制当前套" not in response.text
     assert "商店图套件库" not in response.text
@@ -1470,7 +1473,7 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "class=\"locale-row\"" in response.text
     assert "class=\"image-locale-row store-image-locale-row\"" in response.text
     assert "商店图" in response.text
-    assert "App Store Connect 同步" in response.text
+    assert "App Store Connect 默认商店页" in response.text
     assert 'data-sync-item-key="keywords"' not in response.text
     assert 'data-field="keywords"' not in response.text
     assert 'name="keywords"' not in response.text
@@ -1581,6 +1584,44 @@ def test_admin_store_metadata_shows_backfilled_keywords_readonly(
     assert 'name="keywords"' not in response.text
 
 
+def test_admin_store_marketing_page_lists_marketing_pages(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+    client.post(
+        "/admin/developer-accounts/account-apple-enterprise"
+        "/apps/app-aurora-ios/store/marketing-pages",
+        headers=_admin_headers(),
+        data={
+            "locale": "en-US",
+            "marketingPageType": "custom_product_page",
+            "marketingPageName": "冷启动投放页",
+            "locales": ["en-US", "zh-Hant"],
+            "promotionalText": ["Read stories anytime.", "隨時閱讀故事。"],
+            "phoneScreenshots": ["", ""],
+            "tabletScreenshots": ["", ""],
+        },
+    )
+
+    response = client.get(
+        "/admin/developer-accounts/account-apple-enterprise"
+        "/apps/app-aurora-ios/store/marketing",
+        headers=_admin_headers(),
+    )
+
+    assert response.status_code == 200
+    assert "商店管理" in response.text
+    assert "默认商店页" in response.text
+    assert "营销页面" in response.text
+    assert "冷启动投放页" in response.text
+    assert "自定义产品页面" in response.text
+    assert "2 个语言" in response.text
+    assert "未同步后回填" in response.text
+    assert "营销页面控制台" not in response.text
+    assert "/store/marketing-pages/" in response.text
+
+
 def test_admin_store_metadata_can_create_marketing_page(
     client: TestClient,
     db_session: Session,
@@ -1589,7 +1630,7 @@ def test_admin_store_metadata_can_create_marketing_page(
 
     response = client.post(
         "/admin/developer-accounts/account-apple-enterprise"
-        "/apps/app-aurora-ios/store-metadata/marketing-pages",
+        "/apps/app-aurora-ios/store/marketing-pages",
         headers=_admin_headers(),
         data={
             "locale": "en-US",
@@ -1635,7 +1676,7 @@ def test_admin_marketing_page_shows_backfilled_keywords_readonly(
     seed_demo_catalog(db_session)
     client.post(
         "/admin/developer-accounts/account-apple-enterprise"
-        "/apps/app-aurora-ios/store-metadata/marketing-pages",
+        "/apps/app-aurora-ios/store/marketing-pages",
         headers=_admin_headers(),
         data={
             "locale": "en-US",
@@ -1649,7 +1690,7 @@ def test_admin_marketing_page_shows_backfilled_keywords_readonly(
 
     response = client.get(
         "/admin/developer-accounts/account-apple-enterprise"
-        f"/apps/app-aurora-ios/store-metadata/marketing-pages/{page.page_id}",
+        f"/apps/app-aurora-ios/store/marketing-pages/{page.page_id}",
         headers=_admin_headers(),
     )
 
@@ -1666,7 +1707,7 @@ def test_admin_marketing_page_detail_can_save_locales_and_images(
     seed_demo_catalog(db_session)
     client.post(
         "/admin/developer-accounts/account-apple-enterprise"
-        "/apps/app-aurora-ios/store-metadata/marketing-pages",
+        "/apps/app-aurora-ios/store/marketing-pages",
         headers=_admin_headers(),
         data={
             "locale": "en-US",
@@ -1678,7 +1719,7 @@ def test_admin_marketing_page_detail_can_save_locales_and_images(
 
     detail = client.get(
         "/admin/developer-accounts/account-apple-enterprise"
-        f"/apps/app-aurora-ios/store-metadata/marketing-pages/{page.page_id}",
+        f"/apps/app-aurora-ios/store/marketing-pages/{page.page_id}",
         headers=_admin_headers(),
     )
     assert detail.status_code == 200
@@ -1687,7 +1728,8 @@ def test_admin_marketing_page_detail_can_save_locales_and_images(
     assert "手机截图" in detail.text
     assert "未同步" in detail.text
     assert "Apple 页面 ID" in detail.text
-    assert "同步后由 App Store Connect 回填" in detail.text
+    assert "未同步后回填" in detail.text
+    assert "由 App Store Connect 回填，只读展示" in detail.text
     assert 'name="applePageId"' not in detail.text
     assert "store-workspace-toolbar" not in detail.text
     assert "metadata-preflight-chip" not in detail.text
@@ -1705,7 +1747,7 @@ def test_admin_marketing_page_detail_can_save_locales_and_images(
 
     response = client.post(
         "/admin/developer-accounts/account-apple-enterprise"
-        f"/apps/app-aurora-ios/store-metadata/marketing-pages/{page.page_id}",
+        f"/apps/app-aurora-ios/store/marketing-pages/{page.page_id}",
         headers=_admin_headers(),
         data={
             "locale": "en-US",
@@ -1745,11 +1787,11 @@ def test_admin_marketing_page_detail_can_save_locales_and_images(
     phone_assets = en_locale.store_images_json["phone_screenshots"]["assets"]
     assert phone_assets[0]["fileName"] == "iphone-69.png"
     assert "iphone-69.png" in response.text
-    assert "store-metadata/marketing-pages/" in response.text
+    assert "store/marketing-pages/" in response.text
 
     delete_response = client.post(
         "/admin/developer-accounts/account-apple-enterprise"
-        f"/apps/app-aurora-ios/store-metadata/marketing-pages/{page.page_id}/store-images/delete",
+        f"/apps/app-aurora-ios/store/marketing-pages/{page.page_id}/store-images/delete",
         headers=_admin_headers(),
         data={
             "locale": "en-US",
@@ -1776,7 +1818,7 @@ def test_admin_marketing_page_sync_creates_sync_runs(
     seed_demo_catalog(db_session)
     client.post(
         "/admin/developer-accounts/account-apple-enterprise"
-        "/apps/app-aurora-ios/store-metadata/marketing-pages",
+        "/apps/app-aurora-ios/store/marketing-pages",
         headers=_admin_headers(),
         data={
             "locale": "en-US",
@@ -1788,7 +1830,7 @@ def test_admin_marketing_page_sync_creates_sync_runs(
 
     preflight = client.post(
         "/admin/developer-accounts/account-apple-enterprise"
-        f"/apps/app-aurora-ios/store-metadata/marketing-pages/{page.page_id}/preflight",
+        f"/apps/app-aurora-ios/store/marketing-pages/{page.page_id}/preflight",
         headers=_admin_headers(),
         data={"locale": "en-US"},
     )
@@ -1797,7 +1839,7 @@ def test_admin_marketing_page_sync_creates_sync_runs(
 
     response = client.post(
         "/admin/developer-accounts/account-apple-enterprise"
-        f"/apps/app-aurora-ios/store-metadata/marketing-pages/{page.page_id}/sync",
+        f"/apps/app-aurora-ios/store/marketing-pages/{page.page_id}/sync",
         headers=_admin_headers(),
         data={
             "locale": "en-US",
@@ -1832,7 +1874,7 @@ def test_admin_marketing_page_can_copy_and_delete(
     seed_demo_catalog(db_session)
     client.post(
         "/admin/developer-accounts/account-apple-enterprise"
-        "/apps/app-aurora-ios/store-metadata/marketing-pages",
+        "/apps/app-aurora-ios/store/marketing-pages",
         headers=_admin_headers(),
         data={
             "locale": "en-US",
@@ -1852,7 +1894,7 @@ def test_admin_marketing_page_can_copy_and_delete(
 
     copy_response = client.post(
         "/admin/developer-accounts/account-apple-enterprise"
-        f"/apps/app-aurora-ios/store-metadata/marketing-pages/{page.page_id}/copy",
+        f"/apps/app-aurora-ios/store/marketing-pages/{page.page_id}/copy",
         headers=_admin_headers(),
     )
     pages = db_session.query(StoreMarketingPage).order_by(StoreMarketingPage.created_at).all()
@@ -1865,7 +1907,7 @@ def test_admin_marketing_page_can_copy_and_delete(
 
     delete_response = client.post(
         "/admin/developer-accounts/account-apple-enterprise"
-        f"/apps/app-aurora-ios/store-metadata/marketing-pages/{page.page_id}/delete",
+        f"/apps/app-aurora-ios/store/marketing-pages/{page.page_id}/delete",
         headers=_admin_headers(),
     )
 
@@ -1893,7 +1935,7 @@ def test_admin_store_metadata_page_uses_google_play_terms_for_android(
     )
 
     assert response.status_code == 200
-    assert "Google Play Console 同步" in response.text
+    assert "Google Play Console 默认商店页" in response.text
     assert "完整描述" in response.text
     assert "功能宣传图" in response.text
     assert "Google Play 功能宣传图必须是 1024 x 500" in response.text

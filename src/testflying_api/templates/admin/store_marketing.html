@@ -1,0 +1,161 @@
+{% extends "admin/base.html" %}
+{% block main_class %}store-metadata-main store-workspace-main store-marketing-main{% endblock %}
+{% block heading %}商店管理{% endblock %}
+{% block content %}
+  <section class="card context-card store-workspace-context store-management-hero">
+    <div>
+      <p class="kicker">{{ store_label }} 营销页面</p>
+      <strong>{{ app.name }}</strong>
+      <small>{{ app.bundle_identifier }}</small>
+    </div>
+    <div class="context-meta">
+      <a class="button ghost" href="/admin/developer-accounts/{{ account.id }}">返回账号</a>
+      <span class="pill blue">{{ app.platform|platform }}</span>
+      <span class="pill">语言：{{ supported_locales|length }} 个</span>
+      <span class="pill">营销页面：{{ marketing_pages|length }} 个</span>
+    </div>
+  </section>
+
+  {% if success %}
+    <div class="alert success"><strong>{{ success }}</strong></div>
+  {% endif %}
+  {% if error %}
+    <div class="alert error"><strong>{{ error }}</strong></div>
+  {% endif %}
+
+  <nav class="store-management-nav" aria-label="商店管理模块">
+    <a class="store-management-tab" href="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store">
+      <span class="tab-icon" aria-hidden="true">文</span>
+      <span>
+        <strong>默认商店页</strong>
+        <small>商店文案、商店图、版本说明</small>
+      </span>
+    </a>
+    <a class="store-management-tab is-active" href="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store/marketing">
+      <span class="tab-icon" aria-hidden="true">营</span>
+      <span>
+        <strong>营销页面</strong>
+        <small>自定义产品页面、产品页面优化</small>
+      </span>
+    </a>
+    <a class="store-management-tab" href="/admin/developer-accounts/{{ account.id }}">
+      <span class="tab-icon" aria-hidden="true">连</span>
+      <span>
+        <strong>商店连接</strong>
+        <small>Connector、账号凭据、应用绑定</small>
+      </span>
+    </a>
+  </nav>
+
+  <section class="store-marketing-layout">
+    <section class="card store-marketing-list">
+      <div class="suite-toolbar">
+        <div>
+          <h2>营销页面</h2>
+          <p>和默认商店页平级管理；创建、编辑不会自动同步到 App Store Connect。</p>
+        </div>
+        {% if app.platform == "ios" %}
+          <div class="suite-actions marketing-create-actions">
+            <form action="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store/marketing-pages" method="post">
+              <input type="hidden" name="locale" value="{{ source_locale }}">
+              <input type="hidden" name="marketingPageType" value="custom_product_page">
+              <input type="hidden" name="marketingPageName" value="新的自定义产品页面">
+              {% for item in supported_locales %}
+                <input type="hidden" name="locales" value="{{ item }}">
+              {% endfor %}
+              <button class="button ghost" type="submit">新建自定义产品页面</button>
+            </form>
+            <form action="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store/marketing-pages" method="post">
+              <input type="hidden" name="locale" value="{{ source_locale }}">
+              <input type="hidden" name="marketingPageType" value="product_page_optimization">
+              <input type="hidden" name="marketingPageName" value="新的产品页面优化">
+              {% for item in supported_locales %}
+                <input type="hidden" name="locales" value="{{ item }}">
+              {% endfor %}
+              <button class="button primary" type="submit">新建产品页面优化</button>
+            </form>
+          </div>
+        {% endif %}
+      </div>
+
+      {% if app.platform != "ios" %}
+        <div class="empty">营销页面当前仅支持 App Store Connect。</div>
+      {% elif marketing_pages %}
+        <div class="marketing-page-table">
+          <div class="marketing-page-row marketing-page-head" aria-hidden="true">
+            <span>页面</span>
+            <span>类型</span>
+            <span>状态</span>
+            <span>内容</span>
+            <span>Apple 页面 ID</span>
+            <span>更新</span>
+            <span></span>
+          </div>
+          {% for item in marketing_pages %}
+            {% set page = item.page %}
+            <a class="marketing-page-row marketing-page-link" href="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store/marketing-pages/{{ page.page_id }}">
+              <span class="marketing-page-name">
+                <strong>{{ page.page_name }}</strong>
+                <small>{{ page.page_id }}</small>
+              </span>
+              <span>{{ item.type_label }}</span>
+              <span><i class="tag {{ item.status_tone }}">{{ item.status_label }}</i></span>
+              <span class="marketing-content-summary">
+                <b>{{ item.language_count }} 个语言</b>
+                <small>{{ item.filled_text_count }} 个文案 · {{ item.asset_count }} 张图</small>
+              </span>
+              <span class="marketing-page-apple-id">{{ item.apple_page_id_label }}</span>
+              <span>{{ page.updated_at|datetime }}</span>
+              <span class="button small ghost">打开</span>
+            </a>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty marketing-empty">
+          <strong>还没有营销页面</strong>
+          <span>先创建自定义产品页面或产品页面优化；保存后只留在 testflying，手动同步时才会提交到商店。</span>
+        </div>
+      {% endif %}
+    </section>
+
+    <aside class="store-marketing-side">
+      <section class="card side-card">
+        <div class="side-head">
+          <h2>同步边界</h2>
+          <span>独立</span>
+        </div>
+        <div class="scope-list">
+          <div class="scope-option readonly">
+            <span class="check-mark">✓</span>
+            <span><strong>默认商店页</strong><small>在默认商店页里同步文案、商店图、版本说明。</small></span>
+          </div>
+          <div class="scope-option readonly">
+            <span class="check-mark">✓</span>
+            <span><strong>营销页面</strong><small>在本页创建页面，再进入详情单独同步。</small></span>
+          </div>
+        </div>
+      </section>
+
+      <section class="card side-card">
+        <div class="side-head">
+          <h2>最近营销同步</h2>
+          <span>{{ marketing_sync_runs|length }} 条</span>
+        </div>
+        <div class="timeline compact">
+          {% for run in marketing_sync_runs[:5] %}
+            <article class="record">
+              <span class="record-dot"></span>
+              <div>
+                <strong>{{ run.started_at|datetime }}</strong>
+                <p>页面：{{ run.version }}<br>语言：{{ run.locale }}</p>
+              </div>
+              <span class="tag {{ 'warn' if run.status != 'succeeded' else '' }}">{{ "成功" if run.status == "succeeded" else run.status }}</span>
+            </article>
+          {% else %}
+            <div class="empty compact">暂无营销页面同步记录。</div>
+          {% endfor %}
+        </div>
+      </section>
+    </aside>
+  </section>
+{% endblock %}

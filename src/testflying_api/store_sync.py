@@ -620,7 +620,7 @@ def create_marketing_page(
     if app.platform != "ios":
         raise ApiError(
             "unsupported_marketing_page",
-            "营销页面控制台当前仅支持 App Store Connect",
+            "营销页面当前仅支持 App Store Connect",
             status_code=422,
         )
     now = datetime.now(UTC)
@@ -672,7 +672,7 @@ def save_marketing_page(
     if app.platform != "ios":
         raise ApiError(
             "unsupported_marketing_page",
-            "营销页面控制台当前仅支持 App Store Connect",
+            "营销页面当前仅支持 App Store Connect",
             status_code=422,
         )
     page = marketing_page_for_scope(
@@ -1205,7 +1205,7 @@ def sync_marketing_page(
     if app.platform != "ios":
         raise ApiError(
             "unsupported_marketing_page",
-            "营销页面控制台当前仅支持 App Store Connect",
+            "营销页面当前仅支持 App Store Connect",
             status_code=422,
         )
     connector = account_connector(session, account_id)

@@ -411,7 +411,8 @@ docker run -d --name testflying-connector \
               </form>
               <div class="app-actions">
                 {% if item.latest_build %}
-                  <a class="primary-button app-sync-action" href="/admin/developer-accounts/{{ account.id }}/apps/{{ item.app.id }}/store-metadata">同步商店信息</a>
+                  <a class="primary-button app-sync-action" href="/admin/developer-accounts/{{ account.id }}/apps/{{ item.app.id }}/store">默认商店页</a>
+                  <a class="ghost-link" href="/admin/developer-accounts/{{ account.id }}/apps/{{ item.app.id }}/store/marketing">营销页面</a>
                   <a class="ghost-link" href="/admin/developer-accounts/{{ account.id }}/apps/{{ item.app.id }}/release-notes">管理版本说明</a>
                 {% else %}
                   <span class="empty">暂无构建</span>

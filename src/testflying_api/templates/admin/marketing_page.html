@@ -9,7 +9,7 @@
       <small>{{ app.bundle_identifier }}</small>
     </div>
     <div class="context-meta">
-      <a class="button ghost" href="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata?section=marketing">返回商店元数据</a>
+      <a class="button ghost" href="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store/marketing">返回营销页面</a>
       <span class="pill blue">iOS</span>
       <span class="pill">语言：{{ supported_locales|length }} 个</span>
       <span class="pill {{ 'green' if page.status == 'synced' else '' }}">{{ "已同步" if page.status == "synced" else "未同步" }}</span>
@@ -23,13 +23,13 @@
     <div class="alert error"><strong>{{ error }}</strong></div>
   {% endif %}
 
-  <form id="marketing-preflight-form" action="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata/marketing-pages/{{ page.page_id }}/preflight" method="post" hidden>
+  <form id="marketing-preflight-form" action="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store/marketing-pages/{{ page.page_id }}/preflight" method="post" hidden>
     <input type="hidden" name="locale" value="{{ locale }}">
   </form>
 
   <form
     class="store-metadata-form store-workspace-form marketing-page-form"
-    action="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata/marketing-pages/{{ page.page_id }}"
+    action="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store/marketing-pages/{{ page.page_id }}"
     method="post"
     enctype="multipart/form-data"
     data-metadata-form
@@ -99,8 +99,8 @@
           {% endif %}
           <div class="marketing-readonly-field">
             <span>Apple 页面 ID</span>
-            <strong>{{ page.apple_page_id or "暂无" }}</strong>
-            <small>同步后由 App Store Connect 回填</small>
+            <strong>{{ page.apple_page_id or "未同步后回填" }}</strong>
+            <small>由 App Store Connect 回填，只读展示</small>
           </div>
           <label>
             <span>Deep Link URL</span>
@@ -210,7 +210,7 @@
                                 <button
                                   class="store-image-delete-button"
                                   type="submit"
-                                  formaction="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata/marketing-pages/{{ page.page_id }}/store-images/delete"
+                                  formaction="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store/marketing-pages/{{ page.page_id }}/store-images/delete"
                                   formmethod="post"
                                   name="storeImageDelete"
                                   value='{{ {"locale": locale, "slot": slot.key, "storageKey": preview.storageKey}|tojson }}'
@@ -258,7 +258,7 @@
                                   <button
                                     class="store-image-delete-button"
                                     type="submit"
-                                    formaction="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata/marketing-pages/{{ page.page_id }}/store-images/delete"
+                                    formaction="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store/marketing-pages/{{ page.page_id }}/store-images/delete"
                                     formmethod="post"
                                     name="storeImageDelete"
                                     value='{{ {"locale": item.locale, "slot": slot.key, "storageKey": preview.storageKey}|tojson }}'
@@ -365,10 +365,10 @@
         <small>同步前会展示确认清单；创建页面不会自动同步到商店。</small>
       </div>
       <div class="bottom-actions">
-        <button class="button danger ghost" type="submit" formaction="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata/marketing-pages/{{ page.page_id }}/delete" onclick="return confirm('只删除中心后台的这个营销页面，确认继续？')">删除页面</button>
-        <button class="button ghost" type="submit" formaction="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata/marketing-pages/{{ page.page_id }}/copy">复制页面</button>
+        <button class="button danger ghost" type="submit" formaction="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store/marketing-pages/{{ page.page_id }}/delete" onclick="return confirm('只删除中心后台的这个营销页面，确认继续？')">删除页面</button>
+        <button class="button ghost" type="submit" formaction="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store/marketing-pages/{{ page.page_id }}/copy">复制页面</button>
         <button class="button ghost" type="submit">保存草稿</button>
-        <button class="button primary" type="submit" formaction="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata/marketing-pages/{{ page.page_id }}/sync" data-store-metadata-sync-submit {% if not preflight or not preflight.can_sync %}disabled{% endif %}>同步到商店</button>
+        <button class="button primary" type="submit" formaction="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store/marketing-pages/{{ page.page_id }}/sync" data-store-metadata-sync-submit {% if not preflight or not preflight.can_sync %}disabled{% endif %}>同步到商店</button>
       </div>
     </div>
 

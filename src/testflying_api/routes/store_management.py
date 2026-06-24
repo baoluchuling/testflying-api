@@ -347,7 +347,7 @@ async def import_marketing_page(
     if app.platform != "ios":
         raise ApiError(
             "unsupported_marketing_page",
-            "营销页面控制台当前仅支持 App Store Connect",
+            "营销页面当前仅支持 App Store Connect",
             status_code=422,
         )
 

@@ -41,6 +41,7 @@ from testflying_api.admin.view_models import (
     marketing_page_context,
     platform_label,
     release_notes_context,
+    store_marketing_context,
     store_metadata_context,
     upload_context,
 )
@@ -833,6 +834,10 @@ def sync_release_notes_page(
 
 
 @router.get(
+    "/developer-accounts/{account_id}/apps/{app_id}/store",
+    response_class=HTMLResponse,
+)
+@router.get(
     "/developer-accounts/{account_id}/apps/{app_id}/store-metadata",
     response_class=HTMLResponse,
 )
@@ -864,6 +869,10 @@ def store_metadata_page(
     )
 
 
+@router.post(
+    "/developer-accounts/{account_id}/apps/{app_id}/store",
+    response_class=HTMLResponse,
+)
 @router.post(
     "/developer-accounts/{account_id}/apps/{app_id}/store-metadata",
     response_class=HTMLResponse,
@@ -1033,6 +1042,38 @@ async def translate_store_metadata_field(
     return JSONResponse({"translations": translations})
 
 
+@router.get(
+    "/developer-accounts/{account_id}/apps/{app_id}/store/marketing",
+    response_class=HTMLResponse,
+)
+def store_marketing_page(
+    account_id: str,
+    app_id: str,
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+    locale: str = DEFAULT_LOCALE,
+) -> HTMLResponse:
+    context = store_marketing_context(
+        session,
+        account_id=account_id,
+        app_id=app_id,
+        locale=locale,
+    )
+    if context["account"] is None or context["app"] is None:
+        raise ApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
+    session.commit()
+    return templates.TemplateResponse(
+        request,
+        "admin/store_marketing.html",
+        _context(request, active="developer-accounts", **context),
+    )
+
+
+@router.post(
+    "/developer-accounts/{account_id}/apps/{app_id}/store/marketing-pages",
+    response_class=HTMLResponse,
+)
 @router.post(
     "/developer-accounts/{account_id}/apps/{app_id}/store-metadata/marketing-pages",
     response_class=HTMLResponse,
@@ -1055,7 +1096,7 @@ async def create_store_marketing_page(
         if app.platform != "ios":
             raise ApiError(
                 "unsupported_marketing_page",
-                "营销页面控制台当前仅支持 App Store Connect",
+                "营销页面当前仅支持 App Store Connect",
                 status_code=422,
             )
         page_id = f"page-{uuid4().hex[:8]}"
@@ -1105,7 +1146,7 @@ async def create_store_marketing_page(
         )
     except ApiError as error:
         session.rollback()
-        context = store_metadata_context(
+        context = store_marketing_context(
             session,
             account_id=account_id,
             app_id=app_id,
@@ -1114,12 +1155,16 @@ async def create_store_marketing_page(
         session.commit()
         return templates.TemplateResponse(
             request,
-            "admin/store_metadata.html",
+            "admin/store_marketing.html",
             _context(request, active="developer-accounts", error=error.message, **context),
             status_code=error.status_code,
         )
 
 
+@router.get(
+    "/developer-accounts/{account_id}/apps/{app_id}/store/marketing-pages/{page_id}",
+    response_class=HTMLResponse,
+)
 @router.get(
     "/developer-accounts/{account_id}/apps/{app_id}/store-metadata/marketing-pages/{page_id}",
     response_class=HTMLResponse,
@@ -1149,6 +1194,10 @@ def marketing_page_detail(
     )
 
 
+@router.post(
+    "/developer-accounts/{account_id}/apps/{app_id}/store/marketing-pages/{page_id}",
+    response_class=HTMLResponse,
+)
 @router.post(
     "/developer-accounts/{account_id}/apps/{app_id}/store-metadata/marketing-pages/{page_id}",
     response_class=HTMLResponse,
@@ -1230,6 +1279,10 @@ async def save_marketing_page_detail(
 
 
 @router.post(
+    "/developer-accounts/{account_id}/apps/{app_id}/store/marketing-pages/{page_id}/copy",
+    response_class=HTMLResponse,
+)
+@router.post(
     "/developer-accounts/{account_id}/apps/{app_id}/store-metadata/marketing-pages/{page_id}/copy",
     response_class=HTMLResponse,
 )
@@ -1275,6 +1328,10 @@ def copy_marketing_page_detail(
 
 
 @router.post(
+    "/developer-accounts/{account_id}/apps/{app_id}/store/marketing-pages/{page_id}/delete",
+    response_class=HTMLResponse,
+)
+@router.post(
     "/developer-accounts/{account_id}/apps/{app_id}/store-metadata/marketing-pages/{page_id}/delete",
     response_class=HTMLResponse,
 )
@@ -1294,11 +1351,11 @@ def delete_marketing_page_detail(
             page_id=page_id,
         )
         session.commit()
-        context = store_metadata_context(session, account_id=account_id, app_id=app_id)
+        context = store_marketing_context(session, account_id=account_id, app_id=app_id)
         session.commit()
         return templates.TemplateResponse(
             request,
-            "admin/store_metadata.html",
+            "admin/store_marketing.html",
             _context(
                 request,
                 active="developer-accounts",
@@ -1319,6 +1376,10 @@ def delete_marketing_page_detail(
         )
 
 
+@router.post(
+    "/developer-accounts/{account_id}/apps/{app_id}/store/marketing-pages/{page_id}/preflight",
+    response_class=HTMLResponse,
+)
 @router.post(
     "/developer-accounts/{account_id}/apps/{app_id}/store-metadata/marketing-pages/{page_id}/preflight",
     response_class=HTMLResponse,
@@ -1356,6 +1417,10 @@ def refresh_marketing_page_preflight(
     )
 
 
+@router.post(
+    "/developer-accounts/{account_id}/apps/{app_id}/store/marketing-pages/{page_id}/sync",
+    response_class=HTMLResponse,
+)
 @router.post(
     "/developer-accounts/{account_id}/apps/{app_id}/store-metadata/marketing-pages/{page_id}/sync",
     response_class=HTMLResponse,
@@ -1427,6 +1492,10 @@ async def sync_marketing_page_detail(
         )
 
 
+@router.post(
+    "/developer-accounts/{account_id}/apps/{app_id}/store/marketing-pages/{page_id}/store-images/delete",
+    response_class=HTMLResponse,
+)
 @router.post(
     "/developer-accounts/{account_id}/apps/{app_id}/store-metadata/marketing-pages/{page_id}/store-images/delete",
     response_class=HTMLResponse,
@@ -1869,7 +1938,7 @@ def _marketing_page_error_response(
     )
     session.commit()
     if context.get("page") is None or context.get("app") is None:
-        fallback_context = store_metadata_context(
+        fallback_context = store_marketing_context(
             session,
             account_id=account_id,
             app_id=app_id,
@@ -1878,7 +1947,7 @@ def _marketing_page_error_response(
         session.commit()
         return templates.TemplateResponse(
             request,
-            "admin/store_metadata.html",
+            "admin/store_marketing.html",
             _context(
                 request,
                 active="developer-accounts",

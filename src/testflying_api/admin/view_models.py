@@ -378,6 +378,41 @@ def store_metadata_context(
     }
 
 
+def store_marketing_context(
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    locale: str = DEFAULT_LOCALE,
+) -> dict[str, object]:
+    base = store_metadata_context(
+        session,
+        account_id=account_id,
+        app_id=app_id,
+        locale=locale,
+    )
+    app = base.get("app")
+    raw_pages = (
+        _marketing_pages_for_app(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            platform=app.platform,
+        )
+        if isinstance(app, App)
+        else []
+    )
+    return {
+        **base,
+        "marketing_pages": [_marketing_page_summary(page) for page in raw_pages],
+        "marketing_sync_runs": [
+            run
+            for run in recent_sync_runs(session, account_id=account_id, app_id=app_id, limit=30)
+            if run.operation == UPDATE_MARKETING_PAGE
+        ],
+    }
+
+
 def marketing_page_context(
     session: Session,
     *,
@@ -713,6 +748,7 @@ def _marketing_pages_for_app(
     return list(
         session.scalars(
             select(StoreMarketingPage)
+            .options(selectinload(StoreMarketingPage.locales))
             .where(
                 StoreMarketingPage.developer_account_id == account_id,
                 StoreMarketingPage.app_id == app_id,
@@ -721,6 +757,44 @@ def _marketing_pages_for_app(
             .order_by(StoreMarketingPage.updated_at.desc(), StoreMarketingPage.page_name.asc())
         )
     )
+
+
+def _marketing_page_summary(page: StoreMarketingPage) -> dict[str, object]:
+    asset_count = 0
+    filled_text_count = 0
+    for locale in page.locales:
+        if locale.promotional_text.strip():
+            filled_text_count += 1
+        store_images = locale.store_images_json or {}
+        for value in store_images.values():
+            if isinstance(value, dict):
+                assets = value.get("assets")
+                if isinstance(assets, list):
+                    asset_count += len(assets)
+            elif isinstance(value, list):
+                asset_count += len(value)
+    return {
+        "page": page,
+        "type_label": (
+            "自定义产品页面"
+            if page.page_type == "custom_product_page"
+            else "产品页面优化"
+        ),
+        "status_label": _marketing_page_status_label(page),
+        "status_tone": "green" if page.status == "synced" else "warn",
+        "apple_page_id_label": page.apple_page_id or "未同步后回填",
+        "language_count": len(page.locales),
+        "filled_text_count": filled_text_count,
+        "asset_count": asset_count,
+    }
+
+
+def _marketing_page_status_label(page: StoreMarketingPage) -> str:
+    if page.status == "synced":
+        return "已同步"
+    if page.apple_page_id:
+        return "待更新"
+    return "未同步"
 
 
 def _sync_history_groups(runs: list[StoreSyncRun]) -> list[dict[str, object]]:

@@ -26,7 +26,7 @@ body {
 .sidebar {
   position: fixed;
   inset: 0 auto 0 0;
-  width: 200px;
+  width: 184px;
   padding: 24px 10px;
   background:
     linear-gradient(180deg, rgba(24, 80, 158, .22), transparent 44%),
@@ -103,7 +103,7 @@ body {
 }
 
 .main {
-  margin-left: 200px;
+  margin-left: 184px;
   padding: 28px 32px 48px;
 }
 
@@ -115,7 +115,7 @@ body {
   position: fixed;
   top: 14px;
   right: 24px;
-  left: 224px;
+  left: 208px;
   z-index: 120;
   min-height: 36px;
   padding: 8px 14px;
@@ -5849,7 +5849,7 @@ body.store-sync-confirm-open {
 
 .store-workspace-main .store-workspace-grid {
   display: grid;
-  grid-template-columns: 208px minmax(0, 1fr) 252px;
+  grid-template-columns: 184px minmax(0, 1fr) 252px;
   gap: 12px;
   align-items: start;
 }
@@ -6704,7 +6704,7 @@ body.store-sync-confirm-open {
   position: fixed;
   right: 24px;
   bottom: 18px;
-  left: 224px;
+  left: 208px;
   z-index: 45;
   display: flex;
   align-items: center;
@@ -6752,12 +6752,12 @@ body.store-sync-confirm-open {
   }
 
   .store-workspace-main .store-workspace-grid {
-    grid-template-columns: 196px minmax(0, 1fr) 232px;
+    grid-template-columns: 180px minmax(0, 1fr) 232px;
   }
 
   .store-workspace-main .store-workspace-bottom {
     right: 20px;
-    left: 220px;
+    left: 204px;
   }
 }
 
@@ -6830,6 +6830,208 @@ body.store-sync-confirm-open {
 
 .store-section-panel {
   margin-top: 18px;
+}
+
+.store-management-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0 0 16px;
+}
+
+.store-management-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 9px 14px;
+  border: 1px solid #d9e1ee;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .94);
+  color: #4c5a6f;
+  text-decoration: none;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .03);
+}
+
+.store-management-tab.is-active {
+  border-color: #9fc5ff;
+  background: #edf5ff;
+  color: #0759d4;
+}
+
+.store-management-tab strong,
+.store-management-tab small {
+  display: block;
+}
+
+.store-management-tab strong {
+  font-size: 14px;
+  font-weight: 780;
+}
+
+.store-management-tab small {
+  margin-top: 2px;
+  color: #667085;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.store-management-tab.is-active small {
+  color: #315fbd;
+}
+
+.store-marketing-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 14px;
+  align-items: start;
+}
+
+.store-marketing-list {
+  min-width: 0;
+  padding: 20px;
+}
+
+.store-marketing-list .suite-toolbar {
+  margin-bottom: 18px;
+}
+
+.marketing-create-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.marketing-create-actions form {
+  display: inline-flex;
+}
+
+.marketing-page-table {
+  display: grid;
+  gap: 8px;
+}
+
+.marketing-page-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.25fr) minmax(120px, .72fr) 86px minmax(150px, .86fr) minmax(150px, .86fr) 128px 72px;
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid #e2e7ef;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.marketing-page-head {
+  min-height: auto;
+  padding-block: 0 8px;
+  border: 0;
+  background: transparent;
+  color: #667085;
+  font-size: 12px;
+  font-weight: 820;
+}
+
+.marketing-page-link {
+  color: #101827;
+  text-decoration: none;
+}
+
+.marketing-page-link:hover {
+  border-color: #9fc5ff;
+  background: #fbfdff;
+  box-shadow: 0 16px 34px rgba(31, 91, 184, .08);
+}
+
+.marketing-page-name,
+.marketing-content-summary {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.marketing-page-name strong,
+.marketing-page-name small,
+.marketing-content-summary b,
+.marketing-content-summary small,
+.marketing-page-apple-id {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.marketing-page-name small,
+.marketing-content-summary small,
+.marketing-page-apple-id {
+  color: #667085;
+  font-size: 12px;
+  font-weight: 680;
+}
+
+.store-marketing-side {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.store-marketing-side .scope-option.readonly {
+  grid-template-columns: 18px minmax(0, 1fr);
+}
+
+.store-marketing-side .check-mark {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #16a34a;
+  font-size: 12px;
+  font-weight: 820;
+}
+
+.marketing-empty {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+  padding: 34px 18px;
+}
+
+@media (max-width: 1320px) {
+  .store-marketing-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .store-marketing-side {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .marketing-page-row {
+    grid-template-columns: minmax(180px, 1.2fr) 110px 80px minmax(130px, .8fr) 110px 64px;
+  }
+
+  .marketing-page-row > :nth-child(5),
+  .marketing-page-head > :nth-child(5) {
+    display: none;
+  }
+}
+
+@media (max-width: 980px) {
+  .store-marketing-side {
+    grid-template-columns: 1fr;
+  }
+
+  .marketing-page-head {
+    display: none;
+  }
+
+  .marketing-page-row {
+    grid-template-columns: 1fr auto;
+  }
+
+  .marketing-page-row > span:not(.marketing-page-name):not(:last-child) {
+    display: none;
+  }
 }
 
 .history-groups {
@@ -6998,7 +7200,7 @@ body.store-sync-confirm-open {
 }
 
 .marketing-page-main .store-workspace-grid {
-  grid-template-columns: 208px minmax(0, 1fr) 278px;
+  grid-template-columns: 184px minmax(0, 1fr) 278px;
   gap: 14px;
 }
 
@@ -7151,9 +7353,9 @@ body.store-sync-confirm-open {
 }
 
 .marketing-page-main .store-workspace-bottom {
-  left: 224px;
+  left: 208px;
   right: 28px;
-  max-width: calc(100vw - 252px);
+  max-width: calc(100vw - 236px);
   flex-wrap: wrap;
 }
 
@@ -7168,15 +7370,15 @@ body.store-sync-confirm-open {
 @media (max-width: 1180px) and (min-width: 981px) {
   .store-workspace-main .store-workspace-bottom,
   .marketing-page-main .store-workspace-bottom {
-    left: 228px;
+    left: 212px;
     right: 28px;
-    max-width: calc(100vw - 256px);
+    max-width: calc(100vw - 240px);
   }
 }
 
 @media (max-width: 1180px) {
   .marketing-page-main .store-workspace-grid {
-    grid-template-columns: 208px minmax(0, 1fr);
+    grid-template-columns: 184px minmax(0, 1fr);
   }
 
   .marketing-page-main .side {

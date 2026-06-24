@@ -239,11 +239,15 @@ def test_admin_store_marketing_list_matches_resource_demo_contract(
     response = client.get("/static/admin/admin.css")
 
     assert response.status_code == 200
+    assert ".store-management-nav" not in response.text
+    assert ".store-management-tab" not in response.text
+    assert ".store-management-page," in response.text
     assert ".store-marketing-page {" in response.text
     assert "max-width: 1320px" in response.text
     assert ".store-management-resource-layout" in response.text
     assert "grid-template-columns: 280px minmax(0, 1fr)" in response.text
-    assert ".store-marketing-main .resource-link.active" in response.text
+    assert ".store-default-page .store-metadata-form" in response.text
+    assert ".store-management-page .resource-link.active" in response.text
     assert "box-shadow: inset 0 0 0 1px #1473f8" in response.text
     assert ".store-marketing-main .table-card" in response.text
     assert ".store-marketing-table th" in response.text
@@ -1475,6 +1479,20 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "新建套件" not in response.text
     assert "复制当前套" not in response.text
     assert "商店图套件库" not in response.text
+    assert "store-management-page store-default-page" in response.text
+    assert (
+        "resource-layout store-management-resource-layout store-default-resource-layout"
+        in response.text
+    )
+    assert (
+        'class="resource-link active" type="button" data-store-section-jump="current"'
+        in response.text
+    )
+    assert 'class="resource-link" type="button" data-store-section-jump="history"' in response.text
+    assert "setSection(document, tab.dataset.storeSectionTab)" in response.text
+    assert "setSection(document, jump.dataset.storeSectionJump)" in response.text
+    assert "store-management-nav" not in response.text
+    assert "store-management-tab" not in response.text
     assert "card toolbar" in response.text
     assert "workspace" in response.text
     assert "main-input" in response.text

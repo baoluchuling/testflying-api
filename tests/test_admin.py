@@ -143,6 +143,12 @@ def test_admin_store_metadata_focus_layout_css_contract(client: TestClient) -> N
     response = client.get("/static/admin/admin.css")
 
     assert response.status_code == 200
+    assert ".sidebar {" in response.text
+    assert "width: 200px" in response.text
+    assert ".main {" in response.text
+    assert "margin-left: 200px" in response.text
+    assert ".admin-route-loading" in response.text
+    assert "left: 224px" in response.text
     assert ".store-metadata-main" in response.text
     assert "max-width: 1262px" in response.text
     assert ".store-metadata-main .toolbar" in response.text
@@ -209,10 +215,10 @@ def test_admin_marketing_page_layout_css_prevents_horizontal_overflow(
     assert ".marketing-page-main .focus-completion" in response.text
     assert "display: inline-flex" in response.text
     assert ".marketing-page-main .store-workspace-bottom" in response.text
-    assert "max-width: calc(100vw - 292px)" in response.text
+    assert "max-width: calc(100vw - 252px)" in response.text
     assert "@media (max-width: 1180px) and (min-width: 981px)" in response.text
     assert "grid-template-columns: 208px minmax(0, 1fr)" in response.text
-    assert "max-width: calc(100vw - 296px)" in response.text
+    assert "max-width: calc(100vw - 256px)" in response.text
     assert "@media (max-width: 980px)" in response.text
     assert "max-width: calc(100vw - 28px)" in response.text
 

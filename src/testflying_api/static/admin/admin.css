@@ -26,7 +26,7 @@ body {
 .sidebar {
   position: fixed;
   inset: 0 auto 0 0;
-  width: 240px;
+  width: 200px;
   padding: 24px 10px;
   background:
     linear-gradient(180deg, rgba(24, 80, 158, .22), transparent 44%),
@@ -103,7 +103,7 @@ body {
 }
 
 .main {
-  margin-left: 240px;
+  margin-left: 200px;
   padding: 28px 32px 48px;
 }
 
@@ -115,7 +115,7 @@ body {
   position: fixed;
   top: 14px;
   right: 24px;
-  left: 264px;
+  left: 224px;
   z-index: 120;
   min-height: 36px;
   padding: 8px 14px;
@@ -6668,7 +6668,7 @@ body.store-sync-confirm-open {
   position: fixed;
   right: 24px;
   bottom: 18px;
-  left: 264px;
+  left: 224px;
   z-index: 45;
   display: flex;
   align-items: center;
@@ -6721,7 +6721,7 @@ body.store-sync-confirm-open {
 
   .store-workspace-main .store-workspace-bottom {
     right: 20px;
-    left: 260px;
+    left: 220px;
   }
 }
 
@@ -7060,9 +7060,9 @@ body.store-sync-confirm-open {
 }
 
 .marketing-page-main .store-workspace-bottom {
-  left: 264px;
+  left: 224px;
   right: 28px;
-  max-width: calc(100vw - 292px);
+  max-width: calc(100vw - 252px);
   flex-wrap: wrap;
 }
 
@@ -7077,9 +7077,9 @@ body.store-sync-confirm-open {
 @media (max-width: 1180px) and (min-width: 981px) {
   .store-workspace-main .store-workspace-bottom,
   .marketing-page-main .store-workspace-bottom {
-    left: 268px;
+    left: 228px;
     right: 28px;
-    max-width: calc(100vw - 296px);
+    max-width: calc(100vw - 256px);
   }
 }
 

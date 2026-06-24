@@ -31,10 +31,10 @@
   <div class="store-management-page store-default-page">
     <div class="resource-layout store-management-resource-layout store-default-resource-layout">
       <aside class="card resource-nav" aria-label="商店管理资源">
-        <button class="resource-link active" type="button" data-store-section-jump="current">
+        <a class="resource-link active" href="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store" aria-current="page">
           <strong>默认商店页</strong>
           <span>文案、截图、版本说明</span>
-        </button>
+        </a>
         <a class="resource-link" href="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store/marketing">
           <strong>营销页面</strong>
           <span>自定义产品页面、产品页面优化</span>
@@ -43,10 +43,6 @@
           <strong>商店连接</strong>
           <span>Connector、语言、版本检查</span>
         </a>
-        <button class="resource-link" type="button" data-store-section-jump="history">
-          <strong>同步历史</strong>
-          <span>按版本和时间查看记录</span>
-        </button>
       </aside>
 
   <form
@@ -114,20 +110,9 @@
       </div>
     </section>
 
-    <nav class="task-tabs store-section-tabs" aria-label="商店工作区">
-      <button class="task-tab is-active" type="button" data-store-section-tab="current">
-        <span class="tab-icon" aria-hidden="true">文</span>
-        <span>当前商店内容</span>
-      </button>
-      <button class="task-tab" type="button" data-store-section-tab="history">
-        <span class="tab-icon" aria-hidden="true">时</span>
-        <span>同步历史</span>
-      </button>
-    </nav>
-
-    <section class="metadata-source-note store-workspace-note" data-store-section-panel="current">
+    <section class="metadata-source-note store-workspace-note">
       <strong>{{ source_locale }}</strong>
-      <span>源文案语言；当前页维护 App 级商店文案和商店图。版本只在同步时选择，并写入同步历史。</span>
+      <span>源文案语言；当前页维护 App 级商店文案和商店图。版本只在同步时选择，并记录本次同步结果。</span>
       <button class="button ghost subtle" type="button" data-translate-metadata>翻译所有文案项</button>
     </section>
 
@@ -138,14 +123,14 @@
       {% endif %}
     {% endfor %}
     {% if current_keywords.value %}
-      <section class="metadata-readonly-strip store-readonly-keywords" data-store-section-panel="current">
+      <section class="metadata-readonly-strip store-readonly-keywords">
         <span>关键词</span>
         <strong>{{ current_keywords.value }}</strong>
         <small>由商店回填，只读展示。</small>
       </section>
     {% endif %}
 
-    <section class="workspace store-workspace-grid" data-metadata-editor data-mode="field" data-store-section-panel="current">
+    <section class="workspace store-workspace-grid" data-metadata-editor data-mode="field">
       <aside class="card rail">
         <div class="rail-header">
           <h2>同步项</h2>
@@ -222,13 +207,6 @@
           {% endfor %}
         </div>
 
-        <div class="rail-footer">
-          <div class="history-link" data-store-section-jump="history">
-            <span class="sync-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 3-6.3"/><path d="M4 4v5h5"/><path d="M12 8v5l3 2"/></svg></span>
-            <span>同步历史</span>
-            <span class="chevron right" aria-hidden="true"></span>
-          </div>
-        </div>
       </aside>
 
       <section class="store-workspace-center">
@@ -549,44 +527,7 @@
       </aside>
     </section>
 
-    <section class="card metadata-sync-history-panel store-section-panel" data-store-section-panel="history" hidden>
-      <div class="panel-header">
-        <h2>同步历史</h2>
-        <span>按版本和同步时间保存快照</span>
-      </div>
-      <div class="history-groups">
-        {% for group in sync_history_groups %}
-          <section class="history-group">
-            <div class="history-group-head">
-              <strong>版本 {{ group.version }}</strong>
-              <span>{{ group.runs|length }} 条记录</span>
-            </div>
-            <div class="timeline">
-              {% for run in group.runs %}
-                <article class="record">
-                  <span class="record-dot"></span>
-                  <div>
-                    <strong>{{ run.started_at|datetime }}</strong>
-                    <p>
-                      {{ run.operation }}
-                      <br>
-                      语言：{{ run.locale }}
-                      <br>
-                      范围：{{ (run.sync_scopes_json.get("scopes", []) if run.sync_scopes_json else [])|join("、") or "-" }}
-                    </p>
-                  </div>
-                  <span class="tag {{ 'warn' if run.status != 'succeeded' else '' }}">{{ "成功" if run.status == "succeeded" else run.status }}</span>
-                </article>
-              {% endfor %}
-            </div>
-          </section>
-        {% else %}
-          <div class="empty">暂无同步历史。</div>
-        {% endfor %}
-      </div>
-    </section>
-
-    <div class="bottom-bar store-workspace-bottom" data-store-section-panel="current">
+    <div class="bottom-bar store-workspace-bottom">
       <div class="bottom-copy copy-bottom-copy">
         <span>当前操作</span>
         <strong>本次同步范围：文案元数据、商店图</strong>
@@ -610,7 +551,7 @@
         </div>
         <div class="store-sync-intro">
           <section><strong>同步范围可调整</strong><p>文案、商店图、版本说明可以单独或组合同步。</p></section>
-          <section><strong>当前草稿不跟版本</strong><p>目标版本只记录在本次同步历史里。</p></section>
+          <section><strong>当前草稿不跟版本</strong><p>目标版本只用于本次同步，不改变草稿内容。</p></section>
         </div>
         <div class="store-sync-confirm-summary" data-store-sync-confirm-summary></div>
         <div class="store-sync-confirm-body" data-store-sync-confirm-body></div>
@@ -641,34 +582,4 @@
     </div>
   </div>
 
-  <script>
-    (() => {
-      const setSection = (root, section) => {
-        root.querySelectorAll('[data-store-section-tab]').forEach((tab) => {
-          tab.classList.toggle('is-active', tab.dataset.storeSectionTab === section);
-        });
-        root.querySelectorAll('.resource-link[data-store-section-jump]').forEach((jump) => {
-          jump.classList.toggle('active', jump.dataset.storeSectionJump === section);
-        });
-        root.querySelectorAll('[data-store-section-panel]').forEach((panel) => {
-          panel.hidden = panel.dataset.storeSectionPanel !== section;
-        });
-      };
-      document.addEventListener('click', (event) => {
-        const tab = event.target.closest('[data-store-section-tab]');
-        if (tab) {
-          setSection(document, tab.dataset.storeSectionTab);
-          return;
-        }
-        const jump = event.target.closest('[data-store-section-jump]');
-        if (jump) {
-          setSection(document, jump.dataset.storeSectionJump);
-        }
-      });
-      const initialSection = new URLSearchParams(window.location.search).get('section');
-      if (initialSection) {
-        setSection(document, initialSection);
-      }
-    })();
-  </script>
 {% endblock %}

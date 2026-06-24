@@ -1200,10 +1200,6 @@ textarea {
   font-size: 13px;
 }
 
-.metadata-sync-history-panel {
-  overflow-x: auto;
-}
-
 .metadata-field-view,
 .metadata-language-view {
   display: grid;
@@ -3112,7 +3108,8 @@ a.ghost-button {
 
 /* Store metadata demo-matched overrides */
 .store-metadata-main {
-  max-width: 1262px;
+  width: auto;
+  max-width: none;
   padding: 28px 28px 38px;
 }
 
@@ -3808,10 +3805,6 @@ a.ghost-button {
 
 .store-metadata-main .metadata-focus-card.is-focused .metadata-focus-locale-row:not(.store-image-locale-row) > .metadata-chevron {
   display: inline-grid;
-}
-
-.metadata-sync-history-panel {
-  display: none;
 }
 
 /* Store metadata final page contract: demo structure plus real controls. */
@@ -5625,27 +5618,6 @@ body.store-sync-confirm-open {
   overflow: hidden;
 }
 
-.store-metadata-main .rail-footer {
-  padding: 16px 18px;
-}
-
-.store-metadata-main .history-link {
-  display: grid;
-  grid-template-columns: 26px minmax(0, 1fr) 24px;
-  align-items: center;
-  gap: 10px;
-  min-height: 48px;
-  color: #384456;
-  font-size: 15px;
-  font-weight: 680;
-  white-space: nowrap;
-}
-
-.store-metadata-main .history-link > span:nth-child(2) {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 /* Store workspace redesign. Keep this after the legacy store metadata guards. */
 .store-workspace-main {
   min-width: 0;
@@ -6824,23 +6796,17 @@ body.store-sync-confirm-open {
   font-weight: 800;
 }
 
-.store-section-tabs {
-  margin-top: 18px;
-}
-
-.store-section-panel {
-  margin-top: 18px;
-}
-
 .store-marketing-main .topbar {
-  max-width: 1320px;
+  max-width: none;
+  width: 100%;
   margin: 0 auto 22px;
 }
 
 .store-management-page,
 .store-marketing-page {
-  max-width: 1320px;
-  margin: 0 auto;
+  width: 100%;
+  max-width: none;
+  margin: 0;
 }
 
 .store-marketing-main .context-card {
@@ -7079,7 +7045,7 @@ body.store-sync-confirm-open {
     grid-template-columns: 1fr;
   }
 
-  .store-marketing-main .resource-nav {
+  .store-management-page .resource-nav {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

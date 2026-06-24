@@ -150,7 +150,7 @@ def test_admin_store_metadata_focus_layout_css_contract(client: TestClient) -> N
     assert ".admin-route-loading" in response.text
     assert "left: 208px" in response.text
     assert ".store-metadata-main" in response.text
-    assert "max-width: 1262px" in response.text
+    assert "max-width: 1262px" not in response.text
     assert ".store-metadata-main .toolbar" in response.text
     assert "justify-content: space-between" in response.text
     assert ".store-metadata-main .content-set-picker" in response.text
@@ -167,7 +167,7 @@ def test_admin_store_metadata_focus_layout_css_contract(client: TestClient) -> N
     assert ".store-metadata-main .locale-row" in response.text
     assert "height: 64px" in response.text
     assert ".store-workspace-main .metadata-readonly-strip" in response.text
-    assert ".metadata-sync-history-panel" in response.text
+    assert ".metadata-sync-history-panel" not in response.text
     assert ".store-metadata-main .image-locale-row" in response.text
     assert ".store-image-lightbox" in response.text
     assert "place-items: stretch" in response.text
@@ -176,9 +176,9 @@ def test_admin_store_metadata_focus_layout_css_contract(client: TestClient) -> N
     assert "height: 100vh" in response.text
     assert "border-radius: 0" in response.text
     assert "repeat(auto-fill, minmax(240px, 1fr))" in response.text
-    assert ".store-metadata-main .history-link" in response.text
-    assert "grid-template-columns: 26px minmax(0, 1fr) 24px" in response.text
-    assert "white-space: nowrap" in response.text
+    assert ".store-metadata-main .history-link" not in response.text
+    assert ".store-section-tabs" not in response.text
+    assert ".store-section-panel" not in response.text
 
     final_guard_index = response.text.rfind("Store metadata final conflict guards")
     assert final_guard_index != -1
@@ -189,7 +189,6 @@ def test_admin_store_metadata_focus_layout_css_contract(client: TestClient) -> N
         ".store-metadata-main .metadata-preflight-chip.blocked",
         ".store-metadata-main .main-input",
         ".store-metadata-main .locale-row",
-        ".store-metadata-main .history-link",
     ):
         assert response.text.rfind(selector) > final_guard_index
 
@@ -243,7 +242,8 @@ def test_admin_store_marketing_list_matches_resource_demo_contract(
     assert ".store-management-tab" not in response.text
     assert ".store-management-page," in response.text
     assert ".store-marketing-page {" in response.text
-    assert "max-width: 1320px" in response.text
+    assert "max-width: 1320px" not in response.text
+    assert "width: 100%" in response.text
     assert ".store-management-resource-layout" in response.text
     assert "grid-template-columns: 280px minmax(0, 1fr)" in response.text
     assert ".store-default-page .store-metadata-form" in response.text
@@ -1208,7 +1208,7 @@ def test_admin_store_metadata_uploads_store_images_into_content_set(
         headers=_admin_headers(),
     )
     assert page.status_code == 200
-    assert "当前商店内容" in page.text
+    assert "当前商店内容" not in page.text
     assert "phone-1.png" in page.text
     assert "data-store-image-preview-image" in page.text
     assert 'src="/admin/artifacts/store-assets/' in page.text
@@ -1472,10 +1472,15 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "buildStoreSyncPlan" in response.text
     assert "确认目标版本、语言和勾选的同步内容" in response.text
     assert "未接入翻译服务前" not in response.text
-    assert "当前商店内容" in response.text
-    assert "同步历史" in response.text
+    assert "当前商店内容" not in response.text
+    assert "同步历史" not in response.text
+    assert "data-store-section-tab" not in response.text
+    assert "data-store-section-panel" not in response.text
+    assert "data-store-section-jump" not in response.text
     assert "营销页面控制台" not in response.text
     assert "/store/marketing" in response.text
+    assert "/developer-accounts/account-apple-enterprise" in response.text
+    assert "section=history" not in response.text
     assert "新建套件" not in response.text
     assert "复制当前套" not in response.text
     assert "商店图套件库" not in response.text
@@ -1485,12 +1490,11 @@ def test_admin_store_metadata_page_lists_supported_locales(
         in response.text
     )
     assert (
-        'class="resource-link active" type="button" data-store-section-jump="current"'
+        'class="resource-link active" href="/admin/developer-accounts/'
+        'account-apple-enterprise/apps/app-aurora-ios/store" aria-current="page"'
         in response.text
     )
-    assert 'class="resource-link" type="button" data-store-section-jump="history"' in response.text
-    assert "setSection(document, tab.dataset.storeSectionTab)" in response.text
-    assert "setSection(document, jump.dataset.storeSectionJump)" in response.text
+    assert "setSection(document" not in response.text
     assert "store-management-nav" not in response.text
     assert "store-management-tab" not in response.text
     assert "card toolbar" in response.text
@@ -1503,7 +1507,7 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "class=\"side\"" in response.text
     assert "class=\"checks\"" in response.text
     assert "class=\"check" in response.text
-    assert "按版本和同步时间保存快照" in response.text
+    assert "按版本和同步时间保存快照" not in response.text
     assert "class=\"card rail\"" in response.text
     assert "class=\"sync-item" in response.text
     assert "class=\"card editor\"" in response.text
@@ -1661,6 +1665,8 @@ def test_admin_store_marketing_page_lists_marketing_pages(
     assert "未同步后回填" in response.text
     assert "营销页面控制台" not in response.text
     assert "store-management-nav" not in response.text
+    assert "section=history" not in response.text
+    assert "同步历史" not in response.text
     assert "store-marketing-side" not in response.text
     assert "/store/marketing-pages/" in response.text
 

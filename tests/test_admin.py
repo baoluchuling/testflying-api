@@ -1570,6 +1570,9 @@ def test_admin_marketing_page_detail_can_save_locales_and_images(
     assert "营销页面同步确认" in detail.text
     assert "宣传文本" in detail.text
     assert "手机截图" in detail.text
+    assert "store-workspace-toolbar" not in detail.text
+    assert "metadata-preflight-chip" not in detail.text
+    assert detail.text.count("保存草稿") == 1
     assert 'data-sync-editor-pane="promotional_text" data-locale-group' in detail.text
     assert 'class="locale-detail-input"' in detail.text
     assert 'data-sync-editor-pane="phone_screenshots" data-locale-group' in detail.text

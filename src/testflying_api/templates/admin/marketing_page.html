@@ -44,46 +44,6 @@
       {% endfor %}
     </div>
 
-    <section class="card toolbar store-workspace-toolbar">
-      <div class="toolbar-left">
-        <label class="button ghost select-button native-select">
-          <span class="select-prefix" aria-hidden="true">▣</span>
-          <select name="pageType" aria-label="页面类型">
-            <option value="custom_product_page" {% if page.page_type == "custom_product_page" %}selected{% endif %}>自定义产品页面</option>
-            <option value="product_page_optimization" {% if page.page_type == "product_page_optimization" %}selected{% endif %}>产品页面优化</option>
-          </select>
-          <span class="select-caret" aria-hidden="true"></span>
-        </label>
-        <label class="button ghost select-button native-select language-picker">
-          <span class="select-prefix" aria-hidden="true">◎</span>
-          <select data-language-picker aria-label="当前语言">
-            {% for item in localized_marketing_page %}
-              <option value="{{ item.locale }}" {% if item.locale == locale %}selected{% endif %}>{{ item.locale }}</option>
-            {% endfor %}
-          </select>
-          <span class="select-caret" aria-hidden="true"></span>
-        </label>
-        <span class="pill metadata-preflight-chip {{ 'green' if preflight and preflight.can_sync else 'blocked' }}">
-          <i class="health-dot" aria-hidden="true"></i>
-          {% if preflight and preflight.can_sync %}
-            可同步
-          {% elif preflight %}
-            需要处理
-          {% else %}
-            未检查
-          {% endif %}
-        </span>
-      </div>
-      <div class="toolbar-right">
-        <button class="button ghost" type="submit">保存草稿</button>
-        <button class="button primary" type="submit" formaction="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata/marketing-pages/{{ page.page_id }}/sync" data-store-metadata-sync-submit {% if not preflight or not preflight.can_sync %}disabled{% endif %}>同步到商店</button>
-        <button class="button ghost metadata-refresh-button" type="submit" form="marketing-preflight-form">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.8-3.8"/><path d="M5 3v4.5h4.5"/><path d="M4 13a8 8 0 0 0 14.8 3.8"/><path d="M19 21v-4.5h-4.5"/></svg>
-          实时查询
-        </button>
-      </div>
-    </section>
-
     <section class="metadata-source-note store-workspace-note">
       <strong>{{ source_locale }}</strong>
       <span>作为源文案；营销页面不跟随 App 版本，只有点击同步时才会调用 connector。</span>

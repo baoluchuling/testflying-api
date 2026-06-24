@@ -583,7 +583,7 @@
                   <strong>{{ page.page_name }}</strong>
                   <span>{{ "自定义产品页面" if page.page_type == "custom_product_page" else "产品页面优化" }}</span>
                 </div>
-                <span class="tag {{ '' if page.status == 'synced' else 'warn' }}">{{ page.status }}</span>
+                <span class="tag {{ '' if page.status == 'synced' else 'warn' }}">{{ "已同步" if page.status == "synced" else "未同步" }}</span>
               </div>
               <div class="suite-meta">
                 <div><span>页面 ID</span><strong>{{ page.page_id }}</strong></div>

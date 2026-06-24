@@ -1186,7 +1186,7 @@ async def save_marketing_page_detail(
             page_name=_form_value(form, "pageName", page.page_name),
             page_type=_form_value(form, "pageType", page.page_type),
             keywords=_form_value(form, "keywords", page.keywords),
-            apple_page_id=_form_value(form, "applePageId", page.apple_page_id),
+            apple_page_id=page.apple_page_id,
             deep_link_url=_form_value(form, "deepLinkUrl", page.deep_link_url),
             locale_rows=rows,
         )
@@ -2090,7 +2090,7 @@ async def _save_marketing_page_from_form(
         page_name=_form_value(form, "pageName", page.page_name),
         page_type=_form_value(form, "pageType", page.page_type),
         keywords=_form_value(form, "keywords", page.keywords),
-        apple_page_id=_form_value(form, "applePageId", page.apple_page_id),
+        apple_page_id=page.apple_page_id,
         deep_link_url=_form_value(form, "deepLinkUrl", page.deep_link_url),
         locale_rows=rows,
     )

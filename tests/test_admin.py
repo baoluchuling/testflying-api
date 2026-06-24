@@ -209,6 +209,12 @@ def test_admin_marketing_page_layout_css_prevents_horizontal_overflow(
     assert "gap: 14px" in response.text
     assert ".marketing-page-main .sync-item" in response.text
     assert "grid-template-columns: 22px minmax(0, 1fr) 7px 14px" in response.text
+    assert "min-height: 44px" in response.text
+    assert ".marketing-page-main .rail-section" in response.text
+    assert "padding: 10px 8px" in response.text
+    assert ".marketing-page-main .marketing-settings" in response.text
+    assert "padding: 18px 18px 20px" in response.text
+    assert ".marketing-page-main .marketing-readonly-field" in response.text
     assert ".marketing-page-main .editor-icon svg" in response.text
     assert "width: 19px" in response.text
     assert "height: 19px" in response.text
@@ -1583,6 +1589,10 @@ def test_admin_marketing_page_detail_can_save_locales_and_images(
     assert "营销页面同步确认" in detail.text
     assert "宣传文本" in detail.text
     assert "手机截图" in detail.text
+    assert "未同步" in detail.text
+    assert "Apple 页面 ID" in detail.text
+    assert "同步后由 App Store Connect 回填" in detail.text
+    assert 'name="applePageId"' not in detail.text
     assert "store-workspace-toolbar" not in detail.text
     assert "metadata-preflight-chip" not in detail.text
     assert '<span class="sync-count"' not in detail.text
@@ -1604,7 +1614,7 @@ def test_admin_marketing_page_detail_can_save_locales_and_images(
             "pageName": "冷启动投放页 v2",
             "pageType": "custom_product_page",
             "keywords": "stories,books",
-            "applePageId": "",
+            "applePageId": "manual-should-not-save",
             "deepLinkUrl": "anystories:///home",
             "locales": ["en-US", "zh-Hans"],
             "promotionalText": ["Read stories anytime.", "随时阅读故事。"],
@@ -1620,6 +1630,7 @@ def test_admin_marketing_page_detail_can_save_locales_and_images(
     )
 
     db_session.refresh(page)
+    assert page.apple_page_id == ""
     locales = (
         db_session.query(StoreMarketingPageLocale)
         .order_by(StoreMarketingPageLocale.locale)

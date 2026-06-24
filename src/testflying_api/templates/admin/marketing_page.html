@@ -12,7 +12,7 @@
       <a class="button ghost" href="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata?section=marketing">返回商店元数据</a>
       <span class="pill blue">iOS</span>
       <span class="pill">语言：{{ supported_locales|length }} 个</span>
-      <span class="pill {{ 'green' if page.status == 'synced' else '' }}">{{ page.status }}</span>
+      <span class="pill {{ 'green' if page.status == 'synced' else '' }}">{{ "已同步" if page.status == "synced" else "未同步" }}</span>
     </div>
   </section>
 
@@ -94,10 +94,11 @@
             <span>关键词</span>
             <input class="text-input" name="keywords" value="{{ page.keywords }}" placeholder="App Store Connect keywords, separated by commas">
           </label>
-          <label>
+          <div class="marketing-readonly-field">
             <span>Apple 页面 ID</span>
-            <input class="text-input" name="applePageId" value="{{ page.apple_page_id }}" placeholder="商店返回后填写或同步后回写">
-          </label>
+            <strong>{{ page.apple_page_id or "暂无" }}</strong>
+            <small>同步后由 App Store Connect 回填</small>
+          </div>
           <label>
             <span>Deep Link URL</span>
             <input class="text-input" name="deepLinkUrl" value="{{ page.deep_link_url }}" placeholder="可选">

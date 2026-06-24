@@ -6853,7 +6853,7 @@ body.store-sync-confirm-open {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
-  padding: 0 0 22px;
+  padding: 18px 18px 20px;
   margin-bottom: 22px;
   border-bottom: 1px solid var(--line);
 }
@@ -6870,6 +6870,38 @@ body.store-sync-confirm-open {
   width: 100%;
   min-width: 0;
   color: var(--text);
+}
+
+.marketing-page-main .marketing-readonly-field {
+  display: grid;
+  align-content: center;
+  gap: 5px;
+  min-height: 52px;
+  padding: 9px 12px;
+  border: 1px solid #d8e1ee;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.marketing-page-main .marketing-readonly-field span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.marketing-page-main .marketing-readonly-field strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 780;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.marketing-page-main .marketing-readonly-field small {
+  color: #7b8494;
+  font-size: 12px;
+  font-weight: 650;
 }
 
 .marketing-page-main .marketing-workspace {
@@ -6934,6 +6966,17 @@ body.store-sync-confirm-open {
 
 .marketing-page-main .sync-item {
   grid-template-columns: 22px minmax(0, 1fr) 7px 14px;
+  min-height: 44px;
+  padding: 0 8px;
+}
+
+.marketing-page-main .rail-section {
+  gap: 4px;
+  padding: 10px 8px;
+}
+
+.marketing-page-main .rail-section-title {
+  margin: 0 8px 7px;
 }
 
 .marketing-page-main .editor-title {

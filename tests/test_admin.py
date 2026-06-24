@@ -1595,16 +1595,37 @@ def test_admin_store_metadata_can_create_marketing_page(
             "locale": "en-US",
             "marketingPageType": "product_page_optimization",
             "marketingPageName": "新用户转化页",
+            "locales": ["en-US", "zh-Hant"],
+            "promotionalText": ["Read stories anytime.", ""],
+            "phoneScreenshots": ["", ""],
+            "tabletScreenshots": ["", ""],
         },
+        files=[
+            (
+                "storeImageFiles__phone_screenshots__en-US",
+                ("iphone-69.png", make_png_header_bytes(1290, 2796), "image/png"),
+            )
+        ],
     )
 
     page = db_session.query(StoreMarketingPage).one()
+    locales = (
+        db_session.query(StoreMarketingPageLocale)
+        .order_by(StoreMarketingPageLocale.locale)
+        .all()
+    )
     assert response.status_code == 200
     assert "营销页面已创建" in response.text
     assert "新用户转化页" in response.text
     assert page.page_name == "新用户转化页"
     assert page.page_type == "product_page_optimization"
     assert page.app_id == "app-aurora-ios"
+    assert db_session.query(StoreSyncRun).count() == 0
+    assert [item.locale for item in locales] == ["en-US", "zh-Hant"]
+    assert locales[0].promotional_text == "Read stories anytime."
+    assert locales[1].promotional_text == "Read stories anytime."
+    phone_assets = locales[0].store_images_json["phone_screenshots"]["assets"]
+    assert phone_assets[0]["fileName"] == "iphone-69.png"
 
 
 def test_admin_marketing_page_shows_backfilled_keywords_readonly(
@@ -1821,15 +1842,12 @@ def test_admin_marketing_page_can_copy_and_delete(
     )
     page = db_session.query(StoreMarketingPage).one()
     page_db_id = page.id
-    db_session.add(
-        StoreMarketingPageLocale(
-            id="marketing-locale-copy-source",
-            marketing_page_id=page.id,
-            locale="en-US",
-            promotional_text="Read stories anytime.",
-            store_images_json={},
-        )
+    locale = (
+        db_session.query(StoreMarketingPageLocale)
+        .filter_by(marketing_page_id=page.id, locale="en-US")
+        .one()
     )
+    locale.promotional_text = "Read stories anytime."
     db_session.commit()
 
     copy_response = client.post(

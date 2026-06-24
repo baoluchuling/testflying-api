@@ -22,6 +22,7 @@ from testflying_api.store_sync import (
     DEFAULT_CONTENT_SET_ID,
     DEFAULT_CONTENT_SET_NAME,
     DEFAULT_LOCALE,
+    create_marketing_page,
     metadata_draft_for_scope,
     save_current_app_metadata_draft,
     save_release_note_draft,
@@ -125,6 +126,32 @@ class StoreImageSuiteImport(CamelModel):
 
 class StoreImageSuiteResponse(CamelModel):
     image_suite: StoreImageSuiteInput = Field(alias="imageSuite")
+    locales: list[str]
+    saved_locales: int = Field(alias="savedLocales")
+    uploaded_assets: int = Field(alias="uploadedAssets")
+    warnings: list[str] = Field(default_factory=list)
+
+
+class MarketingPageLocaleInput(CamelModel):
+    locale: str
+    promotional_text: str = Field(default="", alias="promotionalText")
+    store_images: dict[str, object] = Field(default_factory=dict, alias="storeImages")
+
+
+class MarketingPageImport(CamelModel):
+    page_name: str = Field(default="新的自定义产品页面", alias="pageName")
+    page_type: str = Field(default="custom_product_page", alias="pageType")
+    source_locale: str = Field(default=DEFAULT_LOCALE, alias="sourceLocale")
+    deep_link_url: str = Field(default="", alias="deepLinkUrl")
+    locales: list[MarketingPageLocaleInput]
+    store_images: dict[str, object] = Field(default_factory=dict, alias="storeImages")
+
+
+class MarketingPageImportResponse(CamelModel):
+    page_id: str = Field(alias="pageId")
+    page_name: str = Field(alias="pageName")
+    page_type: str = Field(alias="pageType")
+    status: str
     locales: list[str]
     saved_locales: int = Field(alias="savedLocales")
     uploaded_assets: int = Field(alias="uploadedAssets")
@@ -301,6 +328,63 @@ async def import_store_image_suite(
     )
 
 
+@router.post(
+    "/developer-accounts/{account_id}/apps/{app_id}/marketing-pages",
+    response_model=MarketingPageImportResponse,
+)
+async def import_marketing_page(
+    account_id: str,
+    app_id: str,
+    request: Request,
+    session: SessionDep,
+) -> MarketingPageImportResponse:
+    _require_static_token(request)
+    form = await request.form()
+    payload = _marketing_page_payload_from_form(form)
+    app = scoped_app(session, account_id, app_id)
+    if app is None:
+        raise ApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
+    if app.platform != "ios":
+        raise ApiError(
+            "unsupported_marketing_page",
+            "营销页面控制台当前仅支持 App Store Connect",
+            status_code=422,
+        )
+
+    page_id = f"page-{uuid4().hex[:8]}"
+    uploaded_assets = await _store_image_assets_from_form(
+        form,
+        request=request,
+        account_id=account_id,
+        app_id=app_id,
+        platform=app.platform,
+        version="marketing",
+        content_set_id=page_id,
+    )
+    rows = _marketing_page_rows(payload, uploaded_assets)
+    page = create_marketing_page(
+        session,
+        account_id=account_id,
+        app_id=app.id,
+        page_id=page_id,
+        page_name=payload.page_name,
+        page_type=payload.page_type,
+        deep_link_url=payload.deep_link_url,
+        locale_rows=rows,
+    )
+    session.commit()
+    return MarketingPageImportResponse(
+        pageId=page.page_id,
+        pageName=page.page_name,
+        pageType=page.page_type,
+        status=page.status,
+        locales=[str(row["locale"]) for row in rows],
+        savedLocales=len(rows),
+        uploadedAssets=_uploaded_asset_count(uploaded_assets),
+        warnings=[],
+    )
+
+
 def _require_static_token(request: Request) -> None:
     expected = f"Bearer {request.app.state.settings.static_token}"
     authorization = request.headers.get("Authorization", "")
@@ -342,6 +426,21 @@ def _store_image_suite_payload_from_form(form: object) -> StoreImageSuiteImport:
     try:
         decoded = json.loads(raw_metadata)
         return StoreImageSuiteImport.model_validate(decoded)
+    except (json.JSONDecodeError, ValidationError) as error:
+        raise ApiError(
+            "invalid_metadata",
+            f"metadata JSON 格式不正确：{error}",
+            status_code=422,
+        ) from error
+
+
+def _marketing_page_payload_from_form(form: object) -> MarketingPageImport:
+    raw_metadata = str(getattr(form, "get", lambda _key, _default=None: None)("metadata") or "")
+    if not raw_metadata.strip():
+        raise ApiError("missing_metadata", "metadata 字段不能为空", status_code=422)
+    try:
+        decoded = json.loads(raw_metadata)
+        return MarketingPageImport.model_validate(decoded)
     except (json.JSONDecodeError, ValidationError) as error:
         raise ApiError(
             "invalid_metadata",
@@ -510,6 +609,45 @@ def _image_suite_rows(
                 "locale": locale,
                 "store_images": _merge_store_images(
                     _suite_images_for_locale(payload, item, uploaded_assets),
+                    source_images,
+                ),
+            }
+        )
+    return rows
+
+
+def _marketing_page_rows(
+    payload: MarketingPageImport,
+    uploaded_assets: dict[str, dict[str, list[dict[str, object]]]],
+) -> list[dict[str, object]]:
+    locale_inputs = {
+        item.locale.strip(): item for item in payload.locales if item.locale.strip()
+    }
+    locales = _unique_non_empty(
+        [
+            *locale_inputs.keys(),
+            *uploaded_assets.keys(),
+            payload.source_locale,
+        ]
+    )
+    if not locales:
+        raise ApiError("invalid_metadata", "locales 至少需要包含一个语言", status_code=422)
+    source_locale = payload.source_locale.strip() or locales[0]
+    source = locale_inputs.get(source_locale) or locale_inputs.get(locales[0])
+    source_text = source.promotional_text.strip() if source is not None else ""
+    source_images = _marketing_images_for_locale(payload, source_locale, source, uploaded_assets)
+    rows: list[dict[str, object]] = []
+    for locale in locales:
+        item = locale_inputs.get(locale)
+        promotional_text = (
+            item.promotional_text.strip() if item is not None else ""
+        ) or source_text
+        rows.append(
+            {
+                "locale": locale,
+                "promotional_text": promotional_text,
+                "store_images": _merge_store_images(
+                    _marketing_images_for_locale(payload, locale, item, uploaded_assets),
                     source_images,
                 ),
             }
@@ -691,6 +829,38 @@ def _suite_top_level_images_for_locale(
     return {}
 
 
+def _marketing_images_for_locale(
+    payload: MarketingPageImport,
+    locale: str,
+    item: MarketingPageLocaleInput | None,
+    uploaded_assets: dict[str, dict[str, list[dict[str, object]]]],
+) -> dict[str, object]:
+    merged = _normalize_store_image_payload(
+        _marketing_top_level_images_for_locale(payload, locale)
+    )
+    if item is not None:
+        merged.update(_normalize_store_image_payload(item.store_images))
+    for slot_key, assets in uploaded_assets.get(locale, {}).items():
+        slot = dict(merged.get(slot_key) if isinstance(merged.get(slot_key), dict) else {})
+        slot["urls"] = _string_list(slot.get("urls"))
+        slot["assets"] = _asset_list(slot.get("assets")) + assets
+        merged[slot_key] = slot
+    return merged
+
+
+def _marketing_top_level_images_for_locale(
+    payload: MarketingPageImport,
+    locale: str,
+) -> dict[str, object]:
+    raw_images = payload.store_images
+    locale_images = raw_images.get(locale)
+    if isinstance(locale_images, dict):
+        return locale_images
+    if any(_normalize_slot_key(key) for key in raw_images):
+        return raw_images
+    return {}
+
+
 def _normalize_store_image_payload(raw_images: dict[str, object] | None) -> dict[str, object]:
     normalized: dict[str, object] = {}
     for raw_key, raw_value in (raw_images or {}).items():
@@ -727,6 +897,15 @@ def _has_store_image_value(value: object) -> bool:
 
 def _normalize_slot_key(raw_key: object) -> str | None:
     return STORE_IMAGE_SLOT_ALIASES.get(str(raw_key or "").strip())
+
+
+def _unique_non_empty(values: list[str] | tuple[str, ...]) -> list[str]:
+    result: list[str] = []
+    for value in values:
+        normalized = str(value or "").strip()
+        if normalized and normalized not in result:
+            result.append(normalized)
+    return result
 
 
 def _string_list(value: object) -> list[str]:

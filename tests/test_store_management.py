@@ -9,6 +9,8 @@ from testflying_api.schema import (
     StoreAppMetadataDraft,
     StoreImageSuite,
     StoreImageSuiteLocale,
+    StoreMarketingPage,
+    StoreMarketingPageLocale,
     StoreReleaseNoteDraft,
     StoreSyncRun,
 )
@@ -144,6 +146,72 @@ def test_store_management_imports_store_image_suite_without_version_scope(
     assert "1.0.0" not in en_us_phone_assets[0]["storageKey"]
 
 
+def test_store_management_imports_marketing_page_without_store_sync(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+
+    response = client.post(
+        (
+            "/v1/store-management/developer-accounts/account-apple-enterprise"
+            "/apps/app-aurora-ios/marketing-pages"
+        ),
+        headers={"Authorization": "Bearer dev-token"},
+        data={"metadata": json.dumps(_marketing_page_payload())},
+        files=[
+            (
+                "storeImageFiles__phone_screenshots__en-US",
+                ("phone-1.png", make_png_header_bytes(1290, 2796), "image/png"),
+            ),
+            (
+                "storeImageFiles__phoneScreenshots__en-US",
+                ("phone-2.png", make_png_header_bytes(1320, 2868), "image/png"),
+            ),
+        ],
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["pageId"].startswith("page-")
+    assert body == {
+        "pageId": body["pageId"],
+        "pageName": "API 自定义产品页",
+        "pageType": "custom_product_page",
+        "status": "draft",
+        "locales": ["en-US", "zh-Hant"],
+        "savedLocales": 2,
+        "uploadedAssets": 2,
+        "warnings": [],
+    }
+    assert db_session.query(StoreSyncRun).count() == 0
+
+    page = db_session.query(StoreMarketingPage).one()
+    assert page.page_id == body["pageId"]
+    assert page.page_name == "API 自定义产品页"
+    assert page.page_type == "custom_product_page"
+    assert page.status == "draft"
+    assert page.apple_page_id == ""
+    assert page.deep_link_url == "anystories:///campaign"
+
+    locales = (
+        db_session.query(StoreMarketingPageLocale)
+        .order_by(StoreMarketingPageLocale.locale)
+        .all()
+    )
+    assert [item.locale for item in locales] == ["en-US", "zh-Hant"]
+    en_us = next(item for item in locales if item.locale == "en-US")
+    zh_hant = next(item for item in locales if item.locale == "zh-Hant")
+    assert en_us.promotional_text == "Read better stories every day."
+    assert zh_hant.promotional_text == "Read better stories every day."
+
+    phone_assets = en_us.store_images_json["phone_screenshots"]["assets"]
+    assert [asset["fileName"] for asset in phone_assets] == ["phone-1.png", "phone-2.png"]
+    assert f"/{body['pageId']}/marketing/en-US/phone_screenshots/" in phone_assets[0][
+        "storageKey"
+    ]
+
+
 def test_store_management_imports_metadata_content_set_without_store_sync(
     client: TestClient,
     db_session: Session,
@@ -271,6 +339,29 @@ def _image_suite_payload() -> dict[str, object]:
             },
             {
                 "locale": "zh-Hant",
+                "storeImages": {},
+            },
+        ],
+    }
+
+
+def _marketing_page_payload() -> dict[str, object]:
+    return {
+        "pageName": "API 自定义产品页",
+        "pageType": "custom_product_page",
+        "sourceLocale": "en-US",
+        "deepLinkUrl": "anystories:///campaign",
+        "locales": [
+            {
+                "locale": "en-US",
+                "promotionalText": "Read better stories every day.",
+                "storeImages": {
+                    "phoneScreenshots": ["https://cdn.example.test/source-phone.png"]
+                },
+            },
+            {
+                "locale": "zh-Hant",
+                "promotionalText": "",
                 "storeImages": {},
             },
         ],

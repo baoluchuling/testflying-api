@@ -603,6 +603,56 @@ def marketing_page_locales(
     return {row.locale: row for row in rows}
 
 
+def create_marketing_page(
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    page_id: str,
+    page_name: str,
+    page_type: str,
+    locale_rows: list[dict[str, object]],
+    deep_link_url: str = "",
+) -> StoreMarketingPage:
+    app = scoped_app(session, account_id, app_id)
+    if app is None:
+        raise ApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
+    if app.platform != "ios":
+        raise ApiError(
+            "unsupported_marketing_page",
+            "营销页面控制台当前仅支持 App Store Connect",
+            status_code=422,
+        )
+    now = datetime.now(UTC)
+    page = StoreMarketingPage(
+        id=f"marketing-page-{uuid4().hex[:12]}",
+        developer_account_id=account_id,
+        app_id=app.id,
+        platform=app.platform,
+        page_id=page_id.strip() or f"page-{uuid4().hex[:8]}",
+        page_name=page_name.strip() or "新的自定义产品页面",
+        page_type=_normalize_marketing_page_type(page_type),
+        status="draft",
+        store_images_json={},
+        created_at=now,
+        updated_at=now,
+    )
+    session.add(page)
+    session.flush()
+    return save_marketing_page(
+        session,
+        account_id=account_id,
+        app_id=app.id,
+        page_id=page.page_id,
+        page_name=page.page_name,
+        page_type=page.page_type,
+        keywords="",
+        apple_page_id="",
+        deep_link_url=deep_link_url,
+        locale_rows=locale_rows,
+    )
+
+
 def save_marketing_page(
     session: Session,
     *,

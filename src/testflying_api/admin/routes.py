@@ -54,7 +54,6 @@ from testflying_api.schema import (
     StoreAppMetadataDraft,
     StoreImageSuite,
     StoreImageSuiteLocale,
-    StoreMarketingPage,
     StoreMarketingPageLocale,
 )
 from testflying_api.store_image_requirements import validate_store_image
@@ -65,6 +64,7 @@ from testflying_api.store_sync import (
     DEFAULT_LOCALE,
     account_connector,
     check_connector_health,
+    create_marketing_page,
     delete_marketing_page,
     duplicate_marketing_page,
     marketing_page_for_scope,
@@ -1058,26 +1058,32 @@ async def create_store_marketing_page(
                 "营销页面控制台当前仅支持 App Store Connect",
                 status_code=422,
             )
-        now = datetime.now(UTC)
-        normalized_page_type = (
-            page_type
-            if page_type in {"custom_product_page", "product_page_optimization"}
-            else "custom_product_page"
-        )
-        page = StoreMarketingPage(
-            id=f"marketing-page-{uuid4().hex[:12]}",
-            developer_account_id=account_id,
+        page_id = f"page-{uuid4().hex[:8]}"
+        store_image_assets = await _store_image_assets_from_form(
+            form,
+            storage=request.app.state.artifact_storage,
+            account_id=account_id,
             app_id=app.id,
             platform=app.platform,
-            page_id=f"page-{uuid4().hex[:8]}",
-            page_name=page_name.strip() or "新的自定义产品页面",
-            page_type=normalized_page_type,
-            status="draft",
-            store_images_json={},
-            created_at=now,
-            updated_at=now,
+            version="marketing",
+            content_set_id=page_id,
         )
-        session.add(page)
+        rows = _marketing_rows_from_request_form(
+            form,
+            current_locale=locale,
+            existing_locales={},
+            store_image_assets_by_locale=store_image_assets,
+        )
+        page = create_marketing_page(
+            session,
+            account_id=account_id,
+            app_id=app.id,
+            page_id=page_id,
+            page_name=page_name,
+            page_type=page_type,
+            deep_link_url=_form_value(form, "deepLinkUrl", ""),
+            locale_rows=rows,
+        )
         session.commit()
         context = marketing_page_context(
             session,
@@ -2139,9 +2145,12 @@ def _marketing_rows_from_request_form(
     existing_locales: dict[str, StoreMarketingPageLocale],
     store_image_assets_by_locale: dict[str, dict[str, list[dict[str, object]]]] | None = None,
 ) -> list[dict[str, object]]:
-    locales = _unique_non_empty(_form_values(form, "locales")) or [
-        current_locale.strip() or DEFAULT_LOCALE
-    ]
+    locales = _unique_non_empty(
+        [
+            *(_form_values(form, "locales") or []),
+            *((store_image_assets_by_locale or {}).keys()),
+        ]
+    ) or [current_locale.strip() or DEFAULT_LOCALE]
     promotional_text = _form_values(form, "promotionalText")
     phone_screenshots = _form_values(form, "phoneScreenshots")
     tablet_screenshots = _form_values(form, "tabletScreenshots")

@@ -623,7 +623,8 @@
 
       function syncStoreScopeInputs(form) {
         if (!form) return;
-        const defaults = new Set(['metadata', 'store_images']);
+        const hasMarketingTextScope = Boolean(form.querySelector('[data-sync-scope][value="marketing_text"]'));
+        const defaults = new Set(hasMarketingTextScope ? ['marketing_text', 'store_images'] : ['metadata', 'store_images']);
         form.querySelectorAll('[data-sync-scope]').forEach((input) => {
           if (input.dataset.userChanged !== 'true') {
             input.checked = defaults.has(input.value);
@@ -632,6 +633,7 @@
         const scopes = selectedStoreSyncScopes(form);
         const labels = [];
         if (scopes.has('metadata')) labels.push('文案元数据');
+        if (scopes.has('marketing_text')) labels.push('文案');
         if (scopes.has('release_notes')) labels.push('版本说明');
         if (scopes.has('store_images')) labels.push('商店图');
         const summary = labels.length ? labels.join('、') : '未选择';
@@ -842,7 +844,7 @@
           || '';
         const locales = storeImageLocales(form);
         const scopes = selectedStoreSyncScopes(form);
-        const fields = scopes.has('metadata') ? metadataFields(form) : [];
+        const fields = (scopes.has('metadata') || scopes.has('marketing_text')) ? metadataFields(form) : [];
         const slots = scopes.has('store_images') ? storeImageSlots(form) : [];
         const rows = locales.map((locale) => {
           const textItems = fields.map((field) => storeSyncTextItem(form, locale, field, sourceLocale));
@@ -893,6 +895,7 @@
         summary.replaceChildren();
         const selectedLabels = [];
         if (plan.scopes.has('metadata')) selectedLabels.push('文案元数据');
+        if (plan.scopes.has('marketing_text')) selectedLabels.push('文案');
         if (plan.releaseNoteSelected) selectedLabels.push('版本说明');
         if (plan.scopes.has('store_images')) selectedLabels.push('商店图');
         const summaryMain = createStoreSyncNode(

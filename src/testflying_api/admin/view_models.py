@@ -19,6 +19,7 @@ from testflying_api.schema import (
     StoreImageSuite,
     StoreImageSuiteLocale,
     StoreMarketingPage,
+    StoreMarketingPageLocale,
     StoreReleaseNoteDraft,
     StoreSyncRun,
 )
@@ -29,6 +30,7 @@ from testflying_api.store_sync import (
     DEFAULT_CONTENT_SET_NAME,
     DEFAULT_LOCALE,
     UPDATE_APP_METADATA,
+    UPDATE_MARKETING_PAGE,
     account_apps,
     account_connector,
     cached_preflight_for_app,
@@ -36,6 +38,8 @@ from testflying_api.store_sync import (
     draft_for_scope,
     get_or_refresh_preflight,
     latest_build_for_app,
+    marketing_page_for_scope,
+    marketing_page_locales,
     metadata_draft_for_scope,
     metadata_drafts_for_scope,
     recent_sync_runs,
@@ -374,6 +378,110 @@ def store_metadata_context(
     }
 
 
+def marketing_page_context(
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    page_id: str,
+    locale: str = DEFAULT_LOCALE,
+    force_preflight_refresh: bool = False,
+) -> dict[str, object]:
+    account = session.get(DeveloperAccount, account_id)
+    app = (
+        account_apps(session, account_id)
+        if account
+        else []
+    )
+    scoped = next((item for item in app if item.id == app_id), None)
+    page = (
+        marketing_page_for_scope(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            page_id=page_id,
+        )
+        if scoped
+        else None
+    )
+    connector = account_connector(session, account_id) if account else None
+    locale_rows_by_locale = marketing_page_locales(session, page.id) if page else {}
+    supported_from_connector = (
+        supported_locales_for_app(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            version=page.page_id if page else "",
+            fallback_locale=locale,
+        )
+        if scoped and page
+        else [locale or DEFAULT_LOCALE]
+    )
+    supported_locales = _unique_locales(
+        [
+            *supported_from_connector,
+            *locale_rows_by_locale.keys(),
+            locale,
+        ]
+    )
+    active_locale = locale if locale in supported_locales else _source_locale(supported_locales)
+    source_locale = _source_locale(supported_locales)
+    preflight = None
+    if page and scoped and force_preflight_refresh:
+        preflight = get_or_refresh_preflight(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            version=page.page_id,
+            locale=active_locale,
+            operation=UPDATE_MARKETING_PAGE,
+            force_refresh=True,
+        )
+    elif page and scoped:
+        preflight = cached_preflight_for_app(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            version=page.page_id,
+            locale=active_locale,
+            operation=UPDATE_MARKETING_PAGE,
+        )
+        if preflight is None:
+            preflight = get_or_refresh_preflight(
+                session,
+                account_id=account_id,
+                app_id=app_id,
+                version=page.page_id,
+                locale=active_locale,
+                operation=UPDATE_MARKETING_PAGE,
+            )
+    return {
+        "account": account,
+        "app": scoped,
+        "page": page,
+        "connector": connector,
+        "locale": active_locale,
+        "source_locale": source_locale,
+        "supported_locales": supported_locales,
+        "localized_marketing_page": _localized_marketing_page(
+            supported_locales=supported_locales,
+            locale_rows_by_locale=locale_rows_by_locale,
+            source_locale=source_locale,
+        ),
+        "store_image_slots": _store_image_slots(scoped.platform if scoped else ""),
+        "store_label": _store_label(scoped.platform if scoped else ""),
+        "preflight": preflight,
+        "sync_runs": _marketing_page_sync_runs(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            page_id=page_id,
+        )
+        if page
+        else [],
+    }
+
+
 def _store_metadata_defaults(
     *,
     app: App | None,
@@ -480,6 +588,59 @@ def _localized_metadata(
             }
         )
     return rows
+
+
+def _localized_marketing_page(
+    *,
+    supported_locales: list[str],
+    locale_rows_by_locale: dict[str, StoreMarketingPageLocale],
+    source_locale: str,
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for locale in supported_locales:
+        row = locale_rows_by_locale.get(locale)
+        rows.append(
+            {
+                "locale": locale,
+                "is_source": locale == source_locale,
+                "promotional_text": row.promotional_text if row else "",
+                "store_images": _store_images(row),
+            }
+        )
+    return rows
+
+
+def _marketing_page_sync_runs(
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    page_id: str,
+) -> list[StoreSyncRun]:
+    return list(
+        session.scalars(
+            select(StoreSyncRun)
+            .where(
+                StoreSyncRun.developer_account_id == account_id,
+                StoreSyncRun.app_id == app_id,
+                StoreSyncRun.operation == UPDATE_MARKETING_PAGE,
+                StoreSyncRun.version == page_id,
+            )
+            .order_by(StoreSyncRun.started_at.desc())
+            .limit(20)
+        )
+    )
+
+
+def _unique_locales(raw_locales: list[str]) -> list[str]:
+    locales: list[str] = []
+    seen: set[str] = set()
+    for raw_locale in raw_locales:
+        locale = str(raw_locale or "").strip()
+        if locale and locale not in seen:
+            locales.append(locale)
+            seen.add(locale)
+    return locales or [DEFAULT_LOCALE]
 
 
 def _merge_content_set_options(

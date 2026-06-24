@@ -1,0 +1,437 @@
+{% extends "admin/base.html" %}
+{% block main_class %}store-metadata-main store-workspace-main marketing-page-main{% endblock %}
+{% block heading %}营销页面{% endblock %}
+{% block content %}
+  <section class="card context-card store-workspace-context">
+    <div>
+      <p class="kicker">App Store Connect 营销页面</p>
+      <strong>{{ page.page_name }}</strong>
+      <small>{{ app.bundle_identifier }}</small>
+    </div>
+    <div class="context-meta">
+      <a class="button ghost" href="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata?section=marketing">返回商店元数据</a>
+      <span class="pill blue">iOS</span>
+      <span class="pill">语言：{{ supported_locales|length }} 个</span>
+      <span class="pill {{ 'green' if page.status == 'synced' else '' }}">{{ page.status }}</span>
+    </div>
+  </section>
+
+  {% if success %}
+    <div class="alert success"><strong>{{ success }}</strong></div>
+  {% endif %}
+  {% if error %}
+    <div class="alert error"><strong>{{ error }}</strong></div>
+  {% endif %}
+
+  <form id="marketing-preflight-form" action="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata/marketing-pages/{{ page.page_id }}/preflight" method="post" hidden>
+    <input type="hidden" name="locale" value="{{ locale }}">
+  </form>
+
+  <form
+    class="store-metadata-form store-workspace-form marketing-page-form"
+    action="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata/marketing-pages/{{ page.page_id }}"
+    method="post"
+    enctype="multipart/form-data"
+    data-metadata-form
+    data-source-locale="{{ source_locale }}"
+    data-store-platform="{{ app.platform }}"
+    data-store-workspace-mode="marketing"
+  >
+    <div hidden>
+      <input name="locale" value="{{ locale }}" required readonly data-metadata-source-locale>
+      {% for item in localized_marketing_page %}
+        <input type="hidden" name="locales" value="{{ item.locale }}">
+      {% endfor %}
+    </div>
+
+    <section class="card toolbar store-workspace-toolbar">
+      <div class="toolbar-left">
+        <label class="button ghost select-button native-select">
+          <span class="select-prefix" aria-hidden="true">▣</span>
+          <select name="pageType" aria-label="页面类型">
+            <option value="custom_product_page" {% if page.page_type == "custom_product_page" %}selected{% endif %}>自定义产品页面</option>
+            <option value="product_page_optimization" {% if page.page_type == "product_page_optimization" %}selected{% endif %}>产品页面优化</option>
+          </select>
+          <span class="select-caret" aria-hidden="true"></span>
+        </label>
+        <label class="button ghost select-button native-select language-picker">
+          <span class="select-prefix" aria-hidden="true">◎</span>
+          <select data-language-picker aria-label="当前语言">
+            {% for item in localized_marketing_page %}
+              <option value="{{ item.locale }}" {% if item.locale == locale %}selected{% endif %}>{{ item.locale }}</option>
+            {% endfor %}
+          </select>
+          <span class="select-caret" aria-hidden="true"></span>
+        </label>
+        <span class="pill metadata-preflight-chip {{ 'green' if preflight and preflight.can_sync else 'blocked' }}">
+          <i class="health-dot" aria-hidden="true"></i>
+          {% if preflight and preflight.can_sync %}
+            可同步
+          {% elif preflight %}
+            需要处理
+          {% else %}
+            未检查
+          {% endif %}
+        </span>
+      </div>
+      <div class="toolbar-right">
+        <button class="button ghost" type="submit">保存草稿</button>
+        <button class="button primary" type="submit" formaction="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata/marketing-pages/{{ page.page_id }}/sync" data-store-metadata-sync-submit {% if not preflight or not preflight.can_sync %}disabled{% endif %}>同步到商店</button>
+        <button class="button ghost metadata-refresh-button" type="submit" form="marketing-preflight-form">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.8-3.8"/><path d="M5 3v4.5h4.5"/><path d="M4 13a8 8 0 0 0 14.8 3.8"/><path d="M19 21v-4.5h-4.5"/></svg>
+          实时查询
+        </button>
+      </div>
+    </section>
+
+    <section class="metadata-source-note store-workspace-note">
+      <strong>{{ source_locale }}</strong>
+      <span>作为源文案；营销页面不跟随 App 版本，只有点击同步时才会调用 connector。</span>
+      <button class="button ghost subtle" type="button" data-translate-metadata>生成多语言文案</button>
+    </section>
+
+    <section class="workspace store-workspace-grid marketing-workspace" data-metadata-editor data-mode="field">
+      <aside class="card rail">
+        <div class="rail-header">
+          <h2>同步项</h2>
+          <span>{{ localized_marketing_page|length }} 个语言</span>
+        </div>
+
+        <div class="rail-section">
+          <p class="rail-section-title">文案</p>
+          <button class="sync-item active is-selected" type="button" data-sync-item-select data-sync-item-key="promotional_text" data-sync-item-type="field" data-field="promotional_text" data-default-focus="true">
+            <span class="sync-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M4 14h4l9 4V6l-9 4H4Z"/><path d="M8 10v4"/><path d="M20 9a4 4 0 0 1 0 6"/></svg>
+            </span>
+            <span class="sync-copy"><strong>宣传文本</strong></span>
+            <span class="progress-dot" aria-hidden="true"></span>
+            <span class="sync-count" data-sync-item-count>{{ localized_marketing_page|length }}/{{ localized_marketing_page|length }} 语言</span>
+            <small data-sync-item-status>待检查</small>
+            <span class="chevron right" aria-hidden="true"></span>
+          </button>
+        </div>
+
+        <div class="rail-section">
+          <p class="rail-section-title">商店图</p>
+          {% for slot in store_image_slots %}
+            <button class="sync-item" type="button" data-sync-item-select data-sync-item-key="{{ slot.key }}" data-sync-item-type="store-image" data-slot="{{ slot.key }}">
+              <span class="sync-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="m8 15 3-3 2 2 2.5-3L20 16"/><circle cx="9" cy="9" r="1"/></svg>
+              </span>
+              <span class="sync-copy"><strong>{{ slot.short_label or slot.label }}</strong></span>
+              <span class="progress-dot" aria-hidden="true"></span>
+              <span class="sync-count" data-sync-item-count>0/{{ localized_marketing_page|length }} 语言</span>
+              <small data-sync-item-status>待检查</small>
+              <span class="chevron right" aria-hidden="true"></span>
+            </button>
+          {% endfor %}
+        </div>
+      </aside>
+
+      <section class="card editor marketing-editor">
+        <div class="marketing-settings">
+          <label>
+            <span>页面名称</span>
+            <input class="text-input" name="pageName" value="{{ page.page_name }}" required>
+          </label>
+          <label>
+            <span>关键词</span>
+            <input class="text-input" name="keywords" value="{{ page.keywords }}" placeholder="App Store Connect keywords, separated by commas">
+          </label>
+          <label>
+            <span>Apple 页面 ID</span>
+            <input class="text-input" name="applePageId" value="{{ page.apple_page_id }}" placeholder="商店返回后填写或同步后回写">
+          </label>
+          <label>
+            <span>Deep Link URL</span>
+            <input class="text-input" name="deepLinkUrl" value="{{ page.deep_link_url }}" placeholder="可选">
+          </label>
+        </div>
+
+        <section class="editor-pane active" data-sync-editor-pane="promotional_text">
+          <div class="editor-head">
+            <div>
+              <div class="editor-title">
+                <span class="editor-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M4 14h4l9 4V6l-9 4H4Z"/><path d="M8 10v4"/><path d="M20 9a4 4 0 0 1 0 6"/></svg>
+                </span>
+                <h2>宣传文本</h2>
+              </div>
+              <p class="current-locale">当前语言：<b data-current-locale-label>{{ locale }}</b></p>
+            </div>
+            <div class="editor-actions">
+              <span class="focus-completion" data-focus-completion>待检查</span>
+              <button class="button small ghost" type="button" data-translate-current-field>生成该项多语言</button>
+              <button class="button small ghost" type="button" data-locale-group-toggle>
+                <span data-locale-group-toggle-label>展开所有语言</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="editor-body">
+            {% for item in localized_marketing_page %}
+              <article class="locale-row {% if item.locale == locale %}current{% endif %}" data-locale="{{ item.locale }}" data-locale-row {% if item.locale != locale %}hidden{% endif %}>
+                <div class="locale-row-head">
+                  <span class="drag" aria-hidden="true">⁝</span>
+                  <strong>{{ item.locale }}</strong>
+                  {% if item.is_source %}<span class="source-tag">源文案</span>{% endif %}
+                  <span class="tag {{ 'warn' if not item.promotional_text else '' }}">{{ "待填写" if not item.promotional_text else "已填写" }}</span>
+                  <button class="button small ghost" type="button" data-locale-toggle>
+                    <span>展开</span>
+                    <span class="chevron down" aria-hidden="true"></span>
+                  </button>
+                </div>
+                <textarea
+                  name="promotionalText"
+                  rows="5"
+                  placeholder="App Store Connect promotional text"
+                  data-metadata-input
+                  data-field="promotional_text"
+                  data-locale="{{ item.locale }}"
+                  data-locale-detail-input
+                >{{ item.promotional_text }}</textarea>
+              </article>
+            {% endfor %}
+          </div>
+        </section>
+
+        {% for slot in store_image_slots %}
+          {% set current_item = (localized_marketing_page|selectattr("locale", "equalto", locale)|list|first) or localized_marketing_page[0] %}
+          {% set current_image = current_item.store_images[slot.key] %}
+          <section class="editor-pane image-editor-pane" data-sync-editor-pane="{{ slot.key }}" hidden>
+            <div class="editor-head">
+              <div>
+                <div class="editor-title">
+                  <span class="editor-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="m8 15 3-3 2 2 2.5-3L20 16"/><circle cx="9" cy="9" r="1"/></svg>
+                  </span>
+                  <h2>{{ slot.short_label or slot.label }}</h2>
+                </div>
+                <p class="current-locale">当前语言：<b data-current-locale-label>{{ locale }}</b></p>
+                <p class="store-image-requirement-summary">{{ slot.requirement.summary }}</p>
+              </div>
+              <div class="editor-actions">
+                <span class="focus-completion" data-focus-completion>待检查</span>
+                <button class="button small ghost" type="button" data-store-image-files-button>批量上传</button>
+                <button class="button small ghost" type="button" data-locale-group-toggle>
+                  <span data-locale-group-toggle-label>展开所有语言</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="editor-body">
+              <div class="asset-workspace">
+                <div class="asset-uploader" data-store-image-bulk-drop data-slot="{{ slot.key }}" data-store-image-requirement='{{ slot.requirement|tojson }}'>
+                  <input type="file" accept="image/*" multiple data-store-image-bulk-files>
+                  <input type="file" multiple webkitdirectory directory data-store-image-folder>
+                  <div class="dropzone">
+                    <strong>批量上传{{ slot.short_label or slot.label }}</strong>
+                    <span>拖入图片或语言文件夹。文件夹名按商店语言识别，例如 en-US/01.png、zh-Hant/01.png。</span>
+                    <div class="drop-actions">
+                      <button class="button small ghost" type="button" data-store-image-files-button>选择图片</button>
+                      <button class="button small ghost" type="button" data-store-image-folder-button>选择文件夹</button>
+                    </div>
+                    <small data-store-image-bulk-status>还没有导入本地图片</small>
+                  </div>
+
+                  <div class="preview-panel">
+                    <div class="preview-panel-head">
+                      <strong>{{ locale }} 预览</strong>
+                      <small>{{ current_image.count }} 张，按拖动顺序同步</small>
+                    </div>
+                    <div class="preview-grid">
+                      {% if current_image.preview_items %}
+                        {% for preview in current_image.preview_items[:3] %}
+                          <article class="preview-card">
+                            <figure>
+                              <img alt="{{ slot.short_label or slot.label }}预览" src="{{ preview.url }}" data-store-image-preview-image data-width="{{ preview.width or '' }}" data-height="{{ preview.height or '' }}" data-validation-message="{{ preview.validationMessage or '' }}" style="aspect-ratio: {{ preview.width ~ ' / ' ~ preview.height if preview.width and preview.height else slot.requirement.fallbackAspectRatio }}">
+                              {% if preview.storageKey %}
+                                <button
+                                  class="store-image-delete-button"
+                                  type="submit"
+                                  formaction="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata/marketing-pages/{{ page.page_id }}/store-images/delete"
+                                  formmethod="post"
+                                  name="storeImageDelete"
+                                  value='{{ {"locale": locale, "slot": slot.key, "storageKey": preview.storageKey}|tojson }}'
+                                  aria-label="删除{{ preview.fileName or slot.short_label or slot.label }}"
+                                  title="只删除中心后台的这张图"
+                                >×</button>
+                              {% endif %}
+                            </figure>
+                            <div class="preview-meta">
+                              <span>{{ preview.fileName or "image" }}</span>
+                              <span>{{ (preview.width ~ " x " ~ preview.height) if preview.width and preview.height else "预览" }}</span>
+                            </div>
+                          </article>
+                        {% endfor %}
+                      {% else %}
+                        {% for _ in range(3) %}
+                          <article class="preview-card">
+                            <figure><span class="shot {{ 'tablet' if slot.key == 'tablet_screenshots' else 'phone' }}"></span></figure>
+                            <div class="preview-meta"><span>待上传</span><span>可选</span></div>
+                          </article>
+                        {% endfor %}
+                      {% endif %}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <h3 class="languages-title">所有语言（{{ localized_marketing_page|length }}）</h3>
+              <div class="locale-list">
+                {% for item in localized_marketing_page %}
+                  {% set image_slot = item.store_images[slot.key] %}
+                  <article class="image-locale-row store-image-locale-row" data-locale="{{ item.locale }}" data-locale-row>
+                    <span class="drag" aria-hidden="true">⁝</span>
+                    <strong class="locale-code">{{ item.locale }}</strong>
+                    <span class="tag {{ 'warn' if not image_slot.count else '' }}" data-store-image-status>{{ "待上传" if not image_slot.count else "已上传" }}</span>
+                    <input type="hidden" name="{{ slot.name }}" value="{{ image_slot.value }}" data-store-image-input data-locale="{{ item.locale }}" data-slot="{{ slot.key }}">
+                    <div class="store-image-track" data-store-image-track>
+                      <div class="thumb-strip" data-store-image-preview>
+                        {% if image_slot.preview_items %}
+                          {% for preview in image_slot.preview_items %}
+                            <figure class="store-image-thumb-card">
+                              <span class="store-image-thumb-frame">
+                                <img class="thumb {{ 'tablet' if slot.key == 'tablet_screenshots' else '' }}" alt="{{ item.locale }} {{ slot.short_label or slot.label }}预览" src="{{ preview.url }}" data-store-image-preview-image data-width="{{ preview.width or '' }}" data-height="{{ preview.height or '' }}" data-validation-message="{{ preview.validationMessage or '' }}" data-matched-label="{{ preview.matchedLabel or '' }}" style="aspect-ratio: {{ preview.width ~ ' / ' ~ preview.height if preview.width and preview.height else slot.requirement.fallbackAspectRatio }}">
+                                {% if preview.storageKey %}
+                                  <button
+                                    class="store-image-delete-button"
+                                    type="submit"
+                                    formaction="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata/marketing-pages/{{ page.page_id }}/store-images/delete"
+                                    formmethod="post"
+                                    name="storeImageDelete"
+                                    value='{{ {"locale": item.locale, "slot": slot.key, "storageKey": preview.storageKey}|tojson }}'
+                                    aria-label="删除{{ item.locale }} {{ preview.fileName or slot.short_label or slot.label }}"
+                                    title="只删除中心后台的这张图"
+                                  >×</button>
+                                {% endif %}
+                              </span>
+                              <figcaption>{{ (preview.width ~ " x " ~ preview.height) if preview.width and preview.height else "待检测" }}</figcaption>
+                            </figure>
+                          {% endfor %}
+                        {% else %}
+                          <span class="store-image-empty-note">还没有截图</span>
+                        {% endif %}
+                      </div>
+                      <div class="store-image-upload store-image-add-card" data-store-image-zone data-slot="{{ slot.key }}" data-locale="{{ item.locale }}" data-multiple="true" data-store-image-requirement='{{ slot.requirement|tojson }}'>
+                        <input type="file" name="storeImageFiles__{{ slot.key }}__{{ item.locale }}" accept="image/*" data-store-image-file data-slot="{{ slot.key }}" data-locale="{{ item.locale }}" multiple>
+                        <span class="store-image-add-icon" aria-hidden="true">+</span>
+                        <div data-store-image-file-list>
+                          {% if image_slot.file_names %}
+                            {{ image_slot.file_names|join(", ") }}
+                          {% else %}
+                            添加截图
+                          {% endif %}
+                        </div>
+                        <small data-store-image-validation></small>
+                      </div>
+                    </div>
+                    <span class="image-count" data-store-image-count>{{ image_slot.count }} 张</span>
+                    <button class="button small ghost store-image-preview-button" type="button" data-store-image-preview-all {% if not image_slot.count %}disabled{% endif %}>预览全部</button>
+                    <span class="chevron down" aria-hidden="true"></span>
+                  </article>
+                {% endfor %}
+              </div>
+            </div>
+          </section>
+        {% endfor %}
+      </section>
+
+      <aside class="side">
+        <section class="card side-card sync-scope-card">
+          <div class="side-head">
+            <h2>同步选项</h2>
+            <span data-sync-scope-summary>文案、商店图</span>
+          </div>
+          <div class="scope-list">
+            <label class="scope-option">
+              <input type="checkbox" name="syncScopes" value="marketing_text" data-sync-scope="marketing_text" checked>
+              <span><strong>文案</strong><small>关键词、宣传文本</small></span>
+            </label>
+            <label class="scope-option">
+              <input type="checkbox" name="syncScopes" value="store_images" data-sync-scope="store_images" checked>
+              <span><strong>商店图</strong><small>iPhone / iPad 屏幕快照</small></span>
+            </label>
+          </div>
+        </section>
+
+        <section class="card side-card">
+          <div class="side-head">
+            <h2>同步前检查</h2>
+            <span>{{ preflight|preflight_title if preflight else "未检查" }}</span>
+          </div>
+          {% if preflight %}
+            <div class="check-card {{ 'ok' if preflight.can_sync else 'warn' }}">
+              <span class="check-icon">{{ "✓" if preflight.can_sync else "!" }}</span>
+              <div>
+                <strong>{{ preflight|preflight_title }}</strong>
+                <p>{{ preflight|preflight_summary }}</p>
+                <small>来源：{{ preflight.source_label }}，剩余 {{ preflight.remaining_seconds }} 秒</small>
+              </div>
+            </div>
+          {% else %}
+            <div class="empty compact">点击实时查询后，再同步营销页面。</div>
+          {% endif %}
+        </section>
+
+        <section class="card side-card">
+          <div class="side-head">
+            <h2>最近同步记录</h2>
+            <span>{{ sync_runs|length }} 条</span>
+          </div>
+          <div class="timeline compact">
+            {% for run in sync_runs[:5] %}
+              <article class="record">
+                <span class="record-dot"></span>
+                <div>
+                  <strong>{{ run.started_at|datetime }}</strong>
+                  <p>语言：{{ run.locale }}<br>范围：{{ (run.sync_scopes_json.get("scopes", []) if run.sync_scopes_json else [])|join("、") or "-" }}</p>
+                </div>
+                <span class="tag {{ 'warn' if run.status != 'succeeded' else '' }}">{{ "成功" if run.status == "succeeded" else run.status }}</span>
+              </article>
+            {% else %}
+              <div class="empty compact">暂无同步记录。</div>
+            {% endfor %}
+          </div>
+        </section>
+      </aside>
+    </section>
+
+    <div class="bottom-bar store-workspace-bottom">
+      <div class="bottom-copy copy-bottom-copy">
+        <span>当前操作</span>
+        <strong>本次同步范围：文案、商店图</strong>
+        <small>同步前会展示确认清单；创建页面不会自动同步到商店。</small>
+      </div>
+      <div class="bottom-actions">
+        <button class="button danger ghost" type="submit" formaction="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata/marketing-pages/{{ page.page_id }}/delete" onclick="return confirm('只删除中心后台的这个营销页面，确认继续？')">删除页面</button>
+        <button class="button ghost" type="submit" formaction="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata/marketing-pages/{{ page.page_id }}/copy">复制页面</button>
+        <button class="button ghost" type="submit">保存草稿</button>
+        <button class="button primary" type="submit" formaction="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata/marketing-pages/{{ page.page_id }}/sync" data-store-metadata-sync-submit {% if not preflight or not preflight.can_sync %}disabled{% endif %}>同步到商店</button>
+      </div>
+    </div>
+
+    <div class="store-sync-confirm" data-store-sync-confirm hidden>
+      <div class="store-sync-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="marketing-sync-confirm-title">
+        <div class="store-sync-confirm-head">
+          <div>
+            <strong id="marketing-sync-confirm-title">营销页面同步确认</strong>
+            <small>确认语言和勾选的同步内容</small>
+            <span>确认后才会调用 connector。</span>
+          </div>
+          <span class="store-sync-confirm-badge empty">营销页面</span>
+        </div>
+        <div class="store-sync-confirm-summary" data-store-sync-confirm-summary></div>
+        <div class="store-sync-confirm-body" data-store-sync-confirm-body></div>
+        <div class="store-sync-confirm-actions">
+          <button class="button ghost" type="button" data-store-sync-cancel>取消</button>
+          <button class="button ghost metadata-refresh-button" type="submit" form="marketing-preflight-form">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.8-3.8"/><path d="M5 3v4.5h4.5"/><path d="M4 13a8 8 0 0 0 14.8 3.8"/><path d="M19 21v-4.5h-4.5"/></svg>
+            实时检查
+          </button>
+          <button class="button primary" type="button" data-store-sync-confirm-submit>确认同步</button>
+        </div>
+      </div>
+    </div>
+  </form>
+{% endblock %}

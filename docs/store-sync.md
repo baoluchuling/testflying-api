@@ -28,7 +28,8 @@
 - 版本说明继续按商店版本保存；同步时由操作人填写目标版本。
 - 每次同步会保存同步历史快照，按版本、同步时间、语言、同步范围和状态展示。历史只用于查看和回填，不直接编辑。
 - 商店图不再支持套件；手机截图、平板截图和 Android 功能宣传图与文案一样，直接作为当前商店内容的一部分维护。
-- Apple App 增加营销页面控制台。自定义产品页面和产品页面优化独立于 App 版本，可以创建多个页面。
+- Apple App 增加营销页面控制台。自定义产品页面和产品页面优化独立于 App 版本，可以创建多个页面；创建只保存中心后台草稿，不会自动同步到 App Store Connect。
+- 营销页面详情支持编辑页面名称、页面类型、关键词、Apple 页面 ID、Deep Link、各语言宣传文本、iPhone 截图和 iPad 截图；支持复制页面、删除中心后台页面、删除中心后台截图。
 - 商店元数据页默认只展示当前语言；每个字段可以单独展开查看所有语言，并提供“从英文填充其他语言”按钮；第一版未接入翻译服务时只把英文源文案填充到空白语言。
 - 商店图区域支持商店图素材上传草稿，并按平台展示术语。iOS 展示 `iPhone screenshots` 和 `iPad screenshots`；Android 展示 `Feature graphic`、`Phone screenshots` 和 `Tablet screenshots`。图片可以直接拖拽上传，也可以拖入按语言命名的文件夹，后台会按语言和素材类型归类并上传到对象存储。
 - 相同账号、App、平台、版本、语言和操作的预检查结果缓存 5 分钟。
@@ -36,12 +37,13 @@
 - 只有预检查通过时才允许同步。
 - 同步前复用同一套 5 分钟预检查规则。
 - 商店元数据同步前，中心后台会先做平台字段校验。iOS 会校验 `Keywords`、`Promotional Text` 和 `Description` 的长度；Android 会校验 `Full description` 的长度。校验失败时不调用 connector，也不会创建同步记录。草稿保存阶段仍允许保存半成品，只要求描述非空。
-- 商店元数据同步前必须勾选同步范围。当前支持 `metadata`、`store_images`、`release_notes`，可以单独同步或组合同步。
+- 商店元数据同步前必须勾选同步范围。当前 App 级商店内容支持 `metadata`、`store_images`、`release_notes`，营销页面支持 `marketing_text`、`store_images`，可以单独同步或组合同步。
 - 同步结果写入 `store_sync_runs`，操作写入 `audit_logs`。
 
 暂不做：
 
 - 商店侧截图同步的完整适配；当前中心后台已按平台校验图片尺寸和格式、保存图片文件，并在同步 payload 中提供图片 URL 和素材信息，connector 后续按商店平台要求消费这些图片。
+- App Store Connect 自定义产品页面 / 产品页面优化的深度写入；当前 connector 已支持接收营销页面同步 payload 并写入中心后台同步状态，真实商店侧创建、截图替换和实验配置后续单独接入。
 - 自动提审。
 - 定时同步。
 - 跨账号批量同步。
@@ -182,6 +184,51 @@ GET /v1/apps/app-aurora-ios/supported-locales?developerAccountId=account-apple-e
 ```
 
 中心后台会按语言多次调用 `POST /v1/sync-runs`，每次请求的 `locale` 和 `metadata` 对应该语言。connector 不提供同步记录查询接口，任务状态以中心后台 `store_sync_runs` 为准。
+
+营销页面同步也使用同一个接口，`operation` 为 `update_marketing_page`。`version` 字段记录营销页面
+`pageId`，不代表 App 商店版本。
+
+```json
+{
+  "runId": "sync-003",
+  "developerAccountId": "account-apple-enterprise",
+  "operation": "update_marketing_page",
+  "platform": "ios",
+  "version": "page-launch",
+  "locale": "en-US",
+  "syncScopes": ["marketing_text", "store_images"],
+  "app": {
+    "appId": "app-aurora-ios",
+    "bundleIdentifier": "com.internal.aurora",
+    "storeAppId": "1234567890",
+    "packageName": "com.internal.aurora"
+  },
+  "marketingPage": {
+    "pageId": "page-launch",
+    "pageName": "冷启动投放页",
+    "pageType": "custom_product_page",
+    "applePageId": "",
+    "deepLinkUrl": "",
+    "locale": "en-US",
+    "keywords": "books,stories",
+    "promotionalText": "Read stories anytime.",
+    "storeImages": {
+      "phone_screenshots": {
+        "urls": [],
+        "assets": []
+      },
+      "tablet_screenshots": {
+        "urls": [],
+        "assets": []
+      },
+      "feature_graphic_url": {
+        "urls": [],
+        "assets": []
+      }
+    }
+  }
+}
+```
 
 ### Active Connector 协议
 

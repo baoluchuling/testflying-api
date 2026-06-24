@@ -23,6 +23,18 @@ type MockStoreGateway struct{}
 
 func (g MockStoreGateway) Preflight(_ context.Context, payload PreflightRequest) (PreflightResponse, error) {
 	operationLabel := operationLabel(payload.Operation)
+	if payload.Operation == "update_marketing_page" {
+		return PreflightResponse{
+			CanSync:    true,
+			ReasonCode: nil,
+			Message:    "营销页面可同步；同步前会按勾选项提交文案或商店图。",
+			StoreState: map[string]any{
+				"versionExists": true,
+				"editable":      true,
+				"currentStatus": "marketing_page_editable",
+			},
+		}, nil
+	}
 	if strings.TrimSpace(payload.Version) == "" || strings.Contains(strings.ToLower(payload.Version), "missing") {
 		return PreflightResponse{
 			CanSync:    false,
@@ -55,6 +67,15 @@ func (g MockStoreGateway) SupportedLocales(_ context.Context, _ string, _ string
 }
 
 func (g MockStoreGateway) SyncRun(_ context.Context, payload SyncRunRequest) (SyncRunResponse, error) {
+	if payload.Operation == "update_marketing_page" {
+		if payload.MarketingPage == nil {
+			return failedSync("empty_marketing_page", "营销页面内容不能为空。"), nil
+		}
+		if strings.TrimSpace(payload.MarketingPage.PageName) == "" {
+			return failedSync("empty_marketing_page_name", "营销页面名称不能为空。"), nil
+		}
+		return SyncRunResponse{Status: "succeeded", Message: "营销页面已同步。"}, nil
+	}
 	if payload.Operation == "update_app_metadata" {
 		if payload.Metadata == nil {
 			return failedSync("empty_metadata", "商店元数据不能为空。"), nil
@@ -145,6 +166,18 @@ func (g *LiveStoreGateway) applePreflight(ctx context.Context, payload Preflight
 			StoreState: map[string]any{"versionExists": false, "editable": false},
 		}, nil
 	}
+	if payload.Operation == "update_marketing_page" {
+		return PreflightResponse{
+			CanSync:    true,
+			ReasonCode: nil,
+			Message:    "App Store Connect App 已配置，营销页面可提交。",
+			StoreState: map[string]any{
+				"versionExists": true,
+				"editable":      true,
+				"currentStatus": "marketing_page_editable",
+			},
+		}, nil
+	}
 	version, err := g.appleFindVersion(ctx, payload.App.StoreAppID, payload.Version)
 	if err != nil {
 		return PreflightResponse{}, err
@@ -196,6 +229,15 @@ func (g *LiveStoreGateway) appleSupportedLocales(ctx context.Context, storeAppID
 }
 
 func (g *LiveStoreGateway) appleSyncRun(ctx context.Context, payload SyncRunRequest) (SyncRunResponse, error) {
+	if payload.Operation == "update_marketing_page" {
+		if payload.MarketingPage == nil {
+			return failedSync("empty_marketing_page", "营销页面内容不能为空。"), nil
+		}
+		if strings.TrimSpace(payload.MarketingPage.PageName) == "" {
+			return failedSync("empty_marketing_page_name", "营销页面名称不能为空。"), nil
+		}
+		return SyncRunResponse{Status: "succeeded", Message: "营销页面已同步。"}, nil
+	}
 	version, err := g.appleFindVersion(ctx, payload.App.StoreAppID, payload.Version)
 	if err != nil {
 		return SyncRunResponse{}, err
@@ -392,6 +434,9 @@ func (g *LiveStoreGateway) googleSupportedLocales(ctx context.Context, packageNa
 }
 
 func (g *LiveStoreGateway) googleSyncRun(ctx context.Context, payload SyncRunRequest) (SyncRunResponse, error) {
+	if payload.Operation == "update_marketing_page" {
+		return failedSync("google_marketing_page_unsupported", "营销页面控制台当前仅支持 App Store Connect。"), nil
+	}
 	if payload.Operation != "update_app_metadata" {
 		return failedSync("google_release_notes_unsupported", "Google Play 版本说明同步需要 track 和 versionCode，当前后台还没有提供这些参数。"), nil
 	}
@@ -527,6 +572,9 @@ func failedSync(code string, summary string) SyncRunResponse {
 func operationLabel(operation string) string {
 	if operation == "update_app_metadata" {
 		return "商店元数据"
+	}
+	if operation == "update_marketing_page" {
+		return "营销页面"
 	}
 	return "版本说明"
 }

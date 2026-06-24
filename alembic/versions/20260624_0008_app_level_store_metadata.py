@@ -17,7 +17,12 @@ def upgrade() -> None:
     )
     op.add_column(
         "store_sync_runs",
-        sa.Column("payload_snapshot_json", sa.JSON(), nullable=False, server_default=sa.text("'{}'")),
+        sa.Column(
+            "payload_snapshot_json",
+            sa.JSON(),
+            nullable=False,
+            server_default=sa.text("'{}'"),
+        ),
     )
 
     op.create_table(

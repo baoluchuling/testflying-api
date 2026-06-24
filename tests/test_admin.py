@@ -233,6 +233,25 @@ def test_admin_marketing_page_layout_css_prevents_horizontal_overflow(
     assert "max-width: calc(100vw - 28px)" in response.text
 
 
+def test_admin_store_marketing_list_matches_resource_demo_contract(
+    client: TestClient,
+) -> None:
+    response = client.get("/static/admin/admin.css")
+
+    assert response.status_code == 200
+    assert ".store-marketing-page {" in response.text
+    assert "max-width: 1320px" in response.text
+    assert ".store-management-resource-layout" in response.text
+    assert "grid-template-columns: 280px minmax(0, 1fr)" in response.text
+    assert ".store-marketing-main .resource-link.active" in response.text
+    assert "box-shadow: inset 0 0 0 1px #1473f8" in response.text
+    assert ".store-marketing-main .table-card" in response.text
+    assert ".store-marketing-table th" in response.text
+    assert "background: #f8fafd" in response.text
+    assert ".store-marketing-table .page-name" in response.text
+    assert ".store-marketing-main .badge.warn" in response.text
+
+
 def test_admin_resource_pages_render_seeded_catalog(
     client: TestClient,
     db_session: Session,
@@ -1616,9 +1635,15 @@ def test_admin_store_marketing_page_lists_marketing_pages(
     assert "营销页面" in response.text
     assert "冷启动投放页" in response.text
     assert "自定义产品页面" in response.text
-    assert "2 个语言" in response.text
+    assert "resource-layout store-management-resource-layout" in response.text
+    assert "table-card store-marketing-table-card" in response.text
+    assert "新建产品页面优化" in response.text
+    assert "新建自定义产品页面" in response.text
+    assert "2 语言 / 0 张图" in response.text
     assert "未同步后回填" in response.text
     assert "营销页面控制台" not in response.text
+    assert "store-management-nav" not in response.text
+    assert "store-marketing-side" not in response.text
     assert "/store/marketing-pages/" in response.text
 
 

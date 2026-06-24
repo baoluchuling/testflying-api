@@ -19,6 +19,8 @@ from testflying_api.schema import (
     DeveloperAccount,
     StoreAppMetadataDraft,
     StoreConnector,
+    StoreImageSuite,
+    StoreImageSuiteLocale,
     StorePreflightCheck,
     StoreReleaseNoteDraft,
     StoreSyncRun,
@@ -72,6 +74,8 @@ def test_admin_shell_supports_inline_navigation_and_upload_dock(client: TestClie
     assert "setAdminNavigationBusy" in response.text
     assert "data-admin-loading" in response.text
     assert "upsertSuiteCard" in response.text
+    assert "setContentSetFeedback" in response.text
+    assert "data-content-set-feedback" in response.text
     assert "新商店图套件名称" in response.text
     assert "beforeunload" in response.text
 
@@ -1105,19 +1109,23 @@ def test_admin_store_metadata_content_set_creation_persists(
         },
     )
 
-    drafts = (
-        db_session.query(StoreAppMetadataDraft)
-        .filter_by(content_set_id="holiday-copy")
-        .order_by(StoreAppMetadataDraft.locale)
-        .all()
+    suites = db_session.query(StoreImageSuite).all()
+    suite_locales = (
+        db_session.query(StoreImageSuiteLocale).order_by(StoreImageSuiteLocale.locale).all()
     )
     assert response.status_code == 200
     assert response.json()["id"] == "holiday-copy"
     assert response.json()["name"] == "节日投放"
-    assert {draft.locale for draft in drafts} == {"en-US", "zh-Hant"}
-    assert {draft.content_set_name for draft in drafts} == {"节日投放"}
-    zh_hant = next(draft for draft in drafts if draft.locale == "zh-Hant")
-    assert zh_hant.description == "Internal distribution metadata."
+    assert db_session.query(StoreAppMetadataDraft).count() == 0
+    assert db_session.query(StoreReleaseNoteDraft).count() == 0
+    assert len(suites) == 1
+    assert suites[0].suite_id == "holiday-copy"
+    assert suites[0].suite_name == "节日投放"
+    assert {item.locale for item in suite_locales} == {"en-US", "zh-Hant"}
+    zh_hant = next(item for item in suite_locales if item.locale == "zh-Hant")
+    assert zh_hant.store_images_json["phone_screenshots"]["urls"] == [
+        "https://cdn.example.test/phone.png"
+    ]
 
     page = client.get(
         path + "?content_set_id=holiday-copy",
@@ -1126,6 +1134,43 @@ def test_admin_store_metadata_content_set_creation_persists(
     assert page.status_code == 200
     assert "节日投放" in page.text
     assert "holiday-copy" in page.text
+
+
+def test_admin_store_metadata_content_set_creation_allows_empty_metadata(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+
+    response = client.post(
+        "/admin/developer-accounts/account-apple-enterprise"
+        "/apps/app-aurora-ios/store-metadata/content-sets",
+        headers=_admin_headers(),
+        data={
+            "version": "2.4.0",
+            "locale": "en-US",
+            "contentSetId": "blank-image-suite",
+            "contentSetName": "空白商店图套件",
+            "locales": ["en-US"],
+            "keywords": [""],
+            "promotionalText": [""],
+            "description": [""],
+            "releaseNotes": [""],
+            "featureGraphicUrl": [""],
+            "phoneScreenshots": [""],
+            "tabletScreenshots": [""],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["id"] == "blank-image-suite"
+    assert response.json()["name"] == "空白商店图套件"
+    assert db_session.query(StoreAppMetadataDraft).count() == 0
+    assert db_session.query(StoreReleaseNoteDraft).count() == 0
+    suite = db_session.query(StoreImageSuite).one()
+    suite_locale = db_session.query(StoreImageSuiteLocale).one()
+    assert suite.suite_id == "blank-image-suite"
+    assert suite_locale.locale == "en-US"
 
 
 def test_admin_store_metadata_translation_requires_configured_provider(

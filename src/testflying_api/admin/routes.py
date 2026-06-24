@@ -945,7 +945,6 @@ async def create_store_metadata_content_set(
     _: AdminDep,
 ) -> JSONResponse:
     form = await request.form()
-    version = _form_value(form, "version")
     locale = _form_value(form, "locale", DEFAULT_LOCALE)
     content_set_id = _form_value(form, "contentSetId", f"set-{uuid4().hex[:12]}")
     content_set_name = _form_value(form, "contentSetName", content_set_id)
@@ -962,28 +961,6 @@ async def create_store_metadata_content_set(
             suite_name=content_set_name,
             metadata_rows=metadata_rows,
         )
-        for row in metadata_rows:
-            save_app_metadata_draft(
-                session,
-                account_id=account_id,
-                app_id=app_id,
-                version=version,
-                locale=row["locale"],
-                content_set_id=content_set_id,
-                content_set_name=content_set_name,
-                keywords=row["keywords"],
-                promotional_text=row["promotional_text"],
-                description=row["description"],
-                store_images=row["store_images"],
-            )
-            save_release_note_draft(
-                session,
-                account_id=account_id,
-                app_id=app_id,
-                version=version,
-                locale=row["locale"],
-                release_notes=row["release_notes"],
-            )
         session.commit()
     except ApiError as error:
         session.rollback()

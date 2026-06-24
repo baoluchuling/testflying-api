@@ -548,6 +548,15 @@
         window.history.replaceState(window.history.state, '', url.toString());
       }
 
+      function setContentSetFeedback(form, message, state = 'error') {
+        const feedback = form?.querySelector('[data-content-set-feedback]');
+        if (!feedback) return;
+        const text = String(message || '').trim();
+        feedback.hidden = !text;
+        feedback.dataset.state = state;
+        feedback.textContent = text;
+      }
+
       async function persistContentSetOption(form, name, copyCurrent) {
         if (!form || !name) return;
         const status = form.querySelector('[data-content-set-status]');
@@ -556,6 +565,7 @@
         formData.set('contentSetId', id);
         formData.set('contentSetName', name);
         if (status) status.textContent = copyCurrent ? '正在复制套件...' : '正在新建套件...';
+        setContentSetFeedback(form, '');
         const response = await fetch(`${form.action}/content-sets`, {
           method: 'POST',
           body: formData,
@@ -563,7 +573,9 @@
         });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
-          if (status) status.textContent = payload.error || '套件保存失败';
+          const message = payload.error || payload.message || '套件保存失败';
+          if (status) status.textContent = message;
+          setContentSetFeedback(form, message, 'error');
           return;
         }
         addContentSetOption(form, payload.id || id, payload.name || name, true);
@@ -573,6 +585,7 @@
         if (status) {
           status.textContent = `${copyCurrent ? '已复制为' : '已新建'}：${payload.name || name}`;
         }
+        setContentSetFeedback(form, '');
       }
 
       function storeImageLocales(form) {
@@ -2299,7 +2312,9 @@
           const name = window.prompt('新商店图套件名称', '新的商店图套件');
           persistContentSetOption(form, name?.trim(), false).catch(() => {
             const status = form?.querySelector('[data-content-set-status]');
-            if (status) status.textContent = '套件保存失败';
+            const message = '套件保存失败，请稍后重试';
+            if (status) status.textContent = message;
+            setContentSetFeedback(form, message, 'error');
           });
           return;
         }
@@ -2311,7 +2326,9 @@
           const name = window.prompt('复制后的套件名称', `${currentName} 副本`);
           persistContentSetOption(form, name?.trim(), true).catch(() => {
             const status = form?.querySelector('[data-content-set-status]');
-            if (status) status.textContent = '套件保存失败';
+            const message = '套件保存失败，请稍后重试';
+            if (status) status.textContent = message;
+            setContentSetFeedback(form, message, 'error');
           });
           return;
         }

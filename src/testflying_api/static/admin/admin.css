@@ -5703,6 +5703,22 @@ body.store-sync-confirm-open {
   color: #b45309;
 }
 
+.store-workspace-main .store-workspace-feedback {
+  margin: -2px 0 14px;
+  padding: 12px 14px;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  background: #fff1f2;
+  color: #b42318;
+  font-size: 14px;
+  font-weight: 720;
+  line-height: 1.5;
+}
+
+.store-workspace-main .store-workspace-feedback[hidden] {
+  display: none;
+}
+
 .store-workspace-main .task-tabs {
   display: flex;
   align-items: center;

@@ -114,6 +114,20 @@
       <button class="button ghost subtle" type="button" data-translate-metadata>翻译所有文案项</button>
     </section>
 
+    {% set current_keywords = namespace(value="") %}
+    {% for item in localized_metadata %}
+      {% if item.locale == locale %}
+        {% set current_keywords.value = item.keywords %}
+      {% endif %}
+    {% endfor %}
+    {% if current_keywords.value %}
+      <section class="metadata-readonly-strip store-readonly-keywords" data-store-section-panel="current">
+        <span>关键词</span>
+        <strong>{{ current_keywords.value }}</strong>
+        <small>由商店回填，只读展示。</small>
+      </section>
+    {% endif %}
+
     <section class="workspace store-workspace-grid" data-metadata-editor data-mode="field" data-store-section-panel="current">
       <aside class="card rail">
         <div class="rail-header">
@@ -467,7 +481,7 @@
           <div class="scope-list">
             <label class="scope-option">
               <input type="checkbox" name="syncScopes" value="metadata" data-sync-scope="metadata" checked>
-              <span><strong>文案元数据</strong><small>关键词、宣传文本、描述</small></span>
+              <span><strong>文案元数据</strong><small>宣传文本、描述</small></span>
             </label>
             <label class="scope-option">
               <input type="checkbox" name="syncScopes" value="store_images" data-sync-scope="store_images" checked>

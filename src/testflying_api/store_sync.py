@@ -1184,12 +1184,6 @@ def sync_marketing_page(
             value=locale_row.promotional_text.strip(),
             max_length=APP_STORE_PROMOTIONAL_TEXT_MAX_LENGTH,
         )
-        _validate_text_length(
-            locale=locale,
-            label="关键词",
-            value=page.keywords.strip(),
-            max_length=APP_STORE_KEYWORDS_MAX_LENGTH,
-        )
 
     preflight = get_or_refresh_preflight(
         session,
@@ -1283,12 +1277,6 @@ def validate_app_metadata_for_sync(
             min_length=APP_STORE_DESCRIPTION_MIN_LENGTH,
             max_length=APP_STORE_DESCRIPTION_MAX_LENGTH,
             required=True,
-        )
-        _validate_text_length(
-            locale=normalized_locale,
-            label="Keywords（关键词）",
-            value=keywords.strip(),
-            max_length=APP_STORE_KEYWORDS_MAX_LENGTH,
         )
         _validate_text_length(
             locale=normalized_locale,
@@ -1478,7 +1466,6 @@ def _metadata_payload(
     if include_text_metadata:
         payload.update(
             {
-                "keywords": draft.keywords,
                 "promotionalText": draft.promotional_text,
                 "description": draft.description,
             }
@@ -1505,7 +1492,6 @@ def _marketing_page_payload(
     if MARKETING_SYNC_TEXT_SCOPE in sync_scopes:
         payload.update(
             {
-                "keywords": page.keywords,
                 "promotionalText": locale_row.promotional_text,
             }
         )

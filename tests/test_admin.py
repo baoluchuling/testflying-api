@@ -166,6 +166,7 @@ def test_admin_store_metadata_focus_layout_css_contract(client: TestClient) -> N
     assert "height: 168px" in response.text
     assert ".store-metadata-main .locale-row" in response.text
     assert "height: 64px" in response.text
+    assert ".store-workspace-main .metadata-readonly-strip" in response.text
     assert ".metadata-sync-history-panel" in response.text
     assert ".store-metadata-main .image-locale-row" in response.text
     assert ".store-image-lightbox" in response.text
@@ -976,7 +977,7 @@ def test_admin_store_metadata_save_and_sync_creates_records(
     assert zh_hans_draft.version == CURRENT_METADATA_VERSION
     assert zh_hans_draft.subtitle == ""
     assert zh_hans_draft.description == "用于内部测试包分发和回归验证。"
-    assert en_us_draft.keywords == "internal,test"
+    assert en_us_draft.keywords == ""
     assert en_us_draft.promotional_text == "更稳定的测试体验。"
     assert en_us_draft.description == "用于内部测试包分发和回归验证。"
     assert zh_hans_draft.content_set_id == "default"
@@ -1095,7 +1096,7 @@ def test_admin_store_metadata_sync_rejects_too_short_description(
     assert db_session.query(StoreSyncRun).count() == 0
 
 
-def test_admin_store_metadata_sync_rejects_overlong_ios_keywords(
+def test_admin_store_metadata_sync_ignores_submitted_keywords(
     client: TestClient,
     db_session: Session,
 ) -> None:
@@ -1121,11 +1122,11 @@ def test_admin_store_metadata_sync_rejects_overlong_ios_keywords(
         },
     )
 
-    assert response.status_code == 422
-    assert "en-US 的 Keywords（关键词） 不能超过 100 个字符" in response.text
-    assert "当前 101 个字符" in response.text
-    assert db_session.query(StoreAppMetadataDraft).count() == 0
-    assert db_session.query(StoreSyncRun).count() == 0
+    draft = db_session.query(StoreAppMetadataDraft).one()
+    run = db_session.query(StoreSyncRun).one()
+    assert response.status_code == 200
+    assert draft.keywords == ""
+    assert "keywords" not in run.payload_snapshot_json["metadata"]
 
 
 def test_admin_store_metadata_uploads_store_images_into_content_set(
@@ -1470,7 +1471,9 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "class=\"image-locale-row store-image-locale-row\"" in response.text
     assert "商店图" in response.text
     assert "App Store Connect 同步" in response.text
-    assert "关键词" in response.text
+    assert 'data-sync-item-key="keywords"' not in response.text
+    assert 'data-field="keywords"' not in response.text
+    assert 'name="keywords"' not in response.text
     assert "宣传文本" in response.text
     assert "描述" in response.text
     assert "data-translate-field" in response.text
@@ -1543,6 +1546,41 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "文案、链接、商店图" not in response.text
 
 
+def test_admin_store_metadata_shows_backfilled_keywords_readonly(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+    db_session.add(
+        StoreAppMetadataDraft(
+            id="metadata-backfilled-keywords",
+            developer_account_id="account-apple-enterprise",
+            app_id="app-aurora-ios",
+            platform="ios",
+            version=CURRENT_METADATA_VERSION,
+            locale="en-US",
+            content_set_id="default",
+            content_set_name="默认上架内容",
+            keywords="reader,books,stories",
+            promotional_text="Read stories anywhere.",
+            description="Internal distribution metadata for testing installs.",
+            store_images_json={},
+        )
+    )
+    db_session.commit()
+
+    response = client.get(
+        "/admin/developer-accounts/account-apple-enterprise"
+        "/apps/app-aurora-ios/store-metadata?locale=en-US",
+        headers=_admin_headers(),
+    )
+
+    assert response.status_code == 200
+    assert "store-readonly-keywords" in response.text
+    assert "reader,books,stories" in response.text
+    assert 'name="keywords"' not in response.text
+
+
 def test_admin_store_metadata_can_create_marketing_page(
     client: TestClient,
     db_session: Session,
@@ -1567,6 +1605,37 @@ def test_admin_store_metadata_can_create_marketing_page(
     assert page.page_name == "新用户转化页"
     assert page.page_type == "product_page_optimization"
     assert page.app_id == "app-aurora-ios"
+
+
+def test_admin_marketing_page_shows_backfilled_keywords_readonly(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+    client.post(
+        "/admin/developer-accounts/account-apple-enterprise"
+        "/apps/app-aurora-ios/store-metadata/marketing-pages",
+        headers=_admin_headers(),
+        data={
+            "locale": "en-US",
+            "marketingPageType": "custom_product_page",
+            "marketingPageName": "冷启动投放页",
+        },
+    )
+    page = db_session.query(StoreMarketingPage).one()
+    page.keywords = "stories,books"
+    db_session.commit()
+
+    response = client.get(
+        "/admin/developer-accounts/account-apple-enterprise"
+        f"/apps/app-aurora-ios/store-metadata/marketing-pages/{page.page_id}",
+        headers=_admin_headers(),
+    )
+
+    assert response.status_code == 200
+    assert "stories,books" in response.text
+    assert "由 App Store Connect 回填，只读展示" in response.text
+    assert 'name="keywords"' not in response.text
 
 
 def test_admin_marketing_page_detail_can_save_locales_and_images(
@@ -1604,6 +1673,7 @@ def test_admin_marketing_page_detail_can_save_locales_and_images(
     assert '<span class="sync-count"' not in detail.text
     assert "<small data-sync-item-status>" not in detail.text
     assert detail.text.count("保存草稿") == 1
+    assert 'name="keywords"' not in detail.text
     assert 'data-sync-item-panel="promotional_text"' in detail.text
     assert 'data-sync-editor-pane="promotional_text" data-locale-group' in detail.text
     assert 'class="locale-detail-input"' in detail.text
@@ -1647,7 +1717,7 @@ def test_admin_marketing_page_detail_can_save_locales_and_images(
     assert response.status_code == 200
     assert "营销页面草稿已保存" in response.text
     assert page.page_name == "冷启动投放页 v2"
-    assert page.keywords == "stories,books"
+    assert page.keywords == ""
     assert page.deep_link_url == "anystories:///home"
     assert [item.locale for item in locales] == ["en-US", "zh-Hans"]
     assert en_locale.promotional_text == "Read stories anytime."
@@ -1730,6 +1800,7 @@ def test_admin_marketing_page_sync_creates_sync_runs(
     assert run.locale == "en-US"
     assert run.sync_scopes_json == {"scopes": ["marketing_text", "store_images"]}
     assert run.payload_snapshot_json["marketingPage"]["pageName"] == "冷启动投放页"
+    assert "keywords" not in run.payload_snapshot_json["marketingPage"]
     assert run.payload_snapshot_json["marketingPage"]["promotionalText"] == "Read stories anytime."
 
 

@@ -897,6 +897,12 @@ async def save_store_metadata_page(
             current_locale=locale,
             store_image_assets_by_locale=store_image_assets,
         )
+        _preserve_readonly_keywords(
+            session,
+            account_id=account_id,
+            app=app,
+            metadata_rows=metadata_rows,
+        )
         for row in metadata_rows:
             save_current_app_metadata_draft(
                 session,
@@ -1185,7 +1191,7 @@ async def save_marketing_page_detail(
             page_id=page_id,
             page_name=_form_value(form, "pageName", page.page_name),
             page_type=_form_value(form, "pageType", page.page_type),
-            keywords=_form_value(form, "keywords", page.keywords),
+            keywords=page.keywords,
             apple_page_id=page.apple_page_id,
             deep_link_url=_form_value(form, "deepLinkUrl", page.deep_link_url),
             locale_rows=rows,
@@ -1513,6 +1519,12 @@ async def sync_store_metadata_page(
             form,
             current_locale=locale,
             store_image_assets_by_locale=store_image_assets,
+        )
+        _preserve_readonly_keywords(
+            session,
+            account_id=account_id,
+            app=app,
+            metadata_rows=metadata_rows,
         )
         requested_sync_scopes = _form_values(form, "syncScopes")
         sync_scopes = set(requested_sync_scopes or [])
@@ -2046,6 +2058,30 @@ def _metadata_rows_from_request_form(
     )
 
 
+def _preserve_readonly_keywords(
+    session: Session,
+    *,
+    account_id: str,
+    app: App,
+    metadata_rows: list[dict[str, object]],
+) -> None:
+    keywords_by_locale = {
+        draft.locale: draft.keywords
+        for draft in session.scalars(
+            select(StoreAppMetadataDraft).where(
+                StoreAppMetadataDraft.developer_account_id == account_id,
+                StoreAppMetadataDraft.app_id == app.id,
+                StoreAppMetadataDraft.platform == app.platform,
+                StoreAppMetadataDraft.version == CURRENT_METADATA_VERSION,
+                StoreAppMetadataDraft.content_set_id == DEFAULT_CONTENT_SET_ID,
+            )
+        )
+    }
+    for row in metadata_rows:
+        locale = str(row.get("locale") or "").strip()
+        row["keywords"] = keywords_by_locale.get(locale, "")
+
+
 async def _save_marketing_page_from_form(
     *,
     account_id: str,
@@ -2089,7 +2125,7 @@ async def _save_marketing_page_from_form(
         page_id=page_id,
         page_name=_form_value(form, "pageName", page.page_name),
         page_type=_form_value(form, "pageType", page.page_type),
-        keywords=_form_value(form, "keywords", page.keywords),
+        keywords=page.keywords,
         apple_page_id=page.apple_page_id,
         deep_link_url=_form_value(form, "deepLinkUrl", page.deep_link_url),
         locale_rows=rows,

@@ -5811,6 +5811,42 @@ body.store-sync-confirm-open {
   margin-bottom: 14px;
 }
 
+.store-workspace-main .metadata-readonly-strip {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  min-height: 52px;
+  margin-bottom: 14px;
+  padding: 12px 16px;
+  border: 1px solid #d7e4f5;
+  border-radius: 10px;
+  background: #f8fbff;
+  color: #1d2a3d;
+}
+
+.store-workspace-main .metadata-readonly-strip span {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 820;
+}
+
+.store-workspace-main .metadata-readonly-strip strong {
+  overflow: hidden;
+  color: #111827;
+  font-size: 14px;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.store-workspace-main .metadata-readonly-strip small {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 680;
+  white-space: nowrap;
+}
+
 .store-workspace-main .store-workspace-grid {
   display: grid;
   grid-template-columns: 208px minmax(0, 1fr) 252px;

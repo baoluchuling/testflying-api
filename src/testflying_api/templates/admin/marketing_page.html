@@ -90,10 +90,13 @@
             <span>页面名称</span>
             <input class="text-input" name="pageName" value="{{ page.page_name }}" required>
           </label>
-          <label>
-            <span>关键词</span>
-            <input class="text-input" name="keywords" value="{{ page.keywords }}" placeholder="App Store Connect keywords, separated by commas">
-          </label>
+          {% if page.keywords %}
+            <div class="marketing-readonly-field">
+              <span>关键词</span>
+              <strong>{{ page.keywords }}</strong>
+              <small>由 App Store Connect 回填，只读展示</small>
+            </div>
+          {% endif %}
           <div class="marketing-readonly-field">
             <span>Apple 页面 ID</span>
             <strong>{{ page.apple_page_id or "暂无" }}</strong>
@@ -304,7 +307,7 @@
           <div class="scope-list">
             <label class="scope-option">
               <input type="checkbox" name="syncScopes" value="marketing_text" data-sync-scope="marketing_text" checked>
-              <span><strong>文案</strong><small>关键词、宣传文本</small></span>
+              <span><strong>文案</strong><small>宣传文本</small></span>
             </label>
             <label class="scope-option">
               <input type="checkbox" name="syncScopes" value="store_images" data-sync-scope="store_images" checked>

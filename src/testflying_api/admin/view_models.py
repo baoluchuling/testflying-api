@@ -901,15 +901,6 @@ def _metadata_fields(platform: str) -> list[dict[str, object]]:
         ]
     return [
         {
-            "key": "keywords",
-            "name": "keywords",
-            "label": "Keywords（关键词）",
-            "short_label": "关键词",
-            "type": "input",
-            "required": False,
-            "placeholder": "App Store Connect keywords, separated by commas",
-        },
-        {
             "key": "promotional_text",
             "name": "promotionalText",
             "label": "Promotional Text（宣传文本）",

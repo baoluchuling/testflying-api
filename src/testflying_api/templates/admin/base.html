@@ -990,6 +990,7 @@
       function syncMetadataWorkspace(form, activeLocale) {
         const items = Array.from(form.querySelectorAll('[data-sync-item-select]'));
         if (!items.length) return;
+        const isMarketingWorkspace = form.dataset.storeWorkspaceMode === 'marketing';
         const selected = items.find((item) => item.dataset.syncItemKey === form.dataset.selectedSyncItem)
           || items.find((item) => item.dataset.defaultFocus === 'true')
           || items[0];
@@ -1071,9 +1072,9 @@
         syncItemPanels(form).forEach((panel) => {
           const panelKey = panel.dataset.syncItemPanel || panel.dataset.syncEditorPane;
           const isSelected = panelKey === selectedKey;
-          panel.hidden = !isSelected;
+          panel.hidden = isMarketingWorkspace ? false : !isSelected;
           panel.classList.toggle('is-focused', isSelected);
-          panel.classList.toggle('active', isSelected);
+          panel.classList.toggle('active', isMarketingWorkspace || isSelected);
           panel.querySelectorAll('[data-current-locale-label]').forEach((label) => {
             label.textContent = activeLocale;
           });
@@ -1580,6 +1581,7 @@
       }
 
       function syncCollapsibleLocaleGroups(form, activeLocale) {
+        const isMarketingWorkspace = form.dataset.storeWorkspaceMode === 'marketing';
         form.querySelectorAll('[data-locale-group]').forEach((group) => {
           const groupExpanded = group.dataset.expanded === 'true';
           group.classList.toggle('is-expanded', groupExpanded);
@@ -1587,10 +1589,11 @@
             label.textContent = activeLocale;
           });
           group.querySelectorAll('[data-locale-row]').forEach((row) => {
+            const isActiveLocale = row.dataset.locale === activeLocale;
             const expanded = groupExpanded || row.dataset.rowExpanded === 'true';
-            row.hidden = false;
+            row.hidden = isMarketingWorkspace && !groupExpanded && !isActiveLocale;
             row.dataset.expanded = expanded ? 'true' : 'false';
-            row.dataset.activeLocale = row.dataset.locale === activeLocale ? 'true' : 'false';
+            row.dataset.activeLocale = isActiveLocale ? 'true' : 'false';
           });
           const toggle = group.querySelector('[data-locale-group-toggle]');
           if (toggle) {
@@ -2241,6 +2244,12 @@
           if (form) {
             form.dataset.selectedSyncItem = syncItem.dataset.syncItemKey;
             syncMetadataEditor(form);
+            if (form.dataset.storeWorkspaceMode === 'marketing') {
+              syncItemPanelForKey(form, syncItem.dataset.syncItemKey)?.scrollIntoView({
+                behavior: 'smooth',
+                block: 'start',
+              });
+            }
           }
           return;
         }

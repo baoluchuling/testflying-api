@@ -156,7 +156,7 @@
         {% for slot in store_image_slots %}
           {% set current_item = (localized_marketing_page|selectattr("locale", "equalto", locale)|list|first) or localized_marketing_page[0] %}
           {% set current_image = current_item.store_images[slot.key] %}
-          <section class="editor-pane image-editor-pane" data-sync-item-panel="{{ slot.key }}" data-sync-editor-pane="{{ slot.key }}" data-locale-group hidden>
+          <section class="editor-pane image-editor-pane" data-sync-item-panel="{{ slot.key }}" data-sync-editor-pane="{{ slot.key }}" data-locale-group>
             <div class="editor-head">
               <div>
                 <div class="editor-title">
@@ -239,7 +239,7 @@
               <div class="locale-list">
                 {% for item in localized_marketing_page %}
                   {% set image_slot = item.store_images[slot.key] %}
-                  <article class="image-locale-row store-image-locale-row" data-locale="{{ item.locale }}" data-locale-row>
+                  <article class="image-locale-row store-image-locale-row" data-locale="{{ item.locale }}" data-locale-row {% if item.locale != locale %}hidden{% endif %}>
                     <span class="drag" aria-hidden="true">⁝</span>
                     <strong class="locale-code">{{ item.locale }}</strong>
                     <span class="tag {{ 'warn' if not image_slot.count else '' }}" data-store-image-status>{{ "待上传" if not image_slot.count else "已上传" }}</span>

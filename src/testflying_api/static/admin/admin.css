@@ -6910,6 +6910,13 @@ body.store-sync-confirm-open {
 
 .marketing-page-main .editor-pane {
   min-height: 0;
+  scroll-margin-top: 18px;
+}
+
+.marketing-page-main .editor-pane + .editor-pane {
+  margin-top: 22px;
+  padding-top: 22px;
+  border-top: 1px solid #e5eaf2;
 }
 
 .marketing-page-main .locale-row textarea {
@@ -7046,6 +7053,11 @@ body.store-sync-confirm-open {
   align-items: stretch;
   min-height: auto;
   padding: 0;
+}
+
+.marketing-page-main .editor-pane:not(.image-editor-pane) .editor-body {
+  display: grid;
+  gap: 12px;
 }
 
 .marketing-page-main .editor-pane:not(.image-editor-pane) .locale-row:not([data-expanded="true"]) {

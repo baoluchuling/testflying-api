@@ -215,6 +215,9 @@ def test_admin_marketing_page_layout_css_prevents_horizontal_overflow(
     assert ".marketing-page-main .marketing-settings" in response.text
     assert "padding: 18px 18px 20px" in response.text
     assert ".marketing-page-main .marketing-readonly-field" in response.text
+    assert ".marketing-page-main .editor-pane + .editor-pane" in response.text
+    assert "scroll-margin-top: 18px" in response.text
+    assert "gap: 12px" in response.text
     assert ".marketing-page-main .editor-icon svg" in response.text
     assert "width: 19px" in response.text
     assert "height: 19px" in response.text
@@ -1518,13 +1521,16 @@ def test_admin_store_metadata_page_lists_supported_locales(
     assert "uniqueStoreImageFiles([...existing, ...files])" in response.text
     assert "data-store-image-bulk-drop" in response.text
     assert "展开所有语言" in response.text
-    assert "row.hidden = false" in response.text
+    assert "row.hidden = isMarketingWorkspace && !groupExpanded && !isActiveLocale" in response.text
     assert "row.dataset.expanded = expanded ? 'true' : 'false'" in response.text
     assert "toggle.addEventListener('click'" in response.text
     assert "toggle.dataset.localeToggleBound = 'true'" in response.text
     assert "event.stopPropagation()" in response.text
     assert "syncMetadataEditor(form)" in response.text
     assert "label.textContent = groupExpanded ? '收起多语言' : '展开所有语言'" in response.text
+    assert "panel.hidden = isMarketingWorkspace ? false : !isSelected" in response.text
+    assert "scrollIntoView({" in response.text
+    assert "form.dataset.storeWorkspaceMode === 'marketing'" in response.text
     assert "function toggleLocaleRow(row)" in response.text
     assert "const localeRow = event.target.closest('[data-locale-row]')" in response.text
     assert "row.dataset.rowExpanded = expanded ? 'true' : 'false'" in response.text
@@ -1603,6 +1609,7 @@ def test_admin_marketing_page_detail_can_save_locales_and_images(
     assert 'class="locale-detail-input"' in detail.text
     assert 'data-sync-item-panel="phone_screenshots"' in detail.text
     assert 'data-sync-editor-pane="phone_screenshots" data-locale-group' in detail.text
+    assert 'data-sync-editor-pane="phone_screenshots" data-locale-group hidden' not in detail.text
     assert "event.target.closest('[data-locale-toggle]')" in detail.text
 
     response = client.post(

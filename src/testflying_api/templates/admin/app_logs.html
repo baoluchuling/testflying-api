@@ -1,5 +1,18 @@
 {% extends "admin/base.html" %}
+{% block main_class %}app-logs-main{% endblock %}
 {% block heading %}App 日志{% endblock %}
+{% block page_head_attrs %}data-log-page-head{% endblock %}
+{% block heading_meta %}
+  <div class="meta">
+    <span>手机主动连接电脑</span>
+    <span>WebSocket text frame</span>
+    <span>按设备分组</span>
+  </div>
+{% endblock %}
+{% block page_actions %}
+  <button class="button ghost" type="button" data-copy-app-log-url>复制扫码页面</button>
+  <button class="button primary" type="button" data-clear-app-log-view>清空当前视图</button>
+{% endblock %}
 {% block content %}
   <section class="panel app-log-connect-panel" data-app-log-page>
     <div class="panel-header">
@@ -15,6 +28,10 @@
         >
       </div>
       <div class="form app-log-connect-form">
+        <div class="app-log-compact-summary" aria-hidden="true">
+          <strong>anystories</strong>
+          <span>手机已连接，日志正在实时接收。</span>
+        </div>
         <div class="form-grid">
           <label>
             电脑 IP

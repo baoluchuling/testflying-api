@@ -6,54 +6,38 @@
     <title>{% block title %}testflying 管理后台{% endblock %}</title>
     <link rel="stylesheet" href="/static/admin/admin.css?v={{ admin_asset_version }}">
   </head>
-  <body>
-    <aside class="sidebar">
+  <body class="{% block body_class %}{% endblock %}">
+    <header class="topbar">
       <div class="brand">
-        <span class="brand-mark">TF</span>
-        <div>
-          <strong>testflying</strong>
-          <small>管理后台</small>
-        </div>
-      </div>
-      <nav class="nav">
+        <span class="mark brand-mark">TF</span>
+        <strong class="brand-name">testflying</strong>
+        <nav class="global-nav nav" aria-label="主导航">
         {% for key, href, label in nav_items %}
-          <a class="nav-link {% if active == key %}is-active{% endif %}" href="{{ href }}">
-            <span class="nav-icon" aria-hidden="true">
-              {% if key == "dashboard" %}
-                <svg viewBox="0 0 24 24"><path d="M4 14a8 8 0 0 1 16 0"/><path d="M8 14a4 4 0 0 1 8 0"/><path d="M12 14l3-5"/><path d="M5 18h14"/></svg>
-              {% elif key == "uploads" %}
-                <svg viewBox="0 0 24 24"><path d="M12 17V5"/><path d="m7 10 5-5 5 5"/><path d="M5 19h14"/></svg>
-              {% elif key == "apps" %}
-                <svg viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/></svg>
-              {% elif key == "builds" %}
-                <svg viewBox="0 0 24 24"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9Z"/><path d="m4 7.5 8 4.5 8-4.5"/><path d="M12 12v9"/></svg>
-              {% elif key == "devices" %}
-                <svg viewBox="0 0 24 24"><rect x="6.5" y="3.5" width="11" height="17" rx="2"/><path d="M11 17.5h2"/></svg>
-              {% elif key == "app_logs" %}
-                <svg viewBox="0 0 24 24"><path d="M5 5.5h14v10H8l-3 3Z"/><path d="M9 9h6"/><path d="M9 12h4"/></svg>
-              {% elif key == "accounts" %}
-                <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>
-              {% else %}
-                <svg viewBox="0 0 24 24"><path d="M18 9a6 6 0 1 0-12 0c0 6-2.5 6.5-2.5 8h17C20.5 15.5 18 15 18 9"/><path d="M10 20h4"/></svg>
-              {% endif %}
-            </span>
-            <span>{{ label }}</span>
-          </a>
+          <a
+            class="nav-link {% if active == key %}active is-active{% endif %}"
+            href="{{ href }}"
+            data-nav-key="{{ key }}"
+          >{{ label }}</a>
         {% endfor %}
       </nav>
-    </aside>
-    <main class="main {% block main_class %}{% endblock %}" data-admin-main>
-      <header class="topbar">
+      </div>
+      <div class="health">
+        <button class="button ghost-button health-button" type="button" data-health-check>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h4l2-7 4 14 2-7h4"/></svg>
+          <span>服务健康</span>
+        </button>
+        <span class="pill health-status" data-health-status data-state="idle"><span class="dot" aria-hidden="true"></span>未检查</span>
+      </div>
+    </header>
+    <main class="main page {% block main_class %}{% endblock %}" data-admin-main>
+      <header class="page-head" {% block page_head_attrs %}{% endblock %}>
         <div>
           <p class="eyebrow">Internal Distribution</p>
           <h1>{% block heading %}testflying 管理后台{% endblock %}</h1>
+          {% block heading_meta %}{% endblock %}
         </div>
-        <div class="health-check">
-          <button class="ghost-button health-button" type="button" data-health-check>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h4l2-7 4 14 2-7h4"/></svg>
-            <span>服务健康</span>
-          </button>
-          <span class="health-status" data-health-status data-state="idle">未检查</span>
+        <div class="actions page-actions">
+          {% block page_actions %}{% endblock %}
         </div>
       </header>
       {% block content %}{% endblock %}
@@ -143,7 +127,12 @@
 
       function updateActiveNav(path) {
         document.querySelectorAll('.nav-link').forEach((link) => {
-          link.classList.toggle('is-active', adminPathFromUrl(link.href) === path);
+          const linkPath = adminPathFromUrl(link.href);
+          const active = linkPath === '/admin'
+            ? path === '/admin' || path === '/admin/'
+            : path === linkPath || path.startsWith(`${linkPath}/`);
+          link.classList.toggle('is-active', active);
+          link.classList.toggle('active', active);
         });
       }
 
@@ -1690,6 +1679,7 @@
             clearInterval(appLogState.poller);
             appLogState.poller = null;
           }
+          adminMain()?.classList.remove('log-connected', 'log-scrolled', 'log-compact');
           return;
         }
         if (page.dataset.initialized !== 'true') {
@@ -1788,9 +1778,13 @@
         if (!page) return;
         const hasConnectedDevice = appLogState.devices.some((device) => device.connected);
         const isScrolled = window.scrollY > 80;
+        const main = adminMain();
         page.classList.toggle('is-connected', hasConnectedDevice);
         page.classList.toggle('is-scrolled', isScrolled);
         page.classList.toggle('is-compact', hasConnectedDevice || isScrolled);
+        main?.classList.toggle('log-connected', hasConnectedDevice);
+        main?.classList.toggle('log-scrolled', isScrolled);
+        main?.classList.toggle('log-compact', hasConnectedDevice || isScrolled);
         syncAppLogStickyOffsets(page);
       }
 

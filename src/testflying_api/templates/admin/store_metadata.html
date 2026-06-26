@@ -1,6 +1,41 @@
 {% extends "admin/base.html" %}
 {% block main_class %}store-metadata-main store-workspace-main{% endblock %}
 {% block heading %}商店管理{% endblock %}
+{% block heading_meta %}
+  <div class="meta">
+    <span>{{ store_label }} 默认商店页</span>
+    <span>{{ app.name }}</span>
+    <span>{{ app.bundle_identifier }}</span>
+    <span>{{ app.platform|platform }}</span>
+    <span>当前草稿</span>
+    <span>{{ supported_locales|length }} 个语言</span>
+    <span>
+      {% if preflight and preflight.can_sync %}
+        商店状态正常
+      {% elif preflight %}
+        需要处理
+      {% else %}
+        等待检查
+      {% endif %}
+    </span>
+    <span>当前商店最新版本（含未发布）：<strong>{{ version or "-" }}</strong></span>
+  </div>
+{% endblock %}
+{% block page_actions %}
+  <button class="button ghost" type="submit" form="store-metadata-form">保存草稿</button>
+  <button
+    class="button primary"
+    type="submit"
+    form="store-metadata-form"
+    formaction="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata/sync"
+    data-store-metadata-sync-submit
+    {% if not preflight or not preflight.can_sync %}disabled{% endif %}
+  >同步到商店</button>
+  <button class="button ghost metadata-refresh-button" type="submit" form="metadata-preflight-form">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.8-3.8"/><path d="M5 3v4.5h4.5"/><path d="M4 13a8 8 0 0 0 14.8 3.8"/><path d="M19 21v-4.5h-4.5"/></svg>
+    实时查询
+  </button>
+{% endblock %}
 {% block content %}
   <section class="card context-card store-workspace-context">
     <div>
@@ -31,21 +66,28 @@
   <div class="store-management-page store-default-page">
     <div class="resource-layout store-management-resource-layout store-default-resource-layout">
       <aside class="card resource-nav" aria-label="商店管理资源">
-        <a class="resource-link active" href="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store" aria-current="page">
-          <strong>默认商店页</strong>
-          <span>文案、截图、版本说明</span>
-        </a>
-        <a class="resource-link" href="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store/marketing">
-          <strong>营销页面</strong>
-          <span>自定义产品页面</span>
-        </a>
-        <a class="resource-link" href="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store/connection">
-          <strong>商店连接</strong>
-          <span>Connector、语言、版本检查</span>
-        </a>
+        <div class="module-head">
+          <strong>商店设置</strong>
+          <span>按模块维护这个应用</span>
+        </div>
+        <div class="module-list">
+          <a class="resource-link active" href="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store" aria-current="page">
+            <strong>默认商店页</strong>
+            <span>文案、截图、版本说明</span>
+          </a>
+          <a class="resource-link" href="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store/marketing">
+            <strong>营销页面</strong>
+            <span>自定义产品页面</span>
+          </a>
+          <a class="resource-link" href="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store/connection">
+            <strong>商店连接</strong>
+            <span>Connector、语言、版本检查</span>
+          </a>
+        </div>
       </aside>
 
   <form
+    id="store-metadata-form"
     class="store-metadata-form store-workspace-form"
     action="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store-metadata"
     method="post"
@@ -53,7 +95,7 @@
     data-metadata-form
     data-source-locale="{{ source_locale }}"
     data-store-platform="{{ app.platform }}"
-    data-store-workspace-mode="copy"
+    data-store-workspace-mode="marketing"
   >
     <div hidden>
       <input name="version" value="{{ version }}" data-metadata-version>
@@ -64,6 +106,51 @@
         <input type="hidden" name="locales" value="{{ item.locale }}">
       {% endfor %}
     </div>
+
+    <section class="store-default-page-head">
+      <div>
+        <h2>默认商店页</h2>
+        <p>维护 App Store Connect 默认商店页的版本说明、宣传文本、描述和商店图。</p>
+      </div>
+      <span class="store-default-page-status">
+        <i aria-hidden="true"></i>
+        0/{{ localized_metadata|length }} 语言未填写
+      </span>
+    </section>
+
+    <nav class="store-section-anchor-row" aria-label="默认商店页同步项">
+      <button
+        class="store-section-anchor active"
+        type="button"
+        data-sync-item-select
+        data-sync-item-key="release_notes"
+        data-sync-item-type="release-notes"
+      >版本说明</button>
+      <button
+        class="store-section-anchor"
+        type="button"
+        data-sync-item-select
+        data-sync-item-key="promotional_text"
+        data-sync-item-type="field"
+        data-field="promotional_text"
+      >宣传文本</button>
+      <button
+        class="store-section-anchor"
+        type="button"
+        data-sync-item-select
+        data-sync-item-key="description"
+        data-sync-item-type="field"
+        data-field="description"
+      >描述</button>
+      <button
+        class="store-section-anchor"
+        type="button"
+        data-sync-item-select
+        data-sync-item-key="phone_screenshots"
+        data-sync-item-type="store-image"
+        data-slot="phone_screenshots"
+      >商店图</button>
+    </nav>
 
     <section class="card toolbar store-workspace-toolbar">
       <div class="toolbar-left">

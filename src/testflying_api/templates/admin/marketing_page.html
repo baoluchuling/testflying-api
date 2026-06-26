@@ -1,6 +1,31 @@
 {% extends "admin/base.html" %}
 {% block main_class %}store-metadata-main store-workspace-main marketing-page-main{% endblock %}
 {% block heading %}营销页面{% endblock %}
+{% block heading_meta %}
+  <div class="meta">
+    <span>App Store Connect 营销页面</span>
+    <span>{{ page.page_name }}</span>
+    <span>{{ app.bundle_identifier }}</span>
+    <span>{{ supported_locales|length }} 个语言</span>
+    <span>{{ "已同步" if page.status == "synced" else "未同步" }}</span>
+  </div>
+{% endblock %}
+{% block page_actions %}
+  <a class="button ghost" href="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store/marketing">返回营销页面</a>
+  <button class="button ghost" type="submit" form="marketing-page-form">保存草稿</button>
+  <button
+    class="button primary"
+    type="submit"
+    form="marketing-page-form"
+    formaction="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store/marketing-pages/{{ page.page_id }}/sync"
+    data-store-metadata-sync-submit
+    {% if not preflight or not preflight.can_sync %}disabled{% endif %}
+  >同步到商店</button>
+  <button class="button ghost metadata-refresh-button" type="submit" form="marketing-preflight-form">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.8-3.8"/><path d="M5 3v4.5h4.5"/><path d="M4 13a8 8 0 0 0 14.8 3.8"/><path d="M19 21v-4.5h-4.5"/></svg>
+    实时查询
+  </button>
+{% endblock %}
 {% block content %}
   <section class="card context-card store-workspace-context">
     <div>
@@ -28,6 +53,7 @@
   </form>
 
   <form
+    id="marketing-page-form"
     class="store-metadata-form store-workspace-form marketing-page-form"
     action="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store/marketing-pages/{{ page.page_id }}"
     method="post"
@@ -350,8 +376,6 @@
       <div class="bottom-actions">
         <button class="button danger ghost" type="submit" formaction="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store/marketing-pages/{{ page.page_id }}/delete" onclick="return confirm('只删除中心后台的这个营销页面，确认继续？')">删除页面</button>
         <button class="button ghost" type="submit" formaction="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store/marketing-pages/{{ page.page_id }}/copy">复制页面</button>
-        <button class="button ghost" type="submit">保存草稿</button>
-        <button class="button primary" type="submit" formaction="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store/marketing-pages/{{ page.page_id }}/sync" data-store-metadata-sync-submit {% if not preflight or not preflight.can_sync %}disabled{% endif %}>同步到商店</button>
       </div>
     </div>
 

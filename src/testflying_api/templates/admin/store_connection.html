@@ -1,6 +1,16 @@
 {% extends "admin/base.html" %}
 {% block main_class %}store-metadata-main store-workspace-main store-marketing-main store-connection-main{% endblock %}
 {% block heading %}商店管理{% endblock %}
+{% block heading_meta %}
+  <div class="meta">
+    <span>{{ store_label }} 商店连接</span>
+    <span>{{ app.name }}</span>
+    <span>{{ app.bundle_identifier }}</span>
+    <span>{{ app.platform|platform }}</span>
+    <span>{{ supported_locales|length }} 个语言</span>
+    <span>{{ "连接正常" if connector and connector.status == "ok" else "需要检查" }}</span>
+  </div>
+{% endblock %}
 {% block content %}
   <div class="store-management-page store-connection-page">
     <section class="card context-card store-management-context">
@@ -27,18 +37,24 @@
 
     <div class="resource-layout store-management-resource-layout">
       <aside class="card resource-nav" aria-label="商店管理资源">
-        <a class="resource-link" href="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store">
-          <strong>默认商店页</strong>
-          <span>文案、截图、版本说明</span>
-        </a>
-        <a class="resource-link" href="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store/marketing">
-          <strong>营销页面</strong>
-          <span>自定义产品页面</span>
-        </a>
-        <a class="resource-link active" href="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store/connection" aria-current="page">
-          <strong>商店连接</strong>
-          <span>Connector、语言、版本检查</span>
-        </a>
+        <div class="module-head">
+          <strong>商店设置</strong>
+          <span>按模块维护这个应用</span>
+        </div>
+        <div class="module-list">
+          <a class="resource-link" href="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store">
+            <strong>默认商店页</strong>
+            <span>文案、截图、版本说明</span>
+          </a>
+          <a class="resource-link" href="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store/marketing">
+            <strong>营销页面</strong>
+            <span>自定义产品页面</span>
+          </a>
+          <a class="resource-link active" href="/admin/developer-accounts/{{ account.id }}/apps/{{ app.id }}/store/connection" aria-current="page">
+            <strong>商店连接</strong>
+            <span>Connector、语言、版本检查</span>
+          </a>
+        </div>
       </aside>
 
       <section class="card store-connection-panel">

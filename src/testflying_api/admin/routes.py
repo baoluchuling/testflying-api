@@ -2107,6 +2107,11 @@ def _windows_install_script(*, account_id: str, root: str) -> str:
 $Root = "__ROOT__"
 $TaskName = "__TASK_NAME__"
 $Repo = "baoluchuling/testflying-api"
+$PowerShellExe = Join-Path $env:WINDIR "System32\WindowsPowerShell\v1.0\powershell.exe"
+
+if (!(Test-Path $PowerShellExe)) {
+  throw "Windows PowerShell executable not found"
+}
 
 New-Item -ItemType Directory -Force $Root, "$Root\logs", "$Root\secrets" | Out-Null
 Copy-Item -Force "$PSScriptRoot\config.json" "$Root\config.json"
@@ -2146,22 +2151,31 @@ if (!(Test-Path "$Root\testflying-connector.exe")) {
 }
 
 $RunScript = @"
-`$ErrorActionPreference = "Stop"
 `$env:TESTFLYING_CONNECTOR_CONFIG_PATH = "$Root\config.json"
 & "$Root\testflying-connector.exe" *>> "$Root\logs\connector.log"
+exit `$LASTEXITCODE
 "@
 Set-Content -Encoding UTF8 "$Root\run-connector.ps1" $RunScript
 
-schtasks /End /TN $TaskName | Out-Null
-schtasks /Delete /TN $TaskName /F | Out-Null
-schtasks /Create `
+$ExistingTask = & schtasks.exe /Query /TN $TaskName 2>$null
+if ($LASTEXITCODE -eq 0) {
+  & schtasks.exe /End /TN $TaskName 2>$null | Out-Null
+  & schtasks.exe /Delete /TN $TaskName /F | Out-Null
+}
+& schtasks.exe /Create `
   /TN $TaskName `
   /SC ONSTART `
   /RL HIGHEST `
   /RU SYSTEM `
-  /TR "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$Root\run-connector.ps1`"" `
+  /TR "`"$PowerShellExe`" -NoProfile -ExecutionPolicy Bypass -File `"$Root\run-connector.ps1`"" `
   /F | Out-Null
-schtasks /Run /TN $TaskName | Out-Null
+if ($LASTEXITCODE -ne 0) {
+  throw "Failed to create scheduled task"
+}
+& schtasks.exe /Run /TN $TaskName | Out-Null
+if ($LASTEXITCODE -ne 0) {
+  throw "Failed to start scheduled task"
+}
 
 Write-Host "testflying connector installed."
 Write-Host "Task: $TaskName"

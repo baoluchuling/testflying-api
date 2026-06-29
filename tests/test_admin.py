@@ -780,6 +780,15 @@ def test_admin_can_generate_windows_active_connector_package(
     assert connector.base_url == "active://account-apple-enterprise"
     assert connector.auth_token == config["connectorToken"]
     assert "TESTFLYING_CONNECTOR_CONFIG_PATH" in install_script
+    stopped_run_script = (
+        '`$ErrorActionPreference = "Stop"\n`$env:TESTFLYING_CONNECTOR_CONFIG_PATH'
+    )
+    assert stopped_run_script not in install_script
+    assert "exit `$LASTEXITCODE" in install_script
+    assert "schtasks.exe /Query" in install_script
+    assert "System32\\WindowsPowerShell\\v1.0\\powershell.exe" in install_script
+    assert "Failed to create scheduled task" in install_script
+    assert "Failed to start scheduled task" in install_script
     install_script.encode("ascii")
 
 

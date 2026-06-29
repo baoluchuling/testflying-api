@@ -1,33 +1,139 @@
 {% extends "admin/base.html" %}
-{% block heading %}应用{% endblock %}
+{% block main_class %}store-apps-main{% endblock %}
+{% block heading %}商店管理{% endblock %}
+{% block heading_meta %}
+  <div class="meta">
+    <span>从应用进入商店内容</span>
+    <span>账号配置作为辅助入口</span>
+    <span>默认不经过开发者账号页</span>
+  </div>
+{% endblock %}
+{% block page_actions %}
+  <a class="button" href="/admin/apps">刷新状态</a>
+  <a class="button primary" href="/admin/uploads">上传新包</a>
+{% endblock %}
 {% block content %}
-  <section class="panel">
-    <div class="panel-header"><h2>应用列表</h2><a href="/admin/uploads">上传新构建</a></div>
-    <table>
-      <thead><tr><th>应用</th><th>平台</th><th>Bundle ID / Package</th><th>开发者账号</th><th>商店标识</th><th>默认环境</th><th>构建数</th><th>创建时间</th></tr></thead>
-      <tbody>
-        {% for app in apps %}
-          <tr>
-            <td><strong>{{ app.name }}</strong></td>
-            <td>{{ app.platform|platform }}</td>
-            <td><code>{{ app.bundle_identifier }}</code></td>
-            <td>
-              {% if app.developer_account %}
-                <a class="ghost-link" href="/admin/developer-accounts/{{ app.developer_account.id }}">{{ app.developer_account.team_name }}</a>
-              {% else %}
-                <span class="badge muted">未绑定</span>
-              {% endif %}
-            </td>
-            <td>{{ app.store_app_id or app.store_package_name or "-" }}</td>
-            {% set default_environment = "production" if app.default_channel == "prod" else "development" %}
-            <td><span class="badge">{{ default_environment|environment }}</span></td>
-            <td>{{ app.builds|length }}</td>
-            <td>{{ app.added_at|datetime }}</td>
-          </tr>
-        {% else %}
-          <tr><td colspan="8" class="empty">暂无应用，先上传一个 IPA 或 APK。</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  {% set stats = namespace(total=apps|length, needs=0, ok=0, ios=0, android=0, bound=0) %}
+  {% for app in apps %}
+    {% if app.platform == "ios" %}
+      {% set stats.ios = stats.ios + 1 %}
+    {% elif app.platform == "android" %}
+      {% set stats.android = stats.android + 1 %}
+    {% endif %}
+    {% if app.developer_account %}
+      {% set stats.bound = stats.bound + 1 %}
+    {% endif %}
+    {% set has_store_identifier = app.store_app_id if app.platform == "ios" else (app.store_package_name or app.bundle_identifier) %}
+    {% if app.developer_account and has_store_identifier %}
+      {% set stats.ok = stats.ok + 1 %}
+    {% else %}
+      {% set stats.needs = stats.needs + 1 %}
+    {% endif %}
+  {% endfor %}
+
+  <section class="filter-bar">
+    <div class="segmented" data-filter-group="store-apps" aria-label="商店应用筛选">
+      <button class="is-active active" type="button" data-filter-value="all">全部</button>
+      <button type="button" data-filter-value="ios">iOS</button>
+      <button type="button" data-filter-value="android">Android</button>
+      <button type="button" data-filter-value="needs">需处理</button>
+      <button type="button" data-filter-value="ok">可同步</button>
+    </div>
+    <div class="store-app-summary">
+      <span>{{ stats.total }} 个应用</span>
+      <span>{{ stats.ok }} 个可同步</span>
+      <span>{{ stats.needs }} 个需处理</span>
+    </div>
   </section>
+
+  <div class="work-grid store-app-grid">
+    <section class="panel">
+      <div class="panel-head">
+        <strong class="panel-title">商店应用</strong>
+        <span class="tag">点击应用直接进入商店管理</span>
+      </div>
+      <div class="table-list store-app-list">
+        <div class="table-row store-app-row header">
+          <span>应用</span>
+          <span>平台</span>
+          <span>开发者账号</span>
+          <span>商店状态</span>
+          <span>操作</span>
+        </div>
+        {% for app in apps %}
+          {% set store_identifier = app.store_app_id if app.platform == "ios" else (app.store_package_name or app.bundle_identifier) %}
+          {% set store_needs = not app.developer_account or not store_identifier %}
+          {% set logo_tone = "logo-blue" if loop.index0 % 4 == 0 else "logo-green" if loop.index0 % 4 == 1 else "logo-amber" if loop.index0 % 4 == 2 else "logo-slate" %}
+          <div
+            class="table-row store-app-row"
+            data-filter-tags="{{ app.platform }} {{ 'needs' if store_needs else 'ok' }} {{ app.name }} {{ app.bundle_identifier }}"
+          >
+            <div class="app-cell">
+              <span class="app-logo {{ logo_tone }}" style="background: {{ app.icon_color }}">{{ app.name[:2]|upper }}</span>
+              <div>
+                <strong>{{ app.name }}</strong>
+                <span>{{ app.bundle_identifier }}</span>
+                <small>Logo: {{ "已从包信息同步" if app.icon_key != "app" else "使用默认图标" }}</small>
+              </div>
+            </div>
+            <span>{{ app.platform|platform }}</span>
+            <span>
+              {% if app.developer_account %}
+                {{ app.developer_account.team_name }}
+              {% else %}
+                <span class="tag warn">未绑定</span>
+              {% endif %}
+            </span>
+            <span>
+              {% if not app.developer_account %}
+                <span class="tag warn">未绑定账号</span>
+              {% elif not store_identifier %}
+                <span class="tag warn">待填写商店标识</span>
+              {% else %}
+                <span class="tag ok">可同步</span>
+              {% endif %}
+            </span>
+            <span>
+              {% if app.developer_account %}
+                <a class="button" href="/admin/developer-accounts/{{ app.developer_account.id }}/apps/{{ app.id }}/store">进入商店管理</a>
+              {% else %}
+                <a class="button" href="/admin/developer-accounts">先绑定账号</a>
+              {% endif %}
+            </span>
+          </div>
+        {% else %}
+          <div class="empty store-app-empty">暂无应用，先上传一个 IPA 或 APK。</div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="panel account-connection-panel">
+      <div class="panel-head">
+        <strong class="panel-title">账号与连接</strong>
+      </div>
+      <div class="panel-body list-stack">
+        <div class="list-item">
+          <div>
+            <strong>开发者账号</strong>
+            <span>查看账号列表，再进入账号配置、Connector 和 App 绑定。</span>
+          </div>
+          <a class="button" href="/admin/developer-accounts">打开</a>
+        </div>
+        <div class="list-item">
+          <div>
+            <strong>Connector 状态</strong>
+            <span>{{ stats.bound }} 个应用已绑定账号，{{ stats.needs }} 个应用需要检查配置。</span>
+          </div>
+          <span class="tag {{ 'warn' if stats.needs else 'ok' }}">{{ "需处理" if stats.needs else "正常" }}</span>
+        </div>
+        <div class="list-item">
+          <div>
+            <strong>账号续费提醒</strong>
+            <span>续费、凭据和 Connector 都在开发者账号里维护。</span>
+          </div>
+          <span class="tag">账号级</span>
+        </div>
+      </div>
+    </section>
+  </div>
 {% endblock %}

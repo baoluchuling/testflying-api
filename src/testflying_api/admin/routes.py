@@ -2911,18 +2911,18 @@ def _form_list_value(values: list[str] | None, index: int) -> str:
 
 
 def _context(request: Request, *, active: str, **values: object) -> dict[str, object]:
+    active_nav = "apps" if active == "developer-accounts" else active
     return {
         "request": request,
-        "active": active,
+        "active": active_nav,
         "admin_asset_version": ADMIN_ASSET_VERSION,
         "nav_items": [
             ("dashboard", "/admin", "总览"),
             ("uploads", "/admin/uploads", "上传"),
-            ("apps", "/admin/apps", "应用"),
+            ("apps", "/admin/apps", "商店管理"),
             ("builds", "/admin/builds", "构建"),
             ("devices", "/admin/devices", "设备"),
             ("app-logs", "/admin/app-logs", "App 日志"),
-            ("developer-accounts", "/admin/developer-accounts", "开发者账号"),
             ("notifications", "/admin/notifications", "通知"),
         ],
         **values,

@@ -9306,3 +9306,355 @@ select:focus {
   font-weight: 650 !important;
   overflow-wrap: anywhere;
 }
+
+.store-apps-main,
+.account-directory-main {
+  max-width: none;
+}
+
+.filter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.segmented {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.segmented button {
+  min-height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--sub);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.segmented button.active,
+.segmented button.is-active {
+  background: #f1f1f3;
+  color: var(--text);
+}
+
+.store-app-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.store-app-grid {
+  grid-template-columns: minmax(0, 1fr) 330px;
+  align-items: start;
+}
+
+.store-app-list {
+  overflow: hidden;
+}
+
+.store-app-row {
+  grid-template-columns: minmax(260px, 1.35fr) 88px minmax(142px, .75fr) minmax(138px, .75fr) 136px;
+}
+
+.app-cell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.app-cell > div {
+  min-width: 0;
+}
+
+.app-cell strong,
+.app-cell span,
+.app-cell small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-cell strong {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.app-cell span,
+.app-cell small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.app-logo {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(0, 0, 0, .08);
+  border-radius: 10px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: .01em;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18);
+}
+
+.app-logo.logo-blue { background: linear-gradient(135deg, #1677ff, #0f4fd1); }
+.app-logo.logo-green { background: linear-gradient(135deg, #1fa463, #0d6f43); }
+.app-logo.logo-amber { background: linear-gradient(135deg, #f59e0b, #b45309); }
+.app-logo.logo-slate { background: linear-gradient(135deg, #64748b, #1f2937); }
+
+.list-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 58px;
+  padding: 12px 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.list-item > div {
+  min-width: 0;
+}
+
+.list-item strong,
+.list-item span {
+  display: block;
+}
+
+.list-item strong {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.list-item span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.account-connection-panel {
+  align-self: start;
+}
+
+.account-console {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 18px;
+  align-items: start;
+}
+
+.account-search input {
+  width: min(360px, 34vw);
+  min-height: 38px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.account-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 16px 18px;
+}
+
+.account-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 278px;
+  padding: 16px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.account-card.needs {
+  border-color: #f1d6b0;
+  background: #fffaf3;
+}
+
+.account-card.is-selected {
+  border-color: #c8c8cf;
+  box-shadow: inset 0 0 0 1px #c8c8cf;
+}
+
+.account-card-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.account-platform {
+  display: inline-flex;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.account-card h3 {
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 760;
+  line-height: 1.2;
+}
+
+.account-card p {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.account-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.account-metric {
+  min-height: 54px;
+  padding: 9px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.account-metric span,
+.account-apps > span,
+.account-side-note > span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.account-metric strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 760;
+}
+
+.account-apps {
+  min-height: 54px;
+}
+
+.account-app-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.account-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.account-card-actions form {
+  margin: 0;
+}
+
+.account-card-actions .button {
+  min-height: 32px;
+  font-size: 13px;
+}
+
+.account-side {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.account-side-note {
+  padding: 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.account-side-note strong {
+  display: block;
+  margin-top: 5px;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
+.account-side-note p {
+  margin-top: 6px;
+  color: var(--sub);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.store-app-empty,
+.account-card-empty {
+  padding: 28px;
+}
+
+@media (max-width: 1280px) {
+  .store-app-grid,
+  .account-console {
+    grid-template-columns: 1fr;
+  }
+
+  .account-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .filter-bar,
+  .store-app-summary {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .store-app-row {
+    grid-template-columns: minmax(220px, 1fr) 76px minmax(120px, .8fr) minmax(122px, .8fr) 128px;
+  }
+
+  .account-card-grid {
+    grid-template-columns: 1fr;
+  }
+}

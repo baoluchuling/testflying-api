@@ -286,7 +286,25 @@
         if (filter === 'ok') return row.dataset.accountStatus === 'ok';
         if (filter === 'renewal') return row.dataset.accountStatus !== 'ok';
         if (filter === 'connector') return row.dataset.accountConnector !== 'ok';
+        if (filter === 'needs') {
+          return row.dataset.accountStatus !== 'ok' || row.dataset.accountConnector !== 'ok';
+        }
+        if (filter === 'ios' || filter === 'android') {
+          return row.dataset.accountPlatform === filter;
+        }
         return true;
+      }
+
+      function syncSegmentedFilter(group, value) {
+        if (!group) return;
+        document.querySelectorAll(`[data-filter-group="${group}"] [data-filter-value]`).forEach((item) => {
+          item.classList.toggle('active', item.dataset.filterValue === value);
+          item.classList.toggle('is-active', item.dataset.filterValue === value);
+        });
+        document.querySelectorAll(`[data-filter-tags]`).forEach((item) => {
+          const tags = (item.dataset.filterTags || '').toLowerCase().split(/\s+/);
+          item.hidden = value !== 'all' && !tags.includes(value);
+        });
       }
 
       function syncAccountMatrix() {
@@ -2229,6 +2247,13 @@
             item.classList.toggle('is-active', item === filter);
           });
           syncAccountMatrix();
+          return;
+        }
+
+        const segmentedFilter = event.target.closest('[data-filter-value]');
+        if (segmentedFilter) {
+          const group = segmentedFilter.closest('[data-filter-group]')?.dataset.filterGroup;
+          syncSegmentedFilter(group, segmentedFilter.dataset.filterValue || 'all');
           return;
         }
 

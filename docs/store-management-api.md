@@ -1,7 +1,8 @@
 # 商店管理对外接口
 
-本文档描述 `testflying-server` 当前保留的商店管理对外 API。接口只把数据保存到
-testflying 中心后台，不会直接同步到 App Store Connect 或 Google Play Console。
+本文档描述 `testflying-server` 当前保留的商店管理对外 API。导入接口只把数据保存到
+testflying 中心后台；同步触发接口会复用中心后台的预检查、校验、同步记录和 Connector
+调用链路，把已保存草稿同步到 App Store Connect 或 Google Play Console。
 
 ## 基础信息
 
@@ -214,6 +215,124 @@ curl -X POST "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/
 }
 ```
 
+## 4. 同步默认商店页和版本说明
+
+```http
+POST /v1/store-management/developer-accounts/{accountId}/apps/{appId}/sync-runs
+Content-Type: application/json
+```
+
+用途：
+
+- 第三方电脑通过中心后台直接触发同步。
+- 只同步已经保存到中心后台的草稿，不会在本接口里修改草稿内容。
+- `metadata` 和 `store_images` 读取当前默认商店页草稿。
+- `release_notes` 读取指定 `version` 的版本说明草稿。
+- 中心后台会创建 `store_sync_runs`，并通过当前账号 Connector 调用真实商店 API。
+- 同一 token + 账号 + App 默认限制 `10 次/分钟`、`100 次/小时`。
+- 同一个开发者账号同一时间只允许一个直接同步请求执行。
+
+完整 curl：
+
+```bash
+curl -X POST "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/$APP_ID/sync-runs" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "version": "1.0.0",
+    "locales": ["en-US", "zh-Hant"],
+    "scopes": ["metadata", "release_notes", "store_images"],
+    "actor": "third-party-computer",
+    "idempotencyKey": "build-123-store-sync"
+  }'
+```
+
+成功响应示例：
+
+```json
+{
+  "status": "succeeded",
+  "accountId": "ceshi",
+  "appId": "app-ios-com-boluchuling-app-lookrva",
+  "version": "1.0.0",
+  "pageId": null,
+  "scopes": ["metadata", "release_notes", "store_images"],
+  "locales": ["en-US", "zh-Hant"],
+  "runs": [
+    {
+      "runId": "sync-xxxx",
+      "operation": "update_app_metadata",
+      "locale": "en-US",
+      "status": "succeeded",
+      "errorCode": null,
+      "errorSummary": null
+    },
+    {
+      "runId": "sync-yyyy",
+      "operation": "update_release_notes",
+      "locale": "en-US",
+      "status": "succeeded",
+      "errorCode": null,
+      "errorSummary": null
+    }
+  ],
+  "idempotent": false
+}
+```
+
+## 5. 同步自定义产品页面
+
+```http
+POST /v1/store-management/developer-accounts/{accountId}/apps/{appId}/marketing-pages/{pageId}/sync-runs
+Content-Type: application/json
+```
+
+用途：
+
+- 同步已经保存在中心后台的 App Store Connect 自定义产品页面草稿。
+- 当前只支持 iOS App。
+- `marketing_text` 同步宣传文本。
+- `store_images` 同步自定义产品页面截图。
+
+完整 curl：
+
+```bash
+curl -X POST "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/$APP_ID/marketing-pages/$PAGE_ID/sync-runs" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "locales": ["en-US", "zh-Hant"],
+    "scopes": ["marketing_text", "store_images"],
+    "actor": "third-party-computer",
+    "idempotencyKey": "campaign-a-page-sync"
+  }'
+```
+
+成功响应示例：
+
+```json
+{
+  "status": "succeeded",
+  "accountId": "ceshi",
+  "appId": "app-ios-com-boluchuling-app-lookrva",
+  "version": "page-xxxxxxxx",
+  "pageId": "page-xxxxxxxx",
+  "scopes": ["marketing_text", "store_images"],
+  "locales": ["en-US", "zh-Hant"],
+  "runs": [
+    {
+      "runId": "sync-zzzz",
+      "operation": "update_marketing_page",
+      "locale": "en-US",
+      "status": "succeeded",
+      "errorCode": null,
+      "errorSummary": null
+    }
+  ],
+  "idempotent": false
+}
+```
+
 ## 错误响应
 
 未传或传错 token：
@@ -249,5 +368,26 @@ metadata JSON 不合法：
 {
   "code": "invalid_metadata",
   "message": "metadata JSON 格式不正确：..."
+}
+```
+
+同步请求过于频繁：
+
+```json
+{
+  "code": "rate_limited",
+  "message": "同步请求过于频繁，请稍后重试",
+  "retryable": true,
+  "retryAfterSeconds": 42
+}
+```
+
+同账号已有同步正在执行：
+
+```json
+{
+  "code": "account_sync_in_progress",
+  "message": "当前开发者账号已有同步任务正在执行，请稍后重试",
+  "retryable": true
 }
 ```

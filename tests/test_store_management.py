@@ -5,6 +5,7 @@ import json
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from testflying_api.routes.store_management import _reset_direct_sync_guards_for_tests
 from testflying_api.schema import (
     StoreAppMetadataDraft,
     StoreMarketingPage,
@@ -13,7 +14,12 @@ from testflying_api.schema import (
     StoreSyncRun,
 )
 from testflying_api.seed import seed_demo_catalog
-from testflying_api.store_sync import CURRENT_METADATA_VERSION
+from testflying_api.store_sync import (
+    CURRENT_METADATA_VERSION,
+    UPDATE_APP_METADATA,
+    UPDATE_MARKETING_PAGE,
+    UPDATE_RELEASE_NOTES,
+)
 from tests.fixtures import make_png_header_bytes
 
 
@@ -76,8 +82,7 @@ def test_store_management_imports_store_version_draft_without_store_sync(
     assert en_us.content_set_id == "default"
     assert en_us.description == "Long store description for import testing."
     assert all(
-        not value["urls"] and not value["assets"]
-        for value in en_us.store_images_json.values()
+        not value["urls"] and not value["assets"] for value in en_us.store_images_json.values()
     )
     assert zh_hant.description == "Long store description for import testing."
 
@@ -85,6 +90,188 @@ def test_store_management_imports_store_version_draft_without_store_sync(
     zh_hant_notes = next(draft for draft in release_note_drafts if draft.locale == "zh-Hant")
     assert en_us_notes.release_notes == "Fix bugs"
     assert zh_hant_notes.release_notes == "Fix bugs"
+
+
+def test_store_management_direct_sync_default_store_page_from_existing_drafts(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _reset_direct_sync_guards_for_tests()
+    seed_demo_catalog(db_session)
+    client.post(
+        (
+            "/v1/store-management/developer-accounts/account-apple-enterprise"
+            "/apps/app-aurora-ios/store-versions/1.0.0/draft"
+        ),
+        headers={"Authorization": "Bearer dev-token"},
+        json=_version_payload(),
+    )
+
+    response = client.post(
+        (
+            "/v1/store-management/developer-accounts/account-apple-enterprise"
+            "/apps/app-aurora-ios/sync-runs"
+        ),
+        headers={"Authorization": "Bearer dev-token"},
+        json={
+            "version": "1.0.0",
+            "locales": ["en-US", "zh-Hant"],
+            "scopes": ["metadata", "release_notes", "store_images"],
+            "actor": "third-party-computer",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "succeeded"
+    assert body["accountId"] == "account-apple-enterprise"
+    assert body["appId"] == "app-aurora-ios"
+    assert body["version"] == "1.0.0"
+    assert body["scopes"] == ["metadata", "release_notes", "store_images"]
+    assert body["locales"] == ["en-US", "zh-Hant"]
+    assert body["idempotent"] is False
+    assert len(body["runs"]) == 4
+    assert {(item["operation"], item["locale"], item["status"]) for item in body["runs"]} == {
+        (UPDATE_APP_METADATA, "en-US", "succeeded"),
+        (UPDATE_APP_METADATA, "zh-Hant", "succeeded"),
+        (UPDATE_RELEASE_NOTES, "en-US", "succeeded"),
+        (UPDATE_RELEASE_NOTES, "zh-Hant", "succeeded"),
+    }
+
+    runs = db_session.query(StoreSyncRun).order_by(StoreSyncRun.locale).all()
+    assert len(runs) == 4
+    assert {run.operation for run in runs} == {UPDATE_APP_METADATA, UPDATE_RELEASE_NOTES}
+    assert {run.sync_scopes_json["scopes"][0] for run in runs} == {
+        "metadata",
+        "release_notes",
+    }
+
+
+def test_store_management_direct_sync_is_idempotent(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _reset_direct_sync_guards_for_tests()
+    seed_demo_catalog(db_session)
+    client.post(
+        (
+            "/v1/store-management/developer-accounts/account-apple-enterprise"
+            "/apps/app-aurora-ios/store-versions/1.0.0/draft"
+        ),
+        headers={"Authorization": "Bearer dev-token"},
+        json=_version_payload(),
+    )
+    request_body = {
+        "version": "1.0.0",
+        "locales": ["en-US"],
+        "scopes": ["release_notes"],
+        "actor": "third-party-computer",
+        "idempotencyKey": "build-123-release-notes-en-US",
+    }
+
+    first = client.post(
+        (
+            "/v1/store-management/developer-accounts/account-apple-enterprise"
+            "/apps/app-aurora-ios/sync-runs"
+        ),
+        headers={"Authorization": "Bearer dev-token"},
+        json=request_body,
+    )
+    second = client.post(
+        (
+            "/v1/store-management/developer-accounts/account-apple-enterprise"
+            "/apps/app-aurora-ios/sync-runs"
+        ),
+        headers={"Authorization": "Bearer dev-token"},
+        json=request_body,
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["idempotent"] is False
+    assert second.json()["idempotent"] is True
+    assert first.json()["runs"] == second.json()["runs"]
+    assert db_session.query(StoreSyncRun).count() == 1
+
+
+def test_store_management_direct_sync_rate_limits_repeated_requests(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _reset_direct_sync_guards_for_tests()
+    seed_demo_catalog(db_session)
+    client.post(
+        (
+            "/v1/store-management/developer-accounts/account-apple-enterprise"
+            "/apps/app-aurora-ios/store-versions/1.0.0/draft"
+        ),
+        headers={"Authorization": "Bearer dev-token"},
+        json=_version_payload(),
+    )
+
+    url = (
+        "/v1/store-management/developer-accounts/account-apple-enterprise"
+        "/apps/app-aurora-ios/sync-runs"
+    )
+    payload = {
+        "version": "1.0.0",
+        "locales": ["en-US"],
+        "scopes": ["release_notes"],
+    }
+    for _ in range(10):
+        response = client.post(url, headers={"Authorization": "Bearer dev-token"}, json=payload)
+        assert response.status_code == 200
+
+    limited = client.post(url, headers={"Authorization": "Bearer dev-token"}, json=payload)
+
+    assert limited.status_code == 429
+    assert limited.json()["code"] == "rate_limited"
+    assert limited.json()["retryAfterSeconds"] > 0
+
+
+def test_store_management_direct_sync_marketing_page_from_existing_draft(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _reset_direct_sync_guards_for_tests()
+    seed_demo_catalog(db_session)
+    create_response = client.post(
+        (
+            "/v1/store-management/developer-accounts/account-apple-enterprise"
+            "/apps/app-aurora-ios/marketing-pages"
+        ),
+        headers={"Authorization": "Bearer dev-token"},
+        data={"metadata": json.dumps(_marketing_page_payload())},
+    )
+    page_id = create_response.json()["pageId"]
+
+    response = client.post(
+        (
+            "/v1/store-management/developer-accounts/account-apple-enterprise"
+            f"/apps/app-aurora-ios/marketing-pages/{page_id}/sync-runs"
+        ),
+        headers={"Authorization": "Bearer dev-token"},
+        json={
+            "locales": ["en-US", "zh-Hant"],
+            "scopes": ["marketing_text", "store_images"],
+            "actor": "third-party-computer",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "succeeded"
+    assert body["pageId"] == page_id
+    assert body["version"] == page_id
+    assert body["scopes"] == ["marketing_text", "store_images"]
+    assert {(item["operation"], item["locale"], item["status"]) for item in body["runs"]} == {
+        (UPDATE_MARKETING_PAGE, "en-US", "succeeded"),
+        (UPDATE_MARKETING_PAGE, "zh-Hant", "succeeded"),
+    }
+
+    page = db_session.query(StoreMarketingPage).filter_by(page_id=page_id).one()
+    assert page.status == "synced"
+    assert db_session.query(StoreSyncRun).count() == 2
 
 
 def test_store_management_store_image_suite_endpoint_is_removed(
@@ -154,9 +341,7 @@ def test_store_management_imports_marketing_page_without_store_sync(
     assert page.deep_link_url == "anystories:///campaign"
 
     locales = (
-        db_session.query(StoreMarketingPageLocale)
-        .order_by(StoreMarketingPageLocale.locale)
-        .all()
+        db_session.query(StoreMarketingPageLocale).order_by(StoreMarketingPageLocale.locale).all()
     )
     assert [item.locale for item in locales] == ["en-US", "zh-Hant"]
     en_us = next(item for item in locales if item.locale == "en-US")
@@ -166,9 +351,7 @@ def test_store_management_imports_marketing_page_without_store_sync(
 
     phone_assets = en_us.store_images_json["phone_screenshots"]["assets"]
     assert [asset["fileName"] for asset in phone_assets] == ["phone-1.png", "phone-2.png"]
-    assert f"/{body['pageId']}/marketing/en-US/phone_screenshots/" in phone_assets[0][
-        "storageKey"
-    ]
+    assert f"/{body['pageId']}/marketing/en-US/phone_screenshots/" in phone_assets[0]["storageKey"]
 
 
 def test_store_management_imports_metadata_content_set_without_store_sync(
@@ -290,9 +473,7 @@ def _marketing_page_payload() -> dict[str, object]:
             {
                 "locale": "en-US",
                 "promotionalText": "Read better stories every day.",
-                "storeImages": {
-                    "phoneScreenshots": ["https://cdn.example.test/source-phone.png"]
-                },
+                "storeImages": {"phoneScreenshots": ["https://cdn.example.test/source-phone.png"]},
             },
             {
                 "locale": "zh-Hant",
@@ -317,9 +498,7 @@ def _metadata_payload() -> dict[str, object]:
                 "keywords": "novel,reader,story",
                 "promotionalText": "Read better stories every day.",
                 "description": "Long store description for import testing.",
-                "storeImages": {
-                    "phoneScreenshots": ["https://cdn.example.test/source-phone.png"]
-                },
+                "storeImages": {"phoneScreenshots": ["https://cdn.example.test/source-phone.png"]},
             },
             {
                 "locale": "zh-Hant",

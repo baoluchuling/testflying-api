@@ -3,7 +3,10 @@ from __future__ import annotations
 import json
 import re
 import secrets
+import time
+from collections import deque
 from pathlib import Path
+from threading import Lock
 from typing import Annotated
 from uuid import uuid4
 
@@ -20,10 +23,15 @@ from testflying_api.store_sync import (
     DEFAULT_CONTENT_SET_NAME,
     DEFAULT_LOCALE,
     create_marketing_page,
+    marketing_page_for_scope,
+    marketing_page_locales,
     metadata_draft_for_scope,
     save_current_app_metadata_draft,
     save_release_note_draft,
     scoped_app,
+    sync_existing_current_app_metadata,
+    sync_existing_release_notes,
+    sync_marketing_page,
 )
 
 router = APIRouter(prefix="/v1/store-management", tags=["store-management"])
@@ -43,6 +51,20 @@ STORE_IMAGE_SLOT_ALIASES = {
     "tabletScreenshots": "tablet_screenshots",
     "tablet_screenshots": "tablet_screenshots",
 }
+DEFAULT_DIRECT_STORE_SYNC_SCOPES = ["metadata", "release_notes", "store_images"]
+DEFAULT_DIRECT_MARKETING_SYNC_SCOPES = ["marketing_text", "store_images"]
+DIRECT_SYNC_RATE_LIMIT_PER_MINUTE = 10
+DIRECT_SYNC_RATE_LIMIT_PER_HOUR = 100
+DIRECT_SYNC_IDEMPOTENCY_TTL_SECONDS = 3600
+
+_direct_sync_guard_lock = Lock()
+_direct_sync_minute_events: dict[tuple[str, str, str], deque[float]] = {}
+_direct_sync_hour_events: dict[tuple[str, str, str], deque[float]] = {}
+_direct_sync_idempotency_cache: dict[
+    tuple[str, str, str, str, str],
+    tuple[float, dict[str, object]],
+] = {}
+_direct_sync_account_locks: dict[str, Lock] = {}
 
 
 class CamelModel(BaseModel):
@@ -126,6 +148,42 @@ class MarketingPageImportResponse(CamelModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class StoreDirectSyncRequest(CamelModel):
+    version: str
+    locales: list[str] = Field(default_factory=list)
+    scopes: list[str] = Field(default_factory=lambda: list(DEFAULT_DIRECT_STORE_SYNC_SCOPES))
+    actor: str = "api"
+    idempotency_key: str = Field(default="", alias="idempotencyKey")
+
+
+class MarketingDirectSyncRequest(CamelModel):
+    locales: list[str] = Field(default_factory=list)
+    scopes: list[str] = Field(default_factory=lambda: list(DEFAULT_DIRECT_MARKETING_SYNC_SCOPES))
+    actor: str = "api"
+    idempotency_key: str = Field(default="", alias="idempotencyKey")
+
+
+class DirectSyncRunResult(CamelModel):
+    run_id: str = Field(alias="runId")
+    operation: str
+    locale: str
+    status: str
+    error_code: str | None = Field(default=None, alias="errorCode")
+    error_summary: str | None = Field(default=None, alias="errorSummary")
+
+
+class DirectSyncResponse(CamelModel):
+    status: str
+    account_id: str = Field(alias="accountId")
+    app_id: str = Field(alias="appId")
+    version: str | None = None
+    page_id: str | None = Field(default=None, alias="pageId")
+    scopes: list[str]
+    locales: list[str]
+    runs: list[DirectSyncRunResult]
+    idempotent: bool = False
+
+
 @router.post(
     "/developer-accounts/{account_id}/apps/{app_id}/metadata-content-sets",
     response_model=MetadataContentSetResponse,
@@ -171,9 +229,7 @@ async def import_metadata_content_set(
         locales=[row["locale"] for row in rows],
         savedDrafts=len(rows),
         uploadedAssets=sum(
-            len(assets)
-            for slots in uploaded_assets.values()
-            for assets in slots.values()
+            len(assets) for slots in uploaded_assets.values() for assets in slots.values()
         ),
         warnings=[],
     )
@@ -299,11 +355,347 @@ async def import_marketing_page(
     )
 
 
-def _require_static_token(request: Request) -> None:
+@router.post(
+    "/developer-accounts/{account_id}/apps/{app_id}/sync-runs",
+    response_model=DirectSyncResponse,
+)
+def trigger_default_store_sync(
+    account_id: str,
+    app_id: str,
+    payload: StoreDirectSyncRequest,
+    request: Request,
+    session: SessionDep,
+) -> DirectSyncResponse:
+    token = _require_static_token(request)
+    cached = _direct_sync_cached_response(
+        token=token,
+        account_id=account_id,
+        app_id=app_id,
+        endpoint="default-store",
+        idempotency_key=payload.idempotency_key,
+    )
+    if cached is not None:
+        return cached
+
+    account_lock = _begin_direct_sync(token=token, account_id=account_id, app_id=app_id)
+    try:
+        version = payload.version.strip()
+        if not version:
+            raise ApiError("missing_version", "同步到商店前需要指定 version", status_code=422)
+        app = scoped_app(session, account_id, app_id)
+        if app is None:
+            raise ApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
+        scopes = _normalize_direct_sync_scopes(
+            payload.scopes,
+            allowed=DEFAULT_DIRECT_STORE_SYNC_SCOPES,
+        )
+        locales = _normalize_requested_locales(payload.locales)
+        actor = payload.actor.strip() or "api"
+        runs = []
+        metadata_scopes = [scope for scope in scopes if scope in {"metadata", "store_images"}]
+        for locale in locales:
+            if metadata_scopes:
+                runs.append(
+                    sync_existing_current_app_metadata(
+                        session,
+                        account_id=account_id,
+                        app_id=app.id,
+                        version=version,
+                        locale=locale,
+                        actor=actor,
+                        sync_scopes=metadata_scopes,
+                    )
+                )
+            if "release_notes" in scopes:
+                runs.append(
+                    sync_existing_release_notes(
+                        session,
+                        account_id=account_id,
+                        app_id=app.id,
+                        version=version,
+                        locale=locale,
+                        actor=actor,
+                    )
+                )
+        session.commit()
+        response = _direct_sync_response(
+            account_id=account_id,
+            app_id=app.id,
+            version=version,
+            scopes=scopes,
+            locales=locales,
+            runs=runs,
+        )
+        _store_direct_sync_idempotency_response(
+            token=token,
+            account_id=account_id,
+            app_id=app_id,
+            endpoint="default-store",
+            idempotency_key=payload.idempotency_key,
+            response=response,
+        )
+        return response
+    except ApiError:
+        session.rollback()
+        raise
+    finally:
+        account_lock.release()
+
+
+@router.post(
+    "/developer-accounts/{account_id}/apps/{app_id}/marketing-pages/{page_id}/sync-runs",
+    response_model=DirectSyncResponse,
+)
+def trigger_marketing_page_sync(
+    account_id: str,
+    app_id: str,
+    page_id: str,
+    payload: MarketingDirectSyncRequest,
+    request: Request,
+    session: SessionDep,
+) -> DirectSyncResponse:
+    token = _require_static_token(request)
+    cached = _direct_sync_cached_response(
+        token=token,
+        account_id=account_id,
+        app_id=app_id,
+        endpoint=f"marketing-page:{page_id}",
+        idempotency_key=payload.idempotency_key,
+    )
+    if cached is not None:
+        return cached
+
+    account_lock = _begin_direct_sync(token=token, account_id=account_id, app_id=app_id)
+    try:
+        app = scoped_app(session, account_id, app_id)
+        if app is None:
+            raise ApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
+        page = marketing_page_for_scope(
+            session,
+            account_id=account_id,
+            app_id=app.id,
+            page_id=page_id,
+        )
+        if page is None:
+            raise ApiError("marketing_page_not_found", "营销页面不存在", status_code=404)
+        scopes = _normalize_direct_sync_scopes(
+            payload.scopes,
+            allowed=DEFAULT_DIRECT_MARKETING_SYNC_SCOPES,
+        )
+        locales = _normalize_requested_locales(payload.locales)
+        existing_locales = marketing_page_locales(session, page.id)
+        missing_locales = [locale for locale in locales if locale not in existing_locales]
+        if missing_locales:
+            raise ApiError(
+                "marketing_page_locale_missing",
+                f"营销页面缺少语言：{', '.join(missing_locales)}",
+                status_code=422,
+            )
+        actor = payload.actor.strip() or "api"
+        runs = [
+            sync_marketing_page(
+                session,
+                account_id=account_id,
+                app_id=app.id,
+                page_id=page.page_id,
+                locale=locale,
+                sync_scopes=scopes,
+                actor=actor,
+            )
+            for locale in locales
+        ]
+        session.commit()
+        response = _direct_sync_response(
+            account_id=account_id,
+            app_id=app.id,
+            version=page.page_id,
+            page_id=page.page_id,
+            scopes=scopes,
+            locales=locales,
+            runs=runs,
+        )
+        _store_direct_sync_idempotency_response(
+            token=token,
+            account_id=account_id,
+            app_id=app_id,
+            endpoint=f"marketing-page:{page_id}",
+            idempotency_key=payload.idempotency_key,
+            response=response,
+        )
+        return response
+    except ApiError:
+        session.rollback()
+        raise
+    finally:
+        account_lock.release()
+
+
+def _require_static_token(request: Request) -> str:
     expected = f"Bearer {request.app.state.settings.static_token}"
     authorization = request.headers.get("Authorization", "")
     if not secrets.compare_digest(authorization, expected):
         raise ApiError("invalid_static_token", "接口 token 不正确", status_code=401)
+    return authorization
+
+
+def _normalize_direct_sync_scopes(values: list[str], *, allowed: list[str]) -> list[str]:
+    normalized = [str(value or "").strip() for value in values]
+    invalid = [value for value in normalized if value and value not in allowed]
+    if invalid:
+        raise ApiError(
+            "invalid_sync_scopes",
+            f"不支持的同步范围：{', '.join(invalid)}",
+            status_code=422,
+        )
+    scopes = _unique_non_empty(tuple(normalized))
+    if not scopes:
+        raise ApiError(
+            "invalid_sync_scopes",
+            f"同步范围至少需要包含一个值：{', '.join(allowed)}",
+            status_code=422,
+        )
+    return scopes
+
+
+def _normalize_requested_locales(values: list[str]) -> list[str]:
+    locales = _unique_non_empty(tuple(str(value or "").strip() for value in values))
+    if not locales:
+        raise ApiError("locales_required", "直接同步接口需要指定 locales", status_code=422)
+    return locales
+
+
+def _begin_direct_sync(*, token: str, account_id: str, app_id: str) -> Lock:
+    _check_direct_sync_rate_limit(token=token, account_id=account_id, app_id=app_id)
+    with _direct_sync_guard_lock:
+        account_lock = _direct_sync_account_locks.setdefault(account_id, Lock())
+    if not account_lock.acquire(blocking=False):
+        raise ApiError(
+            "account_sync_in_progress",
+            "当前开发者账号已有同步任务正在执行，请稍后重试",
+            status_code=409,
+            retryable=True,
+        )
+    return account_lock
+
+
+def _check_direct_sync_rate_limit(*, token: str, account_id: str, app_id: str) -> None:
+    now = time.monotonic()
+    key = (token, account_id, app_id)
+    with _direct_sync_guard_lock:
+        minute_events = _direct_sync_minute_events.setdefault(key, deque())
+        hour_events = _direct_sync_hour_events.setdefault(key, deque())
+        _drop_old_events(minute_events, now=now, window_seconds=60)
+        _drop_old_events(hour_events, now=now, window_seconds=3600)
+
+        waits: list[float] = []
+        if len(minute_events) >= DIRECT_SYNC_RATE_LIMIT_PER_MINUTE:
+            waits.append(60 - (now - minute_events[0]))
+        if len(hour_events) >= DIRECT_SYNC_RATE_LIMIT_PER_HOUR:
+            waits.append(3600 - (now - hour_events[0]))
+        if waits:
+            retry_after = max(1, int(max(waits)) + 1)
+            raise ApiError(
+                "rate_limited",
+                "同步请求过于频繁，请稍后重试",
+                status_code=429,
+                retryable=True,
+                extra={"retryAfterSeconds": retry_after},
+            )
+
+        minute_events.append(now)
+        hour_events.append(now)
+
+
+def _drop_old_events(events: deque[float], *, now: float, window_seconds: float) -> None:
+    while events and now - events[0] >= window_seconds:
+        events.popleft()
+
+
+def _direct_sync_cached_response(
+    *,
+    token: str,
+    account_id: str,
+    app_id: str,
+    endpoint: str,
+    idempotency_key: str,
+) -> DirectSyncResponse | None:
+    normalized_key = idempotency_key.strip()
+    if not normalized_key:
+        return None
+    cache_key = (token, account_id, app_id, endpoint, normalized_key)
+    now = time.monotonic()
+    with _direct_sync_guard_lock:
+        cached = _direct_sync_idempotency_cache.get(cache_key)
+        if cached is None:
+            return None
+        expires_at, body = cached
+        if expires_at <= now:
+            _direct_sync_idempotency_cache.pop(cache_key, None)
+            return None
+        response_body = dict(body)
+    response_body["idempotent"] = True
+    return DirectSyncResponse.model_validate(response_body)
+
+
+def _store_direct_sync_idempotency_response(
+    *,
+    token: str,
+    account_id: str,
+    app_id: str,
+    endpoint: str,
+    idempotency_key: str,
+    response: DirectSyncResponse,
+) -> None:
+    normalized_key = idempotency_key.strip()
+    if not normalized_key:
+        return
+    cache_key = (token, account_id, app_id, endpoint, normalized_key)
+    expires_at = time.monotonic() + DIRECT_SYNC_IDEMPOTENCY_TTL_SECONDS
+    body = response.model_dump(by_alias=True)
+    with _direct_sync_guard_lock:
+        _direct_sync_idempotency_cache[cache_key] = (expires_at, body)
+
+
+def _direct_sync_response(
+    *,
+    account_id: str,
+    app_id: str,
+    version: str,
+    scopes: list[str],
+    locales: list[str],
+    runs: list[object],
+    page_id: str | None = None,
+) -> DirectSyncResponse:
+    results = [
+        DirectSyncRunResult(
+            runId=str(run.id),
+            operation=str(run.operation),
+            locale=str(run.locale),
+            status=str(run.status),
+            errorCode=run.error_code,
+            errorSummary=run.error_summary,
+        )
+        for run in runs
+    ]
+    ok = all(result.status == "succeeded" for result in results)
+    return DirectSyncResponse(
+        status="succeeded" if ok else "completed_with_failures",
+        accountId=account_id,
+        appId=app_id,
+        version=version,
+        pageId=page_id,
+        scopes=scopes,
+        locales=locales,
+        runs=results,
+    )
+
+
+def _reset_direct_sync_guards_for_tests() -> None:
+    with _direct_sync_guard_lock:
+        _direct_sync_minute_events.clear()
+        _direct_sync_hour_events.clear()
+        _direct_sync_idempotency_cache.clear()
+        _direct_sync_account_locks.clear()
 
 
 def _metadata_payload_from_form(form: object) -> MetadataContentSetImport:
@@ -433,9 +825,7 @@ def _version_draft_rows(payload: StoreVersionDraftImport) -> list[dict[str, obje
         locale_inputs[0],
     )
     source_has_metadata = bool(
-        source.keywords.strip()
-        or source.promotional_text.strip()
-        or source.description.strip()
+        source.keywords.strip() or source.promotional_text.strip() or source.description.strip()
     )
     rows: list[dict[str, object]] = []
     seen: set[str] = set()
@@ -476,9 +866,7 @@ def _marketing_page_rows(
     payload: MarketingPageImport,
     uploaded_assets: dict[str, dict[str, list[dict[str, object]]]],
 ) -> list[dict[str, object]]:
-    locale_inputs = {
-        item.locale.strip(): item for item in payload.locales if item.locale.strip()
-    }
+    locale_inputs = {item.locale.strip(): item for item in payload.locales if item.locale.strip()}
     locales = _unique_non_empty(
         [
             *locale_inputs.keys(),
@@ -590,9 +978,7 @@ def _marketing_images_for_locale(
     item: MarketingPageLocaleInput | None,
     uploaded_assets: dict[str, dict[str, list[dict[str, object]]]],
 ) -> dict[str, object]:
-    merged = _normalize_store_image_payload(
-        _marketing_top_level_images_for_locale(payload, locale)
-    )
+    merged = _normalize_store_image_payload(_marketing_top_level_images_for_locale(payload, locale))
     if item is not None:
         merged.update(_normalize_store_image_payload(item.store_images))
     for slot_key, assets in uploaded_assets.get(locale, {}).items():

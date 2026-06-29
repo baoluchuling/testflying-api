@@ -145,8 +145,16 @@ Google Play Console。
 }
 ```
 
-这个接口不会创建 `store_sync_runs` 记录。后续需要同步到商店时，仍然从管理后台打开对应
-App 的商店管理页面，选择版本内容后执行预检查、确认清单和同步。
+这个接口不会创建 `store_sync_runs` 记录。后续需要同步到商店时，可以从管理后台打开对应
+App 的商店管理页面执行同步，也可以由第三方电脑调用直接同步接口：
+
+```http
+POST /v1/store-management/developer-accounts/{accountId}/apps/{appId}/sync-runs
+POST /v1/store-management/developer-accounts/{accountId}/apps/{appId}/marketing-pages/{pageId}/sync-runs
+```
+
+直接同步接口只读取已经保存的草稿，中心后台会执行预检查、限流、幂等处理、同步记录创建和
+Connector 调用。
 
 ## 管理后台
 

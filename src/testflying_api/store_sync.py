@@ -1188,6 +1188,222 @@ def sync_current_app_metadata(
     )
 
 
+def sync_existing_release_notes(
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    version: str,
+    locale: str,
+    actor: str,
+    client: StoreConnectorClient | None = None,
+) -> StoreSyncRun:
+    app = scoped_app(session, account_id, app_id)
+    if app is None:
+        raise ApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
+    connector = account_connector(session, account_id)
+    if connector is None:
+        raise ApiError("connector_missing", "当前开发者账号还没有配置 connector", status_code=422)
+    draft = draft_for_scope(
+        session,
+        account_id=account_id,
+        app_id=app.id,
+        platform=app.platform,
+        version=version,
+        locale=locale,
+    )
+    if draft is None or not draft.release_notes.strip():
+        raise ApiError(
+            "release_notes_draft_missing",
+            f"{locale} 的 {version} 版本说明草稿不存在",
+            status_code=422,
+        )
+    preflight = get_or_refresh_preflight(
+        session,
+        account_id=account_id,
+        app_id=app.id,
+        version=version,
+        locale=locale,
+        client=client,
+    )
+    if not preflight.can_sync:
+        raise ApiError("preflight_failed", preflight.message, status_code=422)
+
+    run = StoreSyncRun(
+        id=f"sync-{uuid4().hex[:12]}",
+        developer_account_id=account_id,
+        app_id=app.id,
+        connector_id=connector.id,
+        draft_id=draft.id,
+        platform=app.platform,
+        operation=UPDATE_RELEASE_NOTES,
+        version=version,
+        locale=locale,
+        status="running",
+    )
+    session.add(run)
+    session.flush()
+
+    payload = _sync_payload(
+        run=run,
+        account_id=account_id,
+        app=app,
+        operation=UPDATE_RELEASE_NOTES,
+        version=version,
+        locale=locale,
+        release_notes=draft.release_notes,
+        sync_scopes=["release_notes"],
+    )
+    run.sync_scopes_json = {"scopes": ["release_notes"]}
+    run.payload_snapshot_json = {
+        "version": version,
+        "locale": locale,
+        "releaseNotes": draft.release_notes,
+    }
+    connector_client = client or StoreConnectorClient()
+    try:
+        response = connector_client.sync_release_notes(connector, payload)
+    except ConnectorCallError as error:
+        run.status = "failed"
+        run.error_code = "connector_error"
+        run.error_summary = error.message
+    else:
+        status = str(response.get("status") or "succeeded")
+        run.status = "succeeded" if status in {"ok", "success", "succeeded"} else status
+        run.error_code = _optional_str(response.get("errorCode"))
+        run.error_summary = _optional_str(response.get("errorSummary") or response.get("message"))
+        if run.status == "succeeded":
+            run.error_code = None
+            run.error_summary = None
+    run.finished_at = datetime.now(UTC)
+    session.add(
+        AuditLog(
+            id=f"audit-{uuid4().hex[:12]}",
+            developer_account_id=account_id,
+            actor=actor,
+            action="store.release_notes.sync",
+            target_type="store_sync_run",
+            target_id=run.id,
+        )
+    )
+    session.flush()
+    return run
+
+
+def sync_existing_current_app_metadata(
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    version: str,
+    locale: str,
+    actor: str,
+    sync_scopes: list[str],
+    client: StoreConnectorClient | None = None,
+) -> StoreSyncRun:
+    app = scoped_app(session, account_id, app_id)
+    if app is None:
+        raise ApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
+    connector = account_connector(session, account_id)
+    if connector is None:
+        raise ApiError("connector_missing", "当前开发者账号还没有配置 connector", status_code=422)
+    normalized_scopes = _normalize_app_metadata_sync_scopes(sync_scopes)
+    draft = metadata_draft_for_scope(
+        session,
+        account_id=account_id,
+        app_id=app.id,
+        platform=app.platform,
+        version=CURRENT_METADATA_VERSION,
+        locale=locale,
+        content_set_id=DEFAULT_CONTENT_SET_ID,
+    )
+    if draft is None:
+        raise ApiError(
+            "metadata_draft_missing",
+            f"{locale} 的默认商店页草稿不存在",
+            status_code=422,
+        )
+    include_text_metadata_in_payload = "metadata" in normalized_scopes
+    include_store_images_in_payload = "store_images" in normalized_scopes
+    if include_text_metadata_in_payload:
+        validate_app_metadata_for_sync(
+            platform=app.platform,
+            locale=locale,
+            keywords=draft.keywords,
+            promotional_text=draft.promotional_text,
+            description=draft.description,
+        )
+    preflight = get_or_refresh_preflight(
+        session,
+        account_id=account_id,
+        app_id=app.id,
+        version=version,
+        locale=locale,
+        operation=UPDATE_APP_METADATA,
+        client=client,
+    )
+    if not preflight.can_sync:
+        raise ApiError("preflight_failed", preflight.message, status_code=422)
+
+    run = StoreSyncRun(
+        id=f"sync-{uuid4().hex[:12]}",
+        developer_account_id=account_id,
+        app_id=app.id,
+        connector_id=connector.id,
+        metadata_draft_id=draft.id,
+        platform=app.platform,
+        operation=UPDATE_APP_METADATA,
+        version=version,
+        locale=locale,
+        status="running",
+    )
+    session.add(run)
+    session.flush()
+
+    payload = _sync_payload(
+        run=run,
+        account_id=account_id,
+        app=app,
+        operation=UPDATE_APP_METADATA,
+        version=version,
+        locale=locale,
+        metadata=_metadata_payload(
+            draft,
+            include_text_metadata=include_text_metadata_in_payload,
+            include_store_images=include_store_images_in_payload,
+        ),
+        sync_scopes=normalized_scopes,
+    )
+    run.sync_scopes_json = {"scopes": normalized_scopes}
+    run.payload_snapshot_json = {
+        "version": version,
+        "locale": locale,
+        "metadata": payload.get("metadata", {}),
+    }
+    connector_client = client or StoreConnectorClient()
+    try:
+        response = connector_client.sync_store_operation(connector, payload)
+    except ConnectorCallError as error:
+        run.status = "failed"
+        run.error_code = "connector_error"
+        run.error_summary = error.message
+    else:
+        _apply_sync_response(run, response)
+    run.finished_at = datetime.now(UTC)
+    session.add(
+        AuditLog(
+            id=f"audit-{uuid4().hex[:12]}",
+            developer_account_id=account_id,
+            actor=actor,
+            action="store.app_metadata.sync",
+            target_type="store_sync_run",
+            target_id=run.id,
+        )
+    )
+    session.flush()
+    return run
+
+
 def sync_marketing_page(
     session: Session,
     *,
@@ -1557,6 +1773,22 @@ def _normalize_marketing_page_type(value: str) -> str:
     return "custom_product_page"
 
 
+def _normalize_app_metadata_sync_scopes(values: list[str] | None) -> list[str]:
+    allowed = ["metadata", "store_images"]
+    selected = [value for value in values or [] if value in allowed]
+    deduped: list[str] = []
+    for value in selected:
+        if value not in deduped:
+            deduped.append(value)
+    if not deduped:
+        raise ApiError(
+            "invalid_sync_scopes",
+            "同步范围至少需要包含 metadata 或 store_images",
+            status_code=422,
+        )
+    return deduped
+
+
 def _normalize_marketing_sync_scopes(values: list[str] | None) -> list[str]:
     allowed = [MARKETING_SYNC_TEXT_SCOPE, MARKETING_SYNC_IMAGE_SCOPE]
     selected = [value for value in values or [] if value in allowed]
@@ -1620,9 +1852,7 @@ def _asset_list(value: object) -> list[dict[str, object]]:
                     item.get("contentType") or item.get("content_type") or ""
                 ).strip(),
                 "sizeBytes": int(item.get("sizeBytes") or item.get("size_bytes") or 0),
-                "storageKey": str(
-                    item.get("storageKey") or item.get("storage_key") or ""
-                ).strip(),
+                "storageKey": str(item.get("storageKey") or item.get("storage_key") or "").strip(),
                 "downloadUrl": download_url,
                 "width": int(item.get("width") or 0) or None,
                 "height": int(item.get("height") or 0) or None,

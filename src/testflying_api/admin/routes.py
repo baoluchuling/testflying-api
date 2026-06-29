@@ -2126,7 +2126,7 @@ if (!(Test-Path "$Root\testflying-connector.exe")) {
     Where-Object { $_.name -like "testflying-connector-windows-amd64-*.zip" } |
     Select-Object -First 1
   if ($null -eq $Asset) {
-    throw "GitHub Release 中没有找到 Windows connector 构建产物"
+    throw "Windows connector release asset not found"
   }
   $ZipPath = "$Root\connector-windows.zip"
   $ExtractPath = "$Root\download"
@@ -2140,7 +2140,7 @@ if (!(Test-Path "$Root\testflying-connector.exe")) {
   Expand-Archive -Force $ZipPath $ExtractPath
   $Exe = Get-ChildItem -Path $ExtractPath -Filter "*.exe" -Recurse | Select-Object -First 1
   if ($null -eq $Exe) {
-    throw "Windows connector 构建包中没有 exe"
+    throw "Windows connector exe not found in release asset"
   }
   Copy-Item -Force $Exe.FullName "$Root\testflying-connector.exe"
 }

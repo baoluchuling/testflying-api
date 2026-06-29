@@ -780,6 +780,7 @@ def test_admin_can_generate_windows_active_connector_package(
     assert connector.base_url == "active://account-apple-enterprise"
     assert connector.auth_token == config["connectorToken"]
     assert "TESTFLYING_CONNECTOR_CONFIG_PATH" in install_script
+    install_script.encode("ascii")
 
 
 def test_admin_can_generate_windows_active_connector_package_without_store_credentials(

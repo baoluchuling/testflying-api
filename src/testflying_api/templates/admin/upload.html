@@ -1,5 +1,23 @@
 {% extends "admin/base.html" %}
-{% block heading %}上传构建{% endblock %}
+{% block main_class %}upload-main{% endblock %}
+{% block heading %}上传{% endblock %}
+{% block heading_meta %}
+  <div class="meta">
+    <span>包信息自动解析</span>
+    <span>支持 iOS / Android</span>
+    <span>不会提交到商店</span>
+  </div>
+{% endblock %}
+{% block page_actions %}
+  <button class="button" type="reset" form="upload-build-form">清空</button>
+  <button
+    class="button primary"
+    type="submit"
+    form="upload-build-form"
+    data-upload-submit
+    data-upload-idle-label="开始上传"
+  >开始上传</button>
+{% endblock %}
 {% block content %}
   {% if error %}
     <div class="alert error">{{ error }}</div>
@@ -9,123 +27,159 @@
       <strong>上传成功</strong>
       <span>{{ upload.app.name }} {{ upload.build.version }} ({{ upload.build.build_number }})</span>
     </div>
-    <section class="panel">
-      <div class="panel-header"><h2>解析结果</h2><span>服务端从安装包读取</span></div>
-      <div class="metadata-grid">
-        <div class="metadata-item">
-          <span>应用名称</span>
-          <strong>{{ upload_details.app_name }}</strong>
-        </div>
-        <div class="metadata-item">
-          <span>包名 / Bundle ID</span>
-          <strong><code>{{ upload_details.bundle_identifier }}</code></strong>
-        </div>
-        <div class="metadata-item">
-          <span>平台</span>
-          <strong>{{ upload_details.platform|platform }}</strong>
-        </div>
-        <div class="metadata-item">
-          <span>环境</span>
-          <strong>{{ upload_details.environment|environment }}</strong>
-        </div>
-        <div class="metadata-item">
-          <span>版本号</span>
-          <strong>{{ upload_details.version }}</strong>
-        </div>
-        <div class="metadata-item">
-          <span>构建号</span>
-          <strong>{{ upload_details.build_number }}</strong>
-        </div>
-        <div class="metadata-item">
-          <span>开发者账号</span>
-          <strong>{{ upload_details.developer_account }}</strong>
-        </div>
-        <div class="metadata-item">
-          <span>商店标识</span>
-          <strong>{{ upload_details.store_identifier }}</strong>
-        </div>
-      </div>
-    </section>
-    <section class="panel">
-      <div class="panel-header"><h2>安装资源</h2><a href="/admin/builds">查看构建列表</a></div>
-      <div class="link-list">
-        <label>installUrl</label>
-        <code>{{ upload.install_info.install_url }}</code>
-        <button data-copy="{{ upload.install_info.install_url }}">复制</button>
-        {% if upload.install_info.manifest_url %}
-          <label>manifestUrl</label>
-          <code>{{ upload.install_info.manifest_url }}</code>
-          <button data-copy="{{ upload.install_info.manifest_url }}">复制</button>
-        {% endif %}
-        {% if upload.install_info.download_url %}
-          <label>downloadUrl</label>
-          <code>{{ upload.install_info.download_url }}</code>
-          <button data-copy="{{ upload.install_info.download_url }}">复制</button>
-        {% endif %}
-      </div>
-    </section>
   {% endif %}
 
-  <section class="panel">
-    <div class="panel-header"><h2>上传 IPA / APK</h2><span>包信息自动解析</span></div>
-    <form class="form" action="/admin/uploads" method="post" enctype="multipart/form-data" data-upload-form>
-      <label>
-        安装包
-        <input type="file" name="file" required>
-      </label>
-      <div class="form-grid">
-        <label>
-          平台
-          <select name="platform" data-upload-platform-select>
-            <option value="ios">iOS</option>
-            <option value="android">Android</option>
-          </select>
-        </label>
-        <label>
-          环境
-          <select name="environment">
-            <option value="development">开发环境</option>
-            <option value="production">线上环境</option>
-          </select>
-        </label>
-      </div>
-      <label>
-        开发者账号
-        <select name="developerAccountId">
-          <option value="">不绑定账号</option>
-          {% for account in accounts %}
-            <option value="{{ account.id }}">{{ account.team_name }} / {{ account.id }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <div class="form-grid">
-        <label data-upload-store-field="ios">
-          App Store Connect App ID
-          <input name="storeAppId" placeholder="App Store Connect App ID（数字 ID）">
-        </label>
-        <label data-upload-store-field="android" hidden>
-          Google Play package name
-          <input name="storePackageName" placeholder="留空则使用 APK package name">
-        </label>
-      </div>
-      <label>
-        更新说明
-        <textarea name="changelog" rows="4" placeholder="本次构建变更、验证重点或风险说明"></textarea>
-      </label>
-      <label>
-        应用名称覆盖
-        <input name="appName" placeholder="解析不到或需要改名时填写">
-      </label>
-      <div class="upload-progress" data-upload-progress hidden>
-        <div class="upload-progress-meta">
-          <span data-upload-status>等待上传</span>
-          <strong data-upload-percent>0%</strong>
+  <form
+    id="upload-build-form"
+    class="form upload-form"
+    action="/admin/uploads"
+    method="post"
+    enctype="multipart/form-data"
+    data-upload-form
+  >
+    <div class="work-grid upload-work-grid">
+      <section class="panel upload-package-panel">
+        <div class="panel-head">
+          <strong class="panel-title">上传包</strong>
+          <span class="tag" data-upload-state>等待选择</span>
         </div>
-        <div class="upload-progress-track">
-          <span data-upload-bar></span>
+        <div class="panel-body">
+          <label class="upload-zone">
+            <input type="file" name="file" required>
+            <span>
+              <strong>拖入 IPA / APK / AAB</strong>
+              <span>也可以点击这里选择文件。上传过程中切换页面不会中断，进度会保留在底部。</span>
+            </span>
+          </label>
+          <div class="upload-progress" data-upload-progress hidden>
+            <div class="upload-progress-meta">
+              <span data-upload-status>等待上传</span>
+              <strong data-upload-percent>0%</strong>
+            </div>
+            <div class="progress-track upload-progress-track">
+              <span class="progress-fill" data-upload-bar></span>
+            </div>
+          </div>
         </div>
-      </div>
-      <button class="primary-button" type="submit" data-upload-submit>上传构建</button>
-    </form>
-  </section>
+      </section>
+
+      <section class="panel upload-config-panel">
+        <div class="panel-head">
+          <strong class="panel-title">配置与解析</strong>
+          <span class="tag">包信息自动回填</span>
+        </div>
+        <div class="panel-body upload-config-body">
+          <div class="form-grid">
+            <label>
+              平台
+              <select name="platform" data-upload-platform-select>
+                <option value="ios">iOS</option>
+                <option value="android">Android</option>
+              </select>
+            </label>
+            <label>
+              环境
+              <select name="environment">
+                <option value="development">开发环境</option>
+                <option value="production">线上环境</option>
+              </select>
+            </label>
+          </div>
+          <label>
+            开发者账号
+            <select name="developerAccountId">
+              <option value="">不绑定账号</option>
+              {% for account in accounts %}
+                <option value="{{ account.id }}">{{ account.team_name }} / {{ account.id }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <div class="form-grid">
+            <label data-upload-store-field="ios">
+              App Store Connect App ID
+              <input name="storeAppId" placeholder="App Store Connect App ID（数字 ID）">
+            </label>
+            <label data-upload-store-field="android" hidden>
+              Google Play package name
+              <input name="storePackageName" placeholder="留空则使用 APK package name">
+            </label>
+          </div>
+          <label>
+            更新说明
+            <textarea name="changelog" rows="4" placeholder="本次构建变更、验证重点或风险说明"></textarea>
+          </label>
+          <label>
+            应用名称覆盖
+            <input name="appName" placeholder="解析不到或需要改名时填写">
+          </label>
+          <button
+            class="primary-button upload-inline-submit"
+            type="submit"
+            data-upload-submit
+            data-upload-idle-label="上传构建"
+          >上传构建</button>
+        </div>
+      </section>
+    </div>
+  </form>
+
+  {% if upload %}
+    <div class="work-grid upload-result-grid">
+      <section class="panel">
+        <div class="panel-header"><h2>解析结果</h2><span>服务端从安装包读取</span></div>
+        <div class="metadata-grid">
+          <div class="metadata-item">
+            <span>应用名称</span>
+            <strong>{{ upload_details.app_name }}</strong>
+          </div>
+          <div class="metadata-item">
+            <span>包名 / Bundle ID</span>
+            <strong><code>{{ upload_details.bundle_identifier }}</code></strong>
+          </div>
+          <div class="metadata-item">
+            <span>平台</span>
+            <strong>{{ upload_details.platform|platform }}</strong>
+          </div>
+          <div class="metadata-item">
+            <span>环境</span>
+            <strong>{{ upload_details.environment|environment }}</strong>
+          </div>
+          <div class="metadata-item">
+            <span>版本号</span>
+            <strong>{{ upload_details.version }}</strong>
+          </div>
+          <div class="metadata-item">
+            <span>构建号</span>
+            <strong>{{ upload_details.build_number }}</strong>
+          </div>
+          <div class="metadata-item">
+            <span>开发者账号</span>
+            <strong>{{ upload_details.developer_account }}</strong>
+          </div>
+          <div class="metadata-item">
+            <span>商店标识</span>
+            <strong>{{ upload_details.store_identifier }}</strong>
+          </div>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="panel-header"><h2>安装资源</h2><a href="/admin/builds">查看构建列表</a></div>
+        <div class="link-list">
+          <label>installUrl</label>
+          <code>{{ upload.install_info.install_url }}</code>
+          <button data-copy="{{ upload.install_info.install_url }}">复制</button>
+          {% if upload.install_info.manifest_url %}
+            <label>manifestUrl</label>
+            <code>{{ upload.install_info.manifest_url }}</code>
+            <button data-copy="{{ upload.install_info.manifest_url }}">复制</button>
+          {% endif %}
+          {% if upload.install_info.download_url %}
+            <label>downloadUrl</label>
+            <code>{{ upload.install_info.download_url }}</code>
+            <button data-copy="{{ upload.install_info.download_url }}">复制</button>
+          {% endif %}
+        </div>
+      </section>
+    </div>
+  {% endif %}
 {% endblock %}

@@ -9666,3 +9666,287 @@ select:focus {
     grid-template-columns: 1fr;
   }
 }
+
+/* Demo parity lock for the retained admin interaction prototype. */
+.global-nav .nav-link,
+.nav.global-nav .nav-link,
+.topbar .nav-link {
+  display: inline-flex !important;
+  grid-template-columns: none !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-height: 32px !important;
+  padding: 0 10px !important;
+  border: 0 !important;
+  border-radius: 7px !important;
+  background: transparent !important;
+  color: var(--sub) !important;
+  box-shadow: none !important;
+  outline: 0 !important;
+}
+
+.global-nav .nav-link.active,
+.global-nav .nav-link.is-active,
+.nav.global-nav .nav-link.active,
+.nav.global-nav .nav-link.is-active,
+.topbar .nav-link.active,
+.topbar .nav-link.is-active {
+  border: 0 !important;
+  background: #efeff1 !important;
+  color: var(--text) !important;
+  box-shadow: none !important;
+  outline: 0 !important;
+}
+
+.global-nav .nav-link:hover,
+.nav.global-nav .nav-link:hover,
+.topbar .nav-link:hover {
+  background: #f6f6f7 !important;
+  color: var(--text) !important;
+}
+
+.global-nav .nav-link:focus-visible,
+.nav.global-nav .nav-link:focus-visible,
+.topbar .nav-link:focus-visible {
+  outline: 0 !important;
+  box-shadow: inset 0 0 0 1px #c8c8cf !important;
+}
+
+.upload-main .page-head {
+  margin-bottom: 22px;
+}
+
+.upload-main .upload-form {
+  display: block;
+}
+
+.upload-main .upload-work-grid,
+.upload-main .upload-result-grid {
+  grid-template-columns: minmax(0, 1.25fr) minmax(360px, .75fr);
+}
+
+.upload-main .upload-result-grid {
+  margin-top: 18px;
+}
+
+.upload-main .upload-zone {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 280px;
+  overflow: hidden;
+  border-style: dashed;
+  background: #fbfbfd;
+  text-align: center;
+  cursor: pointer;
+}
+
+.upload-main .upload-zone input[type="file"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.upload-main .upload-zone strong {
+  display: block;
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 760;
+  line-height: 1.2;
+}
+
+.upload-main .upload-zone span span {
+  display: block;
+  max-width: 520px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 620;
+  line-height: 1.55;
+}
+
+.upload-main .upload-progress {
+  max-width: none;
+  margin-top: 16px;
+}
+
+.progress-track {
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e8e8ed;
+}
+
+.progress-fill,
+.progress-track [data-upload-bar] {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--blue);
+  transition: width .25s ease;
+}
+
+.upload-main .upload-config-body {
+  display: grid;
+  gap: 14px;
+}
+
+.upload-main .upload-inline-submit {
+  justify-self: start;
+  min-height: 38px;
+  margin-top: 2px;
+}
+
+.upload-main label {
+  margin: 0;
+}
+
+.app-logs-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(320px, .9fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.app-logs-main .page-head {
+  grid-column: 1 / -1;
+  margin-bottom: 0;
+}
+
+.app-logs-main .app-log-connect-panel {
+  position: static !important;
+  grid-column: 1;
+  width: 100%;
+  min-width: 0;
+  margin: 0 !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+}
+
+.app-logs-main .app-log-layout {
+  display: contents !important;
+  margin: 0 !important;
+}
+
+.app-logs-main .app-log-device-panel {
+  position: static !important;
+  grid-column: 2;
+  width: 100%;
+  min-width: 0;
+}
+
+.app-logs-main .app-log-stream-panel {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-width: 0;
+  padding: 0 !important;
+}
+
+.app-logs-main .app-log-connect-grid {
+  display: grid !important;
+  grid-template-columns: 132px minmax(0, 1fr) !important;
+  gap: 18px !important;
+  align-items: center !important;
+  padding: 16px 18px !important;
+}
+
+.app-logs-main:not(.log-connected):not(.log-compact) .app-log-connect-panel .panel-header {
+  min-height: 50px !important;
+  padding: 0 18px !important;
+}
+
+.app-logs-main:not(.log-connected):not(.log-compact) .app-log-connect-grid {
+  grid-template-columns: 104px minmax(0, 1fr) !important;
+  gap: 16px !important;
+  padding: 14px 18px 16px !important;
+}
+
+.app-logs-main:not(.log-connected):not(.log-compact) .app-log-qr-card {
+  width: 104px !important;
+  height: 104px !important;
+}
+
+.app-logs-main:not(.log-connected):not(.log-compact) .app-log-connect-form {
+  display: grid;
+  gap: 10px;
+}
+
+.app-logs-main:not(.log-connected):not(.log-compact) .app-log-connect-form .form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.app-logs-main:not(.log-connected):not(.log-compact) .app-log-connect-form label {
+  gap: 5px;
+  font-size: 13px;
+}
+
+.app-logs-main:not(.log-connected):not(.log-compact) .app-log-connect-form input {
+  min-height: 34px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+.app-logs-main:not(.log-connected):not(.log-compact) .app-log-connect-form .detail-list {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 4px 10px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.app-logs-main:not(.log-connected):not(.log-compact) .app-log-connect-form .detail-list dt,
+.app-logs-main:not(.log-connected):not(.log-compact) .app-log-connect-form .detail-list dd {
+  margin: 0;
+}
+
+.app-logs-main:not(.log-connected):not(.log-compact) .app-log-connect-form .detail-list dd {
+  min-width: 0;
+}
+
+.app-logs-main:not(.log-connected):not(.log-compact) .app-log-connect-form .detail-list code {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-logs-main:not(.log-connected):not(.log-compact) .compact-actions {
+  margin: 0 !important;
+}
+
+.app-logs-main .app-log-device-list {
+  display: grid;
+  gap: 8px;
+  padding: 14px 18px 18px;
+}
+
+.app-logs-main.log-connected,
+.app-logs-main.log-compact {
+  grid-template-columns: minmax(0, 1fr) minmax(320px, .55fr);
+  gap: 14px;
+}
+
+.app-logs-main.log-connected .app-log-list,
+.app-logs-main.log-compact .app-log-list,
+.app-logs-main .app-log-list {
+  min-height: 500px;
+  max-height: calc(100vh - 330px);
+}
+
+@media (max-width: 980px) {
+  .upload-main .upload-work-grid,
+  .upload-main .upload-result-grid,
+  .app-logs-main {
+    grid-template-columns: 1fr;
+  }
+
+  .app-logs-main .app-log-connect-panel,
+  .app-logs-main .app-log-device-panel,
+  .app-logs-main .app-log-stream-panel {
+    grid-column: 1;
+  }
+}

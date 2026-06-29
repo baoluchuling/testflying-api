@@ -229,7 +229,7 @@
         const status = form.querySelector('[data-upload-status]');
         const percent = form.querySelector('[data-upload-percent]');
         const bar = form.querySelector('[data-upload-bar]');
-        const submit = form.querySelector('[data-upload-submit]');
+        const submitButtons = document.querySelectorAll('[data-upload-submit]');
         const isUploading = adminUploadState.status === 'uploading'
           || adminUploadState.status === 'processing';
 
@@ -239,11 +239,12 @@
         if (bar && isActive) bar.style.width = `${adminUploadState.percent}%`;
         form.dataset.uploading = isUploading ? 'true' : 'false';
         form.classList.toggle('is-uploading', isUploading);
-        if (submit) {
+        submitButtons.forEach((submit) => {
+          const idleLabel = submit.dataset.uploadIdleLabel || '上传构建';
           submit.disabled = isUploading;
           submit.toggleAttribute('aria-busy', isUploading);
-          submit.textContent = isUploading ? '上传中' : '上传构建';
-        }
+          submit.textContent = isUploading ? '上传中' : idleLabel;
+        });
       }
 
       function syncUploadStoreFields(root = document) {

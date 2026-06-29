@@ -183,20 +183,39 @@
             </fieldset>
             <fieldset>
               <legend>Google Play Console</legend>
+              <div class="form-grid two">
+                <label>
+                  client_email
+                  <input
+                    name="googleClientEmail"
+                    autocomplete="off"
+                    placeholder="service-account@project.iam.gserviceaccount.com"
+                  >
+                </label>
+                <label>
+                  private_key
+                  <textarea
+                    name="googlePrivateKey"
+                    rows="8"
+                    spellcheck="false"
+                    placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----"
+                  ></textarea>
+                </label>
+              </div>
               <label>
-                Service Account JSON 内容
+                完整 Service Account JSON 内容（兼容）
                 <textarea
                   name="googleServiceAccountJson"
-                  rows="8"
+                  rows="6"
                   spellcheck="false"
                   placeholder='粘贴完整 service account JSON，例如 {"type":"service_account","client_email":"..."}'
                 ></textarea>
               </label>
               <p>
                 {% if account_store_platform == "android" %}
-                  当前账号已关联 Android App；不填写 Google JSON 时，安装包不会内置 Google Play 配置。
+                  当前账号已关联 Android App；不填写 Google 凭据时，安装包不会内置 Google Play 配置。
                 {% else %}
-                  如果这个 connector 也要同步 Android App，可以一并粘贴 Google service account JSON。
+                  如果这个 connector 也要同步 Android App，可以一并填写 Google service account 的 client_email 和 private_key，或粘贴完整 JSON。
                 {% endif %}
               </p>
             </fieldset>
@@ -264,8 +283,11 @@ Move-Item -Force "$Root\testflying-connector-windows-amd64-$Sha.exe" "$Root\test
 `$env:TESTFLYING_CONNECTOR_APPLE_PRIVATE_KEY_PATH = "$Root\secrets\appstoreconnect\AuthKey_XXXX.p8"
 {% endif %}
 {% if account_store_platform in ["android", "mixed"] %}
-# Google Play service account，把 JSON 放到 $Root\secrets\googleplay
+# Google Play service account。可以把 JSON 放到 $Root\secrets\googleplay：
 `$env:TESTFLYING_CONNECTOR_GOOGLE_SERVICE_ACCOUNT_JSON_PATH = "$Root\secrets\googleplay\service-account.json"
+# 也可以改用拆分字段：
+# `$env:TESTFLYING_CONNECTOR_GOOGLE_CLIENT_EMAIL = "service-account@project.iam.gserviceaccount.com"
+# `$env:TESTFLYING_CONNECTOR_GOOGLE_PRIVATE_KEY = "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
 {% endif %}
 
 & "$Root\testflying-connector.exe"

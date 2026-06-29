@@ -508,6 +508,8 @@ async def generate_connector_windows_package(
     apple_issuer_id: Annotated[str, Form(alias="appleIssuerId")] = "",
     apple_key_id: Annotated[str, Form(alias="appleKeyId")] = "",
     google_service_account_json: Annotated[str, Form(alias="googleServiceAccountJson")] = "",
+    google_client_email: Annotated[str, Form(alias="googleClientEmail")] = "",
+    google_private_key: Annotated[str, Form(alias="googlePrivateKey")] = "",
     apple_private_key: Annotated[UploadFile | None, File(alias="applePrivateKey")] = None,
     google_service_account: Annotated[UploadFile | None, File(alias="googleServiceAccount")] = None,
 ) -> Response:
@@ -518,6 +520,9 @@ async def generate_connector_windows_package(
         apple_file = await _read_optional_upload(apple_private_key)
         google_file = _google_service_account_from_text(
             google_service_account_json
+        ) or _google_service_account_from_fields(
+            client_email=google_client_email,
+            private_key=google_private_key,
         ) or await _read_optional_upload(google_service_account)
         package = _build_windows_connector_package(
             account_id=account_id,
@@ -1933,6 +1938,40 @@ def _google_service_account_from_text(value: str) -> tuple[str, bytes] | None:
         "service-account.json",
         json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8"),
     )
+
+
+def _google_service_account_from_fields(
+    *,
+    client_email: str,
+    private_key: str,
+) -> tuple[str, bytes] | None:
+    email = client_email.strip()
+    key = _normalize_google_private_key(private_key)
+    if not email and not key:
+        return None
+    if not email or not key:
+        raise ApiError(
+            "invalid_google_key",
+            "Google Play 拆分凭据需要同时填写 client_email 和 private_key",
+            status_code=422,
+        )
+    payload = {
+        "type": "service_account",
+        "client_email": email,
+        "private_key": key,
+        "token_uri": "https://oauth2.googleapis.com/token",
+    }
+    return (
+        "service-account.json",
+        json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8"),
+    )
+
+
+def _normalize_google_private_key(value: str) -> str:
+    content = value.strip()
+    if not content:
+        return ""
+    return content.replace("\\n", "\n")
 
 
 def _build_windows_connector_package(

@@ -9,7 +9,7 @@
 - `testflying-server`：中心化后台，负责账号、App、构建、版本说明草稿、商店元数据草稿、预检查缓存、同步记录和审计。
 - `testflying-connector`：账号级 Go 子项目，每个开发者账号单独部署一份，负责保存该账号商店凭证并调用 Apple / Google 商店 API。
 
-中心后台可以通过 HTTP 直接调用 connector，也可以让 connector 主动轮询中心后台领取任务。中心后台不能长期保存 Apple `.p8`、Google service account JSON 或商店访问 token；Windows 一次性安装包生成时会短暂接收凭据并直接写入 zip 响应，数据库只保存 connector token 和 `active://<account_id>` 地址。
+中心后台可以通过 HTTP 直接调用 connector，也可以让 connector 主动轮询中心后台领取任务。中心后台不能长期保存 Apple `.p8`、Google service account 凭据或商店访问 token；Windows 一次性安装包生成时会短暂接收凭据并直接写入 zip 响应，数据库只保存 connector token 和 `active://<account_id>` 地址。
 
 ## 第一版范围
 
@@ -308,7 +308,7 @@ Apple connector 需要 App Store Connect API Key：
 -v /opt/testflying/secrets/apple-a:/run/secrets/apple:ro
 ```
 
-Google connector 需要 service account JSON：
+Google connector 需要 service account 凭据。可以使用完整 JSON 文件：
 
 - `TESTFLYING_CONNECTOR_GOOGLE_SERVICE_ACCOUNT_JSON_PATH`
 - `TESTFLYING_CONNECTOR_GOOGLE_DEVELOPER_ID` 可选
@@ -323,11 +323,20 @@ JSON 文件挂载在 connector 所在机器，例如：
 
 Windows 推荐使用账号详情页的 `生成 Windows 一次性安装包`：
 
-- 后台根据账号平台要求上传 App Store Connect `.p8` 或 Google service account JSON。
+- 后台根据账号平台要求上传 App Store Connect `.p8`，Google Play 可以填写 `client_email` 和 `private_key` 拆分字段，也可以粘贴完整 service account JSON。
 - 后台生成 zip，包含 `install.ps1`、`config.json`、`README.txt` 和 `secrets/...`。
 - 生成时自动把当前账号 connector 保存为 `active://<account_id>`。
 - `install.ps1` 会把文件复制到 `C:\ProgramData\TestFlying\connectors\<account_id>`，注册 `testflying-connector-<account_id>` 计划任务，并从 GitHub Release 下载 Windows connector exe。
 - 手动重启：`schtasks /Run /TN testflying-connector-<account_id>`。
+
+如果不想保存完整 JSON 文件，也可以直接配置拆分字段：
+
+```bash
+TESTFLYING_CONNECTOR_GOOGLE_CLIENT_EMAIL=service-account@project.iam.gserviceaccount.com
+TESTFLYING_CONNECTOR_GOOGLE_PRIVATE_KEY='-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----'
+```
+
+connector 会把 `private_key` 里的 `\n` 还原为 PEM 换行。
 
 ## 隔离规则
 
@@ -336,5 +345,5 @@ Windows 推荐使用账号详情页的 `生成 Windows 一次性安装包`：
 - connector 收到请求后必须校验请求账号等于自身绑定账号。
 - 中心后台不能把一个账号的任务发给另一个账号的 connector。
 - 商店私钥只存在 connector 部署环境。
-- 中心后台日志和同步记录不能保存商店私钥、完整 Authorization header 或 service account JSON。
+- 中心后台日志和同步记录不能保存商店私钥、完整 Authorization header 或 service account 凭据。
 - connector 对商店接口做平台限流：Google / Android 默认 200 次 / 分钟；Apple / iOS 根据 Apple `X-Rate-Limit` 的 `user-hour-lim` 下调 20% 后执行，未拿到响应头前使用 fallback。

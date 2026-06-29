@@ -29,6 +29,8 @@ type Settings struct {
 
 	GoogleServiceAccountJSONPath string
 	GoogleServiceAccountJSON     string
+	GoogleClientEmail            string
+	GooglePrivateKey             string
 	GoogleDeveloperID            string
 	GoogleTokenURL               string
 	GoogleAPIBaseURL             string
@@ -58,6 +60,10 @@ type FileConfig struct {
 	Google struct {
 		ServiceAccountJSONPath string `json:"serviceAccountJsonPath"`
 		ServiceAccountJSON     string `json:"serviceAccountJson"`
+		ClientEmail            string `json:"clientEmail"`
+		ClientEmailSnake       string `json:"client_email"`
+		PrivateKey             string `json:"privateKey"`
+		PrivateKeySnake        string `json:"private_key"`
 		DeveloperID            string `json:"developerId"`
 		TokenURL               string `json:"tokenUrl"`
 		APIBaseURL             string `json:"apiBaseUrl"`
@@ -139,6 +145,12 @@ func LoadSettingsFromFile(path string, base Settings) (Settings, error) {
 	if value := strings.TrimSpace(config.Google.ServiceAccountJSON); value != "" {
 		settings.GoogleServiceAccountJSON = value
 	}
+	if value := firstNonEmpty(config.Google.ClientEmail, config.Google.ClientEmailSnake); value != "" {
+		settings.GoogleClientEmail = value
+	}
+	if value := firstNonEmpty(config.Google.PrivateKey, config.Google.PrivateKeySnake); value != "" {
+		settings.GooglePrivateKey = value
+	}
 	if value := strings.TrimSpace(config.Google.DeveloperID); value != "" {
 		settings.GoogleDeveloperID = value
 	}
@@ -188,6 +200,8 @@ func applyEnvOverrides(settings *Settings) {
 
 	overrideString(&settings.GoogleServiceAccountJSONPath, "TESTFLYING_CONNECTOR_GOOGLE_SERVICE_ACCOUNT_JSON_PATH")
 	overrideString(&settings.GoogleServiceAccountJSON, "TESTFLYING_CONNECTOR_GOOGLE_SERVICE_ACCOUNT_JSON")
+	overrideString(&settings.GoogleClientEmail, "TESTFLYING_CONNECTOR_GOOGLE_CLIENT_EMAIL")
+	overrideString(&settings.GooglePrivateKey, "TESTFLYING_CONNECTOR_GOOGLE_PRIVATE_KEY")
 	overrideString(&settings.GoogleDeveloperID, "TESTFLYING_CONNECTOR_GOOGLE_DEVELOPER_ID")
 	overrideString(&settings.GoogleTokenURL, "TESTFLYING_CONNECTOR_GOOGLE_TOKEN_URL")
 	overrideURL(&settings.GoogleAPIBaseURL, "TESTFLYING_CONNECTOR_GOOGLE_API_BASE_URL")
@@ -242,6 +256,15 @@ func env(name string, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func normalizeStoreMode(value string) string {

@@ -65,15 +65,16 @@ func (m *CredentialManager) AppleStatus() CredentialStatus {
 }
 
 func (m *CredentialManager) GoogleStatus() CredentialStatus {
-	if m.settings.GoogleServiceAccountJSONPath == "" && m.settings.GoogleServiceAccountJSON == "" {
-		return CredentialStatus{Configured: false, Valid: false, Message: "未配置 Google service account JSON"}
+	if m.settings.GoogleServiceAccountJSONPath == "" && m.settings.GoogleServiceAccountJSON == "" &&
+		m.settings.GoogleClientEmail == "" && m.settings.GooglePrivateKey == "" {
+		return CredentialStatus{Configured: false, Valid: false, Message: "未配置 Google service account 凭据"}
 	}
 	account, err := m.googleServiceAccount()
 	if err != nil {
 		return CredentialStatus{Configured: true, Valid: false, Message: err.Error()}
 	}
 	if account.ClientEmail == "" || account.PrivateKey == "" {
-		return CredentialStatus{Configured: true, Valid: false, Message: "Google service account JSON 缺少 client_email 或 private_key"}
+		return CredentialStatus{Configured: true, Valid: false, Message: "Google service account 凭据缺少 client_email 或 private_key"}
 	}
 	if _, err := account.privateKey(); err != nil {
 		return CredentialStatus{Configured: true, Valid: false, Message: err.Error()}
@@ -186,13 +187,21 @@ func (m *CredentialManager) googleServiceAccount() (*GoogleServiceAccount, error
 	}
 	m.mu.Unlock()
 
-	raw, err := readSecret(m.settings.GoogleServiceAccountJSON, m.settings.GoogleServiceAccountJSONPath)
-	if err != nil {
-		return nil, fmt.Errorf("读取 Google service account JSON 失败: %w", err)
-	}
 	var account GoogleServiceAccount
-	if err := json.Unmarshal(raw, &account); err != nil {
-		return nil, fmt.Errorf("解析 Google service account JSON 失败: %w", err)
+	if m.settings.GoogleServiceAccountJSONPath != "" || m.settings.GoogleServiceAccountJSON != "" {
+		raw, err := readSecret(m.settings.GoogleServiceAccountJSON, m.settings.GoogleServiceAccountJSONPath)
+		if err != nil {
+			return nil, fmt.Errorf("读取 Google service account JSON 失败: %w", err)
+		}
+		if err := json.Unmarshal(raw, &account); err != nil {
+			return nil, fmt.Errorf("解析 Google service account JSON 失败: %w", err)
+		}
+	} else {
+		account = GoogleServiceAccount{
+			ClientEmail: strings.TrimSpace(m.settings.GoogleClientEmail),
+			PrivateKey:  normalizeMultilineSecret(m.settings.GooglePrivateKey),
+			TokenURI:    m.settings.GoogleTokenURL,
+		}
 	}
 	if account.TokenURI == "" {
 		account.TokenURI = m.settings.GoogleTokenURL
@@ -263,6 +272,14 @@ func readSecret(inline string, path string) ([]byte, error) {
 		return nil, err
 	}
 	return bytes.TrimSpace(raw), nil
+}
+
+func normalizeMultilineSecret(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return ""
+	}
+	return strings.ReplaceAll(trimmed, `\n`, "\n")
 }
 
 func signECDSAJWT(header map[string]string, claims map[string]any, privateKey *ecdsa.PrivateKey) (string, error) {

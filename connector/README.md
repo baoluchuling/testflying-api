@@ -2,7 +2,7 @@
 
 `testflying-connector` 是按开发者账号隔离部署的商店 API 中转器。它使用 Go 实现，运行时是单二进制服务，不依赖数据库、MinIO 或 Python Web 框架。
 
-中心后台 `testflying-server` 只保存 connector 地址和调用 token，不保存 Apple `.p8`、Google service account JSON 或商店访问 token。每个 connector 只绑定一个开发者账号，只接受该账号的同步请求。
+中心后台 `testflying-server` 只保存 connector 地址和调用 token，不保存 Apple `.p8`、Google service account 凭据或商店访问 token。每个 connector 只绑定一个开发者账号，只接受该账号的同步请求。
 
 ## 模式
 
@@ -40,7 +40,7 @@ go run ./cmd/testflying-connector
 2. 在 `Connector 配置` 中找到 `生成 Windows 一次性安装包`。
 3. 上传当前账号需要的凭据：
    - iOS / App Store Connect：`Issuer ID`、`Key ID`、`.p8` 文件。
-   - Android / Google Play：service account JSON。
+   - Android / Google Play：`client_email`、`private_key` 拆分字段，或完整 service account JSON。
 4. 下载 zip 后复制到 Windows，解压。
 5. 用管理员 PowerShell 执行：
 
@@ -88,7 +88,7 @@ C:\ProgramData\TestFlying\connectors\<account_id>\logs\connector.log
 }
 ```
 
-中心后台会同步把该账号的 connector 地址改为 `active://<account_id>`。Apple `.p8` 和 Google service account JSON 只写入下载包和 Windows 本机目录，后台不会长期保存这些文件。
+中心后台会同步把该账号的 connector 地址改为 `active://<account_id>`。Apple `.p8` 和 Google service account 凭据只写入下载包和 Windows 本机目录，后台不会长期保存这些文件。
 
 ## Windows 单机部署
 
@@ -122,6 +122,9 @@ Move-Item -Force "$Root\testflying-connector-windows-amd64-$Sha.exe" "$Root\test
 
 # Google
 # `$env:TESTFLYING_CONNECTOR_GOOGLE_SERVICE_ACCOUNT_JSON_PATH = "$Root\secrets\google\service-account.json"
+# 或者使用拆分字段:
+# `$env:TESTFLYING_CONNECTOR_GOOGLE_CLIENT_EMAIL = "service-account@project.iam.gserviceaccount.com"
+# `$env:TESTFLYING_CONNECTOR_GOOGLE_PRIVATE_KEY = "-----BEGIN PRIVATE KEY-----`n...`n-----END PRIVATE KEY-----"
 
 & "$Root\testflying-connector.exe"
 "@ | Set-Content -Encoding UTF8 "$Root\run-connector.ps1"
@@ -181,7 +184,7 @@ Google 使用 service account。准备步骤：
 3. 创建 service account。
 4. 在 Google Play Console 的 Users and permissions 中邀请 service account 邮箱。
 5. 给目标 App 授权，至少需要能查看和管理商店信息。
-6. 下载 service account JSON。
+6. 下载 service account JSON，或记录 JSON 里的 `client_email` 和 `private_key` 两个字段。
 
 部署示例：
 
@@ -193,6 +196,19 @@ docker run -d --name testflying-connector-google-a \
   -e TESTFLYING_CONNECTOR_DEVELOPER_ACCOUNT_ID=google-account-a \
   -e TESTFLYING_CONNECTOR_TOKEN='<random-token>' \
   -e TESTFLYING_CONNECTOR_GOOGLE_SERVICE_ACCOUNT_JSON_PATH=/run/secrets/google/service-account.json \
+  testflying-connector:local
+```
+
+如果只有拆分字段，也可以不挂载 JSON 文件：
+
+```bash
+docker run -d --name testflying-connector-google-a \
+  -p 8100:8100 --memory=64m \
+  -e TESTFLYING_CONNECTOR_STORE_MODE=live \
+  -e TESTFLYING_CONNECTOR_DEVELOPER_ACCOUNT_ID=google-account-a \
+  -e TESTFLYING_CONNECTOR_TOKEN='<random-token>' \
+  -e TESTFLYING_CONNECTOR_GOOGLE_CLIENT_EMAIL='service-account@project.iam.gserviceaccount.com' \
+  -e TESTFLYING_CONNECTOR_GOOGLE_PRIVATE_KEY='-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----' \
   testflying-connector:local
 ```
 

@@ -403,6 +403,31 @@ func TestCredentialManagerValidatesAppleAndGoogleCredentials(t *testing.T) {
 	}
 }
 
+func TestCredentialManagerAcceptsSplitGoogleCredentials(t *testing.T) {
+	settings := testSettings()
+	settings.StoreMode = StoreModeLive
+	settings.GoogleClientEmail = "service-account@example.iam.gserviceaccount.com"
+	settings.GooglePrivateKey = strings.ReplaceAll(googlePrivateKeyPEM(t), "\n", `\n`)
+
+	manager := NewCredentialManager(settings)
+	status := manager.GoogleStatus()
+	account, err := manager.googleServiceAccount()
+	if err != nil {
+		t.Fatalf("googleServiceAccount: %v", err)
+	}
+	googleAssertion, err := account.JWTAssertion(time.Unix(1_700_000_000, 0), settings.GoogleTokenURL)
+	if err != nil {
+		t.Fatalf("JWTAssertion: %v", err)
+	}
+
+	if !status.Valid {
+		t.Fatalf("status = %#v", status)
+	}
+	if len(strings.Split(googleAssertion, ".")) != 3 {
+		t.Fatalf("google assertion = %s", googleAssertion)
+	}
+}
+
 func writeAppleKey(t *testing.T) string {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -418,18 +443,10 @@ func writeAppleKey(t *testing.T) string {
 
 func writeGoogleServiceAccount(t *testing.T) string {
 	t.Helper()
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatal(err)
-	}
-	raw, err := x509.MarshalPKCS8PrivateKey(key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	privateKey := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: raw})
+	privateKey := googlePrivateKeyPEM(t)
 	payload := map[string]string{
 		"client_email": "service-account@example.iam.gserviceaccount.com",
-		"private_key":  string(privateKey),
+		"private_key":  privateKey,
 		"token_uri":    "https://oauth2.googleapis.com/token",
 	}
 	data, err := json.Marshal(payload)
@@ -447,6 +464,20 @@ func writeGoogleServiceAccount(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return file.Name()
+}
+
+func googlePrivateKeyPEM(t *testing.T) string {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	privateKey := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: raw})
+	return string(privateKey)
 }
 
 func writePEM(t *testing.T, blockType string, raw []byte) string {

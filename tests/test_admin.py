@@ -394,8 +394,12 @@ def test_admin_developer_account_detail_renders_store_sync_entry(
     assert "TESTFLYING_CONNECTOR_APPLE_PRIVATE_KEY_PATH" in response.text
     assert "不上传 Apple 凭据时，安装包不会内置 App Store Connect 配置" in response.text
     assert "Google Play Console" in response.text
-    assert "Service Account JSON 内容" in response.text
+    assert "client_email" in response.text
+    assert "private_key" in response.text
+    assert "完整 Service Account JSON 内容" in response.text
     assert "如果这个 connector 也要同步 Android App" in response.text
+    assert 'name="googleClientEmail"' in response.text
+    assert 'name="googlePrivateKey"' in response.text
     assert 'name="googleServiceAccountJson"' in response.text
     assert 'name="applePrivateKey" type="file" accept=".p8" required' not in response.text
     assert (
@@ -891,6 +895,64 @@ def test_admin_windows_active_connector_package_accepts_google_json_text(
         r"\secrets\google\service-account.json"
     )
     assert google_secret["client_email"] == "robot@example.test"
+
+
+def test_admin_windows_active_connector_package_accepts_split_google_credentials(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+
+    response = client.post(
+        "/admin/developer-accounts/account-apple-enterprise/connector/windows-package",
+        headers=_admin_headers(),
+        data={
+            "googleClientEmail": "robot@example.test",
+            "googlePrivateKey": (
+                "-----BEGIN PRIVATE KEY-----\\n"
+                "key-content\\n"
+                "-----END PRIVATE KEY-----"
+            ),
+        },
+    )
+
+    with ZipFile(BytesIO(response.content)) as archive:
+        names = set(archive.namelist())
+        config = json.loads(archive.read("config.json").decode("utf-8"))
+        google_secret = json.loads(
+            archive.read("secrets/google/service-account.json").decode("utf-8")
+        )
+
+    assert response.status_code == 200
+    assert "secrets/google/service-account.json" in names
+    assert config["google"]["serviceAccountJsonPath"].endswith(
+        r"\secrets\google\service-account.json"
+    )
+    assert google_secret["client_email"] == "robot@example.test"
+    assert google_secret["private_key"] == (
+        "-----BEGIN PRIVATE KEY-----\n"
+        "key-content\n"
+        "-----END PRIVATE KEY-----"
+    )
+    assert google_secret["token_uri"] == "https://oauth2.googleapis.com/token"
+
+
+def test_admin_windows_active_connector_package_rejects_partial_google_split_fields(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+
+    response = client.post(
+        "/admin/developer-accounts/account-apple-enterprise/connector/windows-package",
+        headers=_admin_headers(),
+        data={
+            "googlePrivateKey": "-----BEGIN PRIVATE KEY-----\nkey\n-----END PRIVATE KEY-----",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "Google Play 拆分凭据需要同时填写 client_email 和 private_key" in response.text
 
 
 def test_admin_release_notes_page_runs_cached_preflight(

@@ -19,7 +19,9 @@ func TestLoadSettingsFromFileMapsActiveConnectorConfig(t *testing.T) {
 			"privateKeyPath": "C:\\ProgramData\\TestFlying\\secrets\\AuthKey_key-a.p8"
 		},
 		"google": {
-			"serviceAccountJsonPath": "C:\\ProgramData\\TestFlying\\secrets\\service-account.json"
+			"serviceAccountJsonPath": "C:\\ProgramData\\TestFlying\\secrets\\service-account.json",
+			"clientEmail": "robot@example.test",
+			"privateKey": "-----BEGIN PRIVATE KEY-----\\nkey\\n-----END PRIVATE KEY-----"
 		}
 	}`)
 	if err := os.WriteFile(path, data, 0o600); err != nil {
@@ -48,6 +50,12 @@ func TestLoadSettingsFromFileMapsActiveConnectorConfig(t *testing.T) {
 	}
 	if settings.GoogleServiceAccountJSONPath == "" {
 		t.Fatal("GoogleServiceAccountJSONPath is empty")
+	}
+	if settings.GoogleClientEmail != "robot@example.test" {
+		t.Fatalf("GoogleClientEmail = %q", settings.GoogleClientEmail)
+	}
+	if settings.GooglePrivateKey == "" {
+		t.Fatal("GooglePrivateKey is empty")
 	}
 }
 

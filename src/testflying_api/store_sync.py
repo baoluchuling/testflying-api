@@ -116,6 +116,58 @@ class StoreConnectorClient:
         )
         return _normalize_connector_locales(response.get("locales"))
 
+    def product_page_optimizations(
+        self,
+        connector: StoreConnector,
+        *,
+        account_id: str,
+        app: App,
+    ) -> dict[str, object]:
+        if connector.base_url.startswith("mock://"):
+            return _mock_product_page_optimizations(app)
+        query = urlencode(
+            {
+                "developerAccountId": account_id,
+                "platform": app.platform,
+                "storeAppId": app.store_app_id or "",
+            }
+        )
+        path = f"/v1/apps/{app.id}/product-page-optimizations?{query}"
+        return (
+            _active_request_json(connector, "GET", path)
+            if _is_active_connector(connector)
+            else _get_json(connector, path)
+        )
+
+    def create_product_page_optimization(
+        self,
+        connector: StoreConnector,
+        *,
+        account_id: str,
+        app: App,
+        name: str,
+        traffic_proportion: int,
+        locales: list[str],
+        treatments: list[dict[str, object]],
+    ) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "developerAccountId": account_id,
+            "platform": app.platform,
+            "name": name,
+            "trafficProportion": traffic_proportion,
+            "locales": locales,
+            "treatments": treatments,
+            "app": _connector_app_payload(app),
+        }
+        if connector.base_url.startswith("mock://"):
+            return _mock_create_product_page_optimization(app, payload)
+        path = f"/v1/apps/{app.id}/product-page-optimizations"
+        return (
+            _active_request_json(connector, "POST", path, payload)
+            if _is_active_connector(connector)
+            else _post_json(connector, path, payload)
+        )
+
     def preflight(
         self,
         connector: StoreConnector,
@@ -1717,6 +1769,10 @@ def _app_payload(app: App) -> dict[str, object]:
     }
 
 
+def _connector_app_payload(app: App) -> dict[str, object]:
+    return _app_payload(app)
+
+
 def _metadata_payload(
     draft: StoreAppMetadataDraft,
     *,
@@ -2006,6 +2062,72 @@ def _mock_preflight(payload: dict[str, object]) -> dict[str, object]:
 
 def _mock_supported_locales(platform: str) -> list[str]:
     return ["zh-Hans", "en-US", "ja", "ko"] if platform == "ios" else ["zh-Hans", "en-US"]
+
+
+def _mock_product_page_optimizations(app: App) -> dict[str, object]:
+    if app.platform != "ios":
+        return {"experiments": []}
+    return {
+        "experiments": [
+            {
+                "id": f"ppo-{app.id}",
+                "name": "Mock Product Page Optimization",
+                "platform": "IOS",
+                "state": "PREPARE_FOR_SUBMISSION",
+                "trafficProportion": 50,
+                "reviewRequired": False,
+                "treatments": [
+                    {
+                        "id": "treatment-mock-a",
+                        "name": "Variant A",
+                        "locales": ["en-US", "zh-Hant"],
+                    }
+                ],
+            }
+        ]
+    }
+
+
+def _mock_create_product_page_optimization(
+    app: App,
+    payload: dict[str, object],
+) -> dict[str, object]:
+    if app.platform != "ios":
+        raise ConnectorCallError("产品页面优化当前仅支持 App Store Connect")
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        raise ConnectorCallError("产品页面优化名称不能为空")
+    traffic_proportion = int(payload.get("trafficProportion") or 0)
+    if traffic_proportion <= 0 or traffic_proportion > 100:
+        raise ConnectorCallError("trafficProportion 必须在 1 到 100 之间")
+    locales = _normalize_connector_locales(payload.get("locales"))
+    raw_treatments = payload.get("treatments")
+    treatment_inputs = raw_treatments if isinstance(raw_treatments, list) else []
+    if not treatment_inputs:
+        treatment_inputs = [{"name": "Variant A"}]
+    treatments: list[dict[str, object]] = []
+    for index, raw_treatment in enumerate(treatment_inputs):
+        treatment = raw_treatment if isinstance(raw_treatment, dict) else {}
+        treatment_locales = _normalize_connector_locales(treatment.get("locales")) or locales
+        treatments.append(
+            {
+                "id": f"treatment-{app.id}-{index + 1}",
+                "name": str(treatment.get("name") or f"Variant {index + 1}").strip(),
+                "appIconName": str(treatment.get("appIconName") or "").strip(),
+                "locales": treatment_locales,
+            }
+        )
+    return {
+        "experiment": {
+            "id": f"ppo-created-{app.id}",
+            "name": name,
+            "platform": "IOS",
+            "state": "PREPARE_FOR_SUBMISSION",
+            "trafficProportion": traffic_proportion,
+            "reviewRequired": True,
+            "treatments": treatments,
+        }
+    }
 
 
 def _normalize_locales(raw_locales: object) -> list[str]:

@@ -22,6 +22,9 @@ from testflying_api.store_sync import (
     DEFAULT_CONTENT_SET_ID,
     DEFAULT_CONTENT_SET_NAME,
     DEFAULT_LOCALE,
+    ConnectorCallError,
+    StoreConnectorClient,
+    account_connector,
     create_marketing_page,
     marketing_page_for_scope,
     marketing_page_locales,
@@ -181,6 +184,52 @@ class DirectSyncResponse(CamelModel):
     scopes: list[str]
     locales: list[str]
     runs: list[DirectSyncRunResult]
+    idempotent: bool = False
+
+
+class ProductPageOptimizationTreatmentInput(CamelModel):
+    name: str
+    app_icon_name: str = Field(default="", alias="appIconName")
+    locales: list[str] = Field(default_factory=list)
+
+
+class ProductPageOptimizationCreateRequest(CamelModel):
+    name: str
+    traffic_proportion: int = Field(default=50, alias="trafficProportion")
+    locales: list[str] = Field(default_factory=list)
+    treatments: list[ProductPageOptimizationTreatmentInput] = Field(default_factory=list)
+    idempotency_key: str = Field(default="", alias="idempotencyKey")
+
+
+class ProductPageOptimizationTreatmentResponse(CamelModel):
+    id: str = ""
+    name: str
+    app_icon_name: str = Field(default="", alias="appIconName")
+    locales: list[str] = Field(default_factory=list)
+
+
+class ProductPageOptimizationResponse(CamelModel):
+    id: str
+    name: str
+    platform: str
+    state: str
+    traffic_proportion: int = Field(alias="trafficProportion")
+    review_required: bool = Field(alias="reviewRequired")
+    start_date: str = Field(default="", alias="startDate")
+    end_date: str = Field(default="", alias="endDate")
+    treatments: list[ProductPageOptimizationTreatmentResponse] = Field(default_factory=list)
+
+
+class ProductPageOptimizationsResponse(CamelModel):
+    account_id: str = Field(alias="accountId")
+    app_id: str = Field(alias="appId")
+    experiments: list[ProductPageOptimizationResponse]
+
+
+class ProductPageOptimizationCreateResponse(CamelModel):
+    account_id: str = Field(alias="accountId")
+    app_id: str = Field(alias="appId")
+    experiment: ProductPageOptimizationResponse
     idempotent: bool = False
 
 
@@ -353,6 +402,121 @@ async def import_marketing_page(
         uploadedAssets=_uploaded_asset_count(uploaded_assets),
         warnings=[],
     )
+
+
+@router.get(
+    "/developer-accounts/{account_id}/apps/{app_id}/product-page-optimizations",
+    response_model=ProductPageOptimizationsResponse,
+)
+def list_product_page_optimizations(
+    account_id: str,
+    app_id: str,
+    request: Request,
+    session: SessionDep,
+) -> ProductPageOptimizationsResponse:
+    _require_static_token(request)
+    app = _product_page_optimization_app(session, account_id=account_id, app_id=app_id)
+    connector = _account_connector_or_error(session, account_id)
+    try:
+        raw_response = StoreConnectorClient().product_page_optimizations(
+            connector,
+            account_id=account_id,
+            app=app,
+        )
+    except ConnectorCallError as error:
+        raise ApiError(
+            "connector_call_failed",
+            error.message,
+            status_code=502,
+            retryable=True,
+        ) from error
+    experiments = raw_response.get("experiments")
+    return ProductPageOptimizationsResponse(
+        accountId=account_id,
+        appId=app.id,
+        experiments=experiments if isinstance(experiments, list) else [],
+    )
+
+
+@router.post(
+    "/developer-accounts/{account_id}/apps/{app_id}/product-page-optimizations",
+    response_model=ProductPageOptimizationCreateResponse,
+    status_code=201,
+)
+def create_product_page_optimization(
+    account_id: str,
+    app_id: str,
+    payload: ProductPageOptimizationCreateRequest,
+    request: Request,
+    session: SessionDep,
+) -> ProductPageOptimizationCreateResponse:
+    token = _require_static_token(request)
+    cached = _product_page_optimization_cached_response(
+        token=token,
+        account_id=account_id,
+        app_id=app_id,
+        idempotency_key=payload.idempotency_key,
+    )
+    if cached is not None:
+        return cached
+
+    account_lock = _begin_direct_sync(token=token, account_id=account_id, app_id=app_id)
+    try:
+        app = _product_page_optimization_app(session, account_id=account_id, app_id=app_id)
+        connector = _account_connector_or_error(session, account_id)
+        name = payload.name.strip()
+        if not name:
+            raise ApiError(
+                "invalid_product_page_optimization_name",
+                "产品页面优化名称不能为空",
+                status_code=422,
+            )
+        if payload.traffic_proportion <= 0 or payload.traffic_proportion > 100:
+            raise ApiError(
+                "invalid_traffic_proportion",
+                "trafficProportion 必须在 1 到 100 之间",
+                status_code=422,
+            )
+        try:
+            raw_response = StoreConnectorClient().create_product_page_optimization(
+                connector,
+                account_id=account_id,
+                app=app,
+                name=name,
+                traffic_proportion=payload.traffic_proportion,
+                locales=_unique_non_empty(tuple(payload.locales)),
+                treatments=_product_page_optimization_treatments(payload.treatments),
+            )
+        except ConnectorCallError as error:
+            raise ApiError(
+                "connector_call_failed",
+                error.message,
+                status_code=502,
+                retryable=True,
+            ) from error
+        experiment = raw_response.get("experiment")
+        if not isinstance(experiment, dict):
+            raise ApiError(
+                "invalid_connector_response",
+                "connector 没有返回产品页面优化结果",
+                status_code=502,
+                retryable=True,
+            )
+        response = ProductPageOptimizationCreateResponse(
+            accountId=account_id,
+            appId=app.id,
+            experiment=experiment,
+        )
+        _store_product_page_optimization_idempotency_response(
+            token=token,
+            account_id=account_id,
+            app_id=app_id,
+            idempotency_key=payload.idempotency_key,
+            response=response,
+        )
+        return response
+    finally:
+        account_lock.release()
 
 
 @router.post(
@@ -530,6 +694,52 @@ def trigger_marketing_page_sync(
         account_lock.release()
 
 
+def _product_page_optimization_app(session: Session, *, account_id: str, app_id: str):
+    app = scoped_app(session, account_id, app_id)
+    if app is None:
+        raise ApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
+    if app.platform != "ios":
+        raise ApiError(
+            "unsupported_product_page_optimization",
+            "产品页面优化当前仅支持 App Store Connect",
+            status_code=422,
+        )
+    return app
+
+
+def _account_connector_or_error(session: Session, account_id: str):
+    connector = account_connector(session, account_id)
+    if connector is None:
+        raise ApiError(
+            "connector_missing",
+            "当前开发者账号还没有配置 connector",
+            status_code=422,
+        )
+    return connector
+
+
+def _product_page_optimization_treatments(
+    values: list[ProductPageOptimizationTreatmentInput],
+) -> list[dict[str, object]]:
+    treatments: list[dict[str, object]] = []
+    for index, item in enumerate(values):
+        name = item.name.strip()
+        if not name:
+            raise ApiError(
+                "invalid_treatment_name",
+                f"第 {index + 1} 个 treatment 名称不能为空",
+                status_code=422,
+            )
+        treatments.append(
+            {
+                "name": name,
+                "appIconName": item.app_icon_name.strip(),
+                "locales": _unique_non_empty(tuple(item.locales)),
+            }
+        )
+    return treatments
+
+
 def _require_static_token(request: Request) -> str:
     expected = f"Bearer {request.app.state.settings.static_token}"
     authorization = request.headers.get("Authorization", "")
@@ -650,6 +860,49 @@ def _store_direct_sync_idempotency_response(
     if not normalized_key:
         return
     cache_key = (token, account_id, app_id, endpoint, normalized_key)
+    expires_at = time.monotonic() + DIRECT_SYNC_IDEMPOTENCY_TTL_SECONDS
+    body = response.model_dump(by_alias=True)
+    with _direct_sync_guard_lock:
+        _direct_sync_idempotency_cache[cache_key] = (expires_at, body)
+
+
+def _product_page_optimization_cached_response(
+    *,
+    token: str,
+    account_id: str,
+    app_id: str,
+    idempotency_key: str,
+) -> ProductPageOptimizationCreateResponse | None:
+    normalized_key = idempotency_key.strip()
+    if not normalized_key:
+        return None
+    cache_key = (token, account_id, app_id, "product-page-optimization:create", normalized_key)
+    now = time.monotonic()
+    with _direct_sync_guard_lock:
+        cached = _direct_sync_idempotency_cache.get(cache_key)
+        if cached is None:
+            return None
+        expires_at, body = cached
+        if expires_at <= now:
+            _direct_sync_idempotency_cache.pop(cache_key, None)
+            return None
+        response_body = dict(body)
+    response_body["idempotent"] = True
+    return ProductPageOptimizationCreateResponse.model_validate(response_body)
+
+
+def _store_product_page_optimization_idempotency_response(
+    *,
+    token: str,
+    account_id: str,
+    app_id: str,
+    idempotency_key: str,
+    response: ProductPageOptimizationCreateResponse,
+) -> None:
+    normalized_key = idempotency_key.strip()
+    if not normalized_key:
+        return
+    cache_key = (token, account_id, app_id, "product-page-optimization:create", normalized_key)
     expires_at = time.monotonic() + DIRECT_SYNC_IDEMPOTENCY_TTL_SECONDS
     body = response.model_dump(by_alias=True)
     with _direct_sync_guard_lock:

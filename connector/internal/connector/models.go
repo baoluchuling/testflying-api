@@ -28,6 +28,43 @@ type SupportedLocalesResponse struct {
 	Locales []string `json:"locales"`
 }
 
+type ProductPageOptimizationTreatment struct {
+	ID          string   `json:"id,omitempty"`
+	Name        string   `json:"name"`
+	AppIconName string   `json:"appIconName,omitempty"`
+	Locales     []string `json:"locales,omitempty"`
+}
+
+type ProductPageOptimization struct {
+	ID                string                             `json:"id"`
+	Name              string                             `json:"name"`
+	Platform          string                             `json:"platform"`
+	State             string                             `json:"state"`
+	TrafficProportion int                                `json:"trafficProportion"`
+	ReviewRequired    bool                               `json:"reviewRequired"`
+	StartDate         string                             `json:"startDate,omitempty"`
+	EndDate           string                             `json:"endDate,omitempty"`
+	Treatments        []ProductPageOptimizationTreatment `json:"treatments"`
+}
+
+type ProductPageOptimizationsResponse struct {
+	Experiments []ProductPageOptimization `json:"experiments"`
+}
+
+type ProductPageOptimizationCreateRequest struct {
+	DeveloperAccountID string                             `json:"developerAccountId"`
+	Platform           string                             `json:"platform"`
+	App                StoreApp                           `json:"app"`
+	Name               string                             `json:"name"`
+	TrafficProportion  int                                `json:"trafficProportion"`
+	Locales            []string                           `json:"locales"`
+	Treatments         []ProductPageOptimizationTreatment `json:"treatments"`
+}
+
+type ProductPageOptimizationCreateResponse struct {
+	Experiment ProductPageOptimization `json:"experiment"`
+}
+
 type StoreMetadata struct {
 	ContentSet      *ContentSet  `json:"contentSet"`
 	Keywords        string       `json:"keywords"`

@@ -239,6 +239,84 @@ func TestConnectorListsSupportedLocales(t *testing.T) {
 	}
 }
 
+func TestConnectorListsProductPageOptimizations(t *testing.T) {
+	server := testServer(t, testSettings())
+
+	response := performJSON(
+		server,
+		http.MethodGet,
+		"/v1/apps/app-aurora-ios/product-page-optimizations?developerAccountId=account-apple-enterprise&platform=ios&storeAppId=1234567890",
+		testHeaders(),
+		nil,
+	)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	var result ProductPageOptimizationsResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Experiments) != 1 {
+		t.Fatalf("experiments = %d, want 1", len(result.Experiments))
+	}
+	experiment := result.Experiments[0]
+	if experiment.State != "PREPARE_FOR_SUBMISSION" || experiment.TrafficProportion != 50 {
+		t.Fatalf("experiment = %#v", experiment)
+	}
+	if len(experiment.Treatments) != 1 || experiment.Treatments[0].Name != "Variant A" {
+		t.Fatalf("treatments = %#v", experiment.Treatments)
+	}
+}
+
+func TestConnectorCreatesProductPageOptimization(t *testing.T) {
+	server := testServer(t, testSettings())
+	payload := map[string]any{
+		"developerAccountId": "account-apple-enterprise",
+		"platform":           "ios",
+		"name":               "Summer Landing Test",
+		"trafficProportion":  40,
+		"locales":            []string{"en-US", "zh-Hant"},
+		"app": map[string]any{
+			"appId":            "app-aurora-ios",
+			"bundleIdentifier": "com.internal.aurora",
+			"storeAppId":       "1234567890",
+		},
+		"treatments": []map[string]any{
+			{"name": "Variant A"},
+			{"name": "Variant B", "locales": []string{"en-US"}},
+		},
+	}
+
+	response := performJSON(
+		server,
+		http.MethodPost,
+		"/v1/apps/app-aurora-ios/product-page-optimizations",
+		testHeaders(),
+		payload,
+	)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d body=%s", response.Code, http.StatusCreated, response.Body.String())
+	}
+	var result ProductPageOptimizationCreateResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Experiment.Name != "Summer Landing Test" || result.Experiment.TrafficProportion != 40 {
+		t.Fatalf("experiment = %#v", result.Experiment)
+	}
+	if len(result.Experiment.Treatments) != 2 {
+		t.Fatalf("treatments = %d, want 2", len(result.Experiment.Treatments))
+	}
+	if strings.Join(result.Experiment.Treatments[0].Locales, ",") != "en-US,zh-Hant" {
+		t.Fatalf("first locales = %#v", result.Experiment.Treatments[0].Locales)
+	}
+	if strings.Join(result.Experiment.Treatments[1].Locales, ",") != "en-US" {
+		t.Fatalf("second locales = %#v", result.Experiment.Treatments[1].Locales)
+	}
+}
+
 func TestConnectorRateLimitsGoogleRequests(t *testing.T) {
 	settings := testSettings()
 	settings.GoogleRateLimitMaxRequests = 2

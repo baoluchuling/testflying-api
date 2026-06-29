@@ -45,6 +45,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.withToken(w, r, s.handleSyncRun)
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/apps/") && strings.HasSuffix(r.URL.Path, "/supported-locales"):
 		s.withToken(w, r, s.handleSupportedLocales)
+	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/apps/") && strings.HasSuffix(r.URL.Path, "/product-page-optimizations"):
+		s.withToken(w, r, s.handleListProductPageOptimizations)
+	case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/v1/apps/") && strings.HasSuffix(r.URL.Path, "/product-page-optimizations"):
+		s.withToken(w, r, s.handleCreateProductPageOptimization)
 	default:
 		writeError(w, http.StatusNotFound, "not found")
 	}
@@ -137,6 +141,50 @@ func (s *Server) handleSyncRun(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, response)
 }
 
+func (s *Server) handleListProductPageOptimizations(w http.ResponseWriter, r *http.Request) {
+	accountID := r.URL.Query().Get("developerAccountId")
+	if !s.validateAccount(w, accountID) {
+		return
+	}
+	platform := r.URL.Query().Get("platform")
+	if !s.enforceRateLimit(w, platform) {
+		return
+	}
+	appID := appIDFromProductPageOptimizationsPath(r.URL.Path)
+	response, err := s.store.ListProductPageOptimizations(
+		r.Context(),
+		appID,
+		accountID,
+		platform,
+		r.URL.Query().Get("storeAppId"),
+	)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, friendlyStoreError(err))
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (s *Server) handleCreateProductPageOptimization(w http.ResponseWriter, r *http.Request) {
+	var payload ProductPageOptimizationCreateRequest
+	if !decodeJSON(w, r, &payload) {
+		return
+	}
+	if !s.validateAccount(w, payload.DeveloperAccountID) {
+		return
+	}
+	if !s.enforceRateLimit(w, payload.Platform) {
+		return
+	}
+	appID := appIDFromProductPageOptimizationsPath(r.URL.Path)
+	response, err := s.store.CreateProductPageOptimization(r.Context(), appID, payload)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, friendlyStoreError(err))
+		return
+	}
+	writeJSON(w, http.StatusCreated, response)
+}
+
 func (s *Server) validateAccount(w http.ResponseWriter, developerAccountID string) bool {
 	if developerAccountID != s.settings.DeveloperAccountID {
 		writeError(w, http.StatusForbidden, "developer account does not match this connector")
@@ -187,5 +235,11 @@ func friendlyStoreError(err error) string {
 func appIDFromSupportedLocalesPath(path string) string {
 	trimmed := strings.TrimPrefix(path, "/v1/apps/")
 	trimmed = strings.TrimSuffix(trimmed, "/supported-locales")
+	return strings.Trim(trimmed, "/")
+}
+
+func appIDFromProductPageOptimizationsPath(path string) string {
+	trimmed := strings.TrimPrefix(path, "/v1/apps/")
+	trimmed = strings.TrimSuffix(trimmed, "/product-page-optimizations")
 	return strings.Trim(trimmed, "/")
 }

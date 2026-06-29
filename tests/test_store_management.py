@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from testflying_api.routes.store_management import _reset_direct_sync_guards_for_tests
 from testflying_api.schema import (
+    DeveloperAccountApp,
     StoreAppMetadataDraft,
     StoreMarketingPage,
     StoreMarketingPageLocale,
@@ -272,6 +273,107 @@ def test_store_management_direct_sync_marketing_page_from_existing_draft(
     page = db_session.query(StoreMarketingPage).filter_by(page_id=page_id).one()
     assert page.status == "synced"
     assert db_session.query(StoreSyncRun).count() == 2
+
+
+def test_store_management_lists_product_page_optimizations(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+
+    response = client.get(
+        (
+            "/v1/store-management/developer-accounts/account-apple-enterprise"
+            "/apps/app-aurora-ios/product-page-optimizations"
+        ),
+        headers={"Authorization": "Bearer dev-token"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["accountId"] == "account-apple-enterprise"
+    assert body["appId"] == "app-aurora-ios"
+    assert len(body["experiments"]) == 1
+    experiment = body["experiments"][0]
+    assert experiment["id"] == "ppo-app-aurora-ios"
+    assert experiment["state"] == "PREPARE_FOR_SUBMISSION"
+    assert experiment["trafficProportion"] == 50
+    assert experiment["treatments"][0]["name"] == "Variant A"
+
+
+def test_store_management_creates_product_page_optimization_idempotently(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _reset_direct_sync_guards_for_tests()
+    seed_demo_catalog(db_session)
+    payload = {
+        "name": "Summer Landing Test",
+        "trafficProportion": 40,
+        "locales": ["en-US", "zh-Hant"],
+        "idempotencyKey": "ppo-summer-landing",
+        "treatments": [
+            {"name": "Variant A"},
+            {"name": "Variant B", "locales": ["en-US"]},
+        ],
+    }
+
+    first = client.post(
+        (
+            "/v1/store-management/developer-accounts/account-apple-enterprise"
+            "/apps/app-aurora-ios/product-page-optimizations"
+        ),
+        headers={"Authorization": "Bearer dev-token"},
+        json=payload,
+    )
+    second = client.post(
+        (
+            "/v1/store-management/developer-accounts/account-apple-enterprise"
+            "/apps/app-aurora-ios/product-page-optimizations"
+        ),
+        headers={"Authorization": "Bearer dev-token"},
+        json=payload,
+    )
+
+    assert first.status_code == 201
+    assert second.status_code == 201
+    first_body = first.json()
+    second_body = second.json()
+    assert first_body["idempotent"] is False
+    assert second_body["idempotent"] is True
+    assert first_body["experiment"] == second_body["experiment"]
+    assert first_body["experiment"]["name"] == "Summer Landing Test"
+    assert first_body["experiment"]["trafficProportion"] == 40
+    assert [item["locales"] for item in first_body["experiment"]["treatments"]] == [
+        ["en-US", "zh-Hant"],
+        ["en-US"],
+    ]
+    assert db_session.query(StoreSyncRun).count() == 0
+
+
+def test_store_management_rejects_product_page_optimization_for_android(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+    db_session.add(
+        DeveloperAccountApp(
+            developer_account_id="account-apple-enterprise",
+            app_id="app-dataflow-android",
+        )
+    )
+    db_session.commit()
+
+    response = client.get(
+        (
+            "/v1/store-management/developer-accounts/account-apple-enterprise"
+            "/apps/app-dataflow-android/product-page-optimizations"
+        ),
+        headers={"Authorization": "Bearer dev-token"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "unsupported_product_page_optimization"
 
 
 def test_store_management_store_image_suite_endpoint_is_removed(

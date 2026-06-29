@@ -16,6 +16,8 @@ import (
 type StoreGateway interface {
 	Preflight(ctx context.Context, payload PreflightRequest) (PreflightResponse, error)
 	SupportedLocales(ctx context.Context, appID string, accountID string, platform string, version string, storeAppID string, packageName string) (SupportedLocalesResponse, error)
+	ListProductPageOptimizations(ctx context.Context, appID string, accountID string, platform string, storeAppID string) (ProductPageOptimizationsResponse, error)
+	CreateProductPageOptimization(ctx context.Context, appID string, payload ProductPageOptimizationCreateRequest) (ProductPageOptimizationCreateResponse, error)
 	SyncRun(ctx context.Context, payload SyncRunRequest) (SyncRunResponse, error)
 }
 
@@ -64,6 +66,68 @@ func (g MockStoreGateway) SupportedLocales(_ context.Context, _ string, _ string
 		return SupportedLocalesResponse{Locales: []string{"zh-Hans", "en-US", "ja", "ko"}}, nil
 	}
 	return SupportedLocalesResponse{Locales: []string{"zh-Hans", "en-US"}}, nil
+}
+
+func (g MockStoreGateway) ListProductPageOptimizations(_ context.Context, appID string, _ string, platform string, _ string) (ProductPageOptimizationsResponse, error) {
+	if normalizePlatform(platform) != "ios" {
+		return ProductPageOptimizationsResponse{Experiments: []ProductPageOptimization{}}, nil
+	}
+	return ProductPageOptimizationsResponse{
+		Experiments: []ProductPageOptimization{
+			{
+				ID:                "ppo-" + defaultString(appID, "mock"),
+				Name:              "Mock Product Page Optimization",
+				Platform:          "IOS",
+				State:             "PREPARE_FOR_SUBMISSION",
+				TrafficProportion: 50,
+				ReviewRequired:    false,
+				Treatments: []ProductPageOptimizationTreatment{
+					{
+						ID:      "treatment-mock-a",
+						Name:    "Variant A",
+						Locales: []string{"en-US", "zh-Hant"},
+					},
+				},
+			},
+		},
+	}, nil
+}
+
+func (g MockStoreGateway) CreateProductPageOptimization(_ context.Context, appID string, payload ProductPageOptimizationCreateRequest) (ProductPageOptimizationCreateResponse, error) {
+	if normalizePlatform(payload.Platform) != "ios" {
+		return ProductPageOptimizationCreateResponse{}, errors.New("产品页面优化当前仅支持 App Store Connect")
+	}
+	if strings.TrimSpace(payload.Name) == "" {
+		return ProductPageOptimizationCreateResponse{}, errors.New("产品页面优化名称不能为空")
+	}
+	treatments := payload.Treatments
+	if len(treatments) == 0 {
+		treatments = []ProductPageOptimizationTreatment{{Name: "Variant A"}}
+	}
+	resultTreatments := make([]ProductPageOptimizationTreatment, 0, len(treatments))
+	for index, treatment := range treatments {
+		locales := treatment.Locales
+		if len(locales) == 0 {
+			locales = payload.Locales
+		}
+		resultTreatments = append(resultTreatments, ProductPageOptimizationTreatment{
+			ID:          fmt.Sprintf("treatment-%s-%d", defaultString(appID, "mock"), index+1),
+			Name:        defaultString(treatment.Name, fmt.Sprintf("Variant %d", index+1)),
+			AppIconName: treatment.AppIconName,
+			Locales:     locales,
+		})
+	}
+	return ProductPageOptimizationCreateResponse{
+		Experiment: ProductPageOptimization{
+			ID:                "ppo-created-" + defaultString(appID, "mock"),
+			Name:              payload.Name,
+			Platform:          "IOS",
+			State:             "PREPARE_FOR_SUBMISSION",
+			TrafficProportion: payload.TrafficProportion,
+			ReviewRequired:    true,
+			Treatments:        resultTreatments,
+		},
+	}, nil
 }
 
 func (g MockStoreGateway) SyncRun(_ context.Context, payload SyncRunRequest) (SyncRunResponse, error) {
@@ -134,6 +198,24 @@ func (g *LiveStoreGateway) SupportedLocales(ctx context.Context, appID string, a
 	}
 }
 
+func (g *LiveStoreGateway) ListProductPageOptimizations(ctx context.Context, appID string, accountID string, platform string, storeAppID string) (ProductPageOptimizationsResponse, error) {
+	switch normalizePlatform(platform) {
+	case "ios":
+		return g.appleProductPageOptimizations(ctx, storeAppID)
+	default:
+		return ProductPageOptimizationsResponse{}, errors.New("产品页面优化当前仅支持 App Store Connect")
+	}
+}
+
+func (g *LiveStoreGateway) CreateProductPageOptimization(ctx context.Context, appID string, payload ProductPageOptimizationCreateRequest) (ProductPageOptimizationCreateResponse, error) {
+	switch normalizePlatform(payload.Platform) {
+	case "ios":
+		return g.appleCreateProductPageOptimization(ctx, payload)
+	default:
+		return ProductPageOptimizationCreateResponse{}, errors.New("产品页面优化当前仅支持 App Store Connect")
+	}
+}
+
 func (g *LiveStoreGateway) SyncRun(ctx context.Context, payload SyncRunRequest) (SyncRunResponse, error) {
 	switch normalizePlatform(payload.Platform) {
 	case "ios":
@@ -155,6 +237,28 @@ type appleLocalization struct {
 	ID         string
 	Locale     string
 	Attributes map[string]any
+}
+
+type appleResource struct {
+	ID         string `json:"id"`
+	Type       string `json:"type"`
+	Attributes struct {
+		Name              string `json:"name"`
+		Platform          string `json:"platform"`
+		State             string `json:"state"`
+		TrafficProportion int    `json:"trafficProportion"`
+		ReviewRequired    bool   `json:"reviewRequired"`
+		StartDate         string `json:"startDate"`
+		EndDate           string `json:"endDate"`
+		AppIconName       string `json:"appIconName"`
+		Locale            string `json:"locale"`
+	} `json:"attributes"`
+	Relationships map[string]struct {
+		Data []struct {
+			ID   string `json:"id"`
+			Type string `json:"type"`
+		} `json:"data"`
+	} `json:"relationships"`
 }
 
 func (g *LiveStoreGateway) applePreflight(ctx context.Context, payload PreflightRequest) (PreflightResponse, error) {
@@ -226,6 +330,175 @@ func (g *LiveStoreGateway) appleSupportedLocales(ctx context.Context, storeAppID
 		return SupportedLocalesResponse{}, err
 	}
 	return SupportedLocalesResponse{Locales: localizationLocales(locales)}, nil
+}
+
+func (g *LiveStoreGateway) appleProductPageOptimizations(ctx context.Context, storeAppID string) (ProductPageOptimizationsResponse, error) {
+	if strings.TrimSpace(storeAppID) == "" {
+		return ProductPageOptimizationsResponse{}, errors.New("iOS App 缺少 Apple App ID")
+	}
+	query := url.Values{}
+	query.Set("include", "appStoreVersionExperimentTreatments")
+	query.Set("limit", "200")
+	query.Set("limit[appStoreVersionExperimentTreatments]", "50")
+	var response struct {
+		Data     []appleResource `json:"data"`
+		Included []appleResource `json:"included"`
+	}
+	if _, err := g.appleRequest(ctx, http.MethodGet, "/v1/apps/"+url.PathEscape(storeAppID)+"/appStoreVersionExperimentsV2?"+query.Encode(), nil, &response); err != nil {
+		return ProductPageOptimizationsResponse{}, err
+	}
+	treatmentsByID := map[string]ProductPageOptimizationTreatment{}
+	for _, included := range response.Included {
+		if included.Type != "appStoreVersionExperimentTreatments" {
+			continue
+		}
+		treatmentsByID[included.ID] = ProductPageOptimizationTreatment{
+			ID:          included.ID,
+			Name:        included.Attributes.Name,
+			AppIconName: included.Attributes.AppIconName,
+		}
+	}
+	experiments := make([]ProductPageOptimization, 0, len(response.Data))
+	for _, item := range response.Data {
+		experiment := appleProductPageOptimizationFromResource(item)
+		if relationship, ok := item.Relationships["appStoreVersionExperimentTreatments"]; ok {
+			for _, linkage := range relationship.Data {
+				if treatment, exists := treatmentsByID[linkage.ID]; exists {
+					experiment.Treatments = append(experiment.Treatments, treatment)
+				}
+			}
+		}
+		experiments = append(experiments, experiment)
+	}
+	return ProductPageOptimizationsResponse{Experiments: experiments}, nil
+}
+
+func (g *LiveStoreGateway) appleCreateProductPageOptimization(ctx context.Context, payload ProductPageOptimizationCreateRequest) (ProductPageOptimizationCreateResponse, error) {
+	storeAppID := strings.TrimSpace(payload.App.StoreAppID)
+	if storeAppID == "" {
+		return ProductPageOptimizationCreateResponse{}, errors.New("iOS App 缺少 Apple App ID")
+	}
+	name := strings.TrimSpace(payload.Name)
+	if name == "" {
+		return ProductPageOptimizationCreateResponse{}, errors.New("产品页面优化名称不能为空")
+	}
+	trafficProportion := payload.TrafficProportion
+	if trafficProportion <= 0 || trafficProportion > 100 {
+		return ProductPageOptimizationCreateResponse{}, errors.New("trafficProportion 必须在 1 到 100 之间")
+	}
+	createBody := map[string]any{
+		"data": map[string]any{
+			"type": "appStoreVersionExperiments",
+			"attributes": map[string]any{
+				"name":              name,
+				"platform":          "IOS",
+				"trafficProportion": trafficProportion,
+			},
+			"relationships": map[string]any{
+				"app": map[string]any{
+					"data": map[string]string{
+						"type": "apps",
+						"id":   storeAppID,
+					},
+				},
+			},
+		},
+	}
+	var createResponse struct {
+		Data appleResource `json:"data"`
+	}
+	if _, err := g.appleRequest(ctx, http.MethodPost, "/v2/appStoreVersionExperiments", createBody, &createResponse); err != nil {
+		return ProductPageOptimizationCreateResponse{}, err
+	}
+	experiment := appleProductPageOptimizationFromResource(createResponse.Data)
+	if experiment.ID == "" {
+		return ProductPageOptimizationCreateResponse{}, errors.New("App Store Connect 没有返回产品页面优化 ID")
+	}
+	treatments, err := g.appleCreateExperimentTreatments(ctx, experiment.ID, payload)
+	if err != nil {
+		return ProductPageOptimizationCreateResponse{}, err
+	}
+	experiment.Treatments = treatments
+	return ProductPageOptimizationCreateResponse{Experiment: experiment}, nil
+}
+
+func (g *LiveStoreGateway) appleCreateExperimentTreatments(ctx context.Context, experimentID string, payload ProductPageOptimizationCreateRequest) ([]ProductPageOptimizationTreatment, error) {
+	if len(payload.Treatments) == 0 {
+		return []ProductPageOptimizationTreatment{}, nil
+	}
+	created := make([]ProductPageOptimizationTreatment, 0, len(payload.Treatments))
+	for _, treatment := range payload.Treatments {
+		name := strings.TrimSpace(treatment.Name)
+		if name == "" {
+			return nil, errors.New("treatment 名称不能为空")
+		}
+		attributes := map[string]any{"name": name}
+		if strings.TrimSpace(treatment.AppIconName) != "" {
+			attributes["appIconName"] = strings.TrimSpace(treatment.AppIconName)
+		}
+		body := map[string]any{
+			"data": map[string]any{
+				"type":       "appStoreVersionExperimentTreatments",
+				"attributes": attributes,
+				"relationships": map[string]any{
+					"appStoreVersionExperimentV2": map[string]any{
+						"data": map[string]string{
+							"type": "appStoreVersionExperiments",
+							"id":   experimentID,
+						},
+					},
+				},
+			},
+		}
+		var response struct {
+			Data appleResource `json:"data"`
+		}
+		if _, err := g.appleRequest(ctx, http.MethodPost, "/v1/appStoreVersionExperimentTreatments", body, &response); err != nil {
+			return nil, err
+		}
+		createdTreatment := ProductPageOptimizationTreatment{
+			ID:          response.Data.ID,
+			Name:        response.Data.Attributes.Name,
+			AppIconName: response.Data.Attributes.AppIconName,
+		}
+		locales := treatment.Locales
+		if len(locales) == 0 {
+			locales = payload.Locales
+		}
+		for _, locale := range locales {
+			normalizedLocale := strings.TrimSpace(locale)
+			if normalizedLocale == "" {
+				continue
+			}
+			if err := g.appleCreateExperimentTreatmentLocalization(ctx, createdTreatment.ID, normalizedLocale); err != nil {
+				return nil, err
+			}
+			createdTreatment.Locales = append(createdTreatment.Locales, normalizedLocale)
+		}
+		created = append(created, createdTreatment)
+	}
+	return created, nil
+}
+
+func (g *LiveStoreGateway) appleCreateExperimentTreatmentLocalization(ctx context.Context, treatmentID string, locale string) error {
+	body := map[string]any{
+		"data": map[string]any{
+			"type": "appStoreVersionExperimentTreatmentLocalizations",
+			"attributes": map[string]any{
+				"locale": locale,
+			},
+			"relationships": map[string]any{
+				"appStoreVersionExperimentTreatment": map[string]any{
+					"data": map[string]string{
+						"type": "appStoreVersionExperimentTreatments",
+						"id":   treatmentID,
+					},
+				},
+			},
+		},
+	}
+	_, err := g.appleRequest(ctx, http.MethodPost, "/v1/appStoreVersionExperimentTreatmentLocalizations", body, nil)
+	return err
 }
 
 func (g *LiveStoreGateway) appleSyncRun(ctx context.Context, payload SyncRunRequest) (SyncRunResponse, error) {
@@ -558,6 +831,20 @@ func findLocalization(localizations []appleLocalization, locale string) *appleLo
 		}
 	}
 	return nil
+}
+
+func appleProductPageOptimizationFromResource(item appleResource) ProductPageOptimization {
+	return ProductPageOptimization{
+		ID:                item.ID,
+		Name:              item.Attributes.Name,
+		Platform:          item.Attributes.Platform,
+		State:             item.Attributes.State,
+		TrafficProportion: item.Attributes.TrafficProportion,
+		ReviewRequired:    item.Attributes.ReviewRequired,
+		StartDate:         item.Attributes.StartDate,
+		EndDate:           item.Attributes.EndDate,
+		Treatments:        []ProductPageOptimizationTreatment{},
+	}
 }
 
 func failedSync(code string, summary string) SyncRunResponse {

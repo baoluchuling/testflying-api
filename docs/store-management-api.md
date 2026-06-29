@@ -333,6 +333,121 @@ curl -X POST "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/
 }
 ```
 
+## 6. 查询产品页面优化状态
+
+```http
+GET /v1/store-management/developer-accounts/{accountId}/apps/{appId}/product-page-optimizations
+```
+
+用途：
+
+- 查询 App Store Connect 当前 App 的产品页面优化实验列表。
+- 当前只支持 iOS App。
+- 只读取商店状态，不创建中心后台同步记录，不修改商店内容。
+
+完整 curl：
+
+```bash
+curl "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/$APP_ID/product-page-optimizations" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+成功响应示例：
+
+```json
+{
+  "accountId": "ceshi",
+  "appId": "app-ios-com-boluchuling-app-lookrva",
+  "experiments": [
+    {
+      "id": "123456789",
+      "name": "Summer Landing Test",
+      "platform": "IOS",
+      "state": "PREPARE_FOR_SUBMISSION",
+      "trafficProportion": 50,
+      "reviewRequired": false,
+      "startDate": "",
+      "endDate": "",
+      "treatments": [
+        {
+          "id": "987654321",
+          "name": "Variant A",
+          "appIconName": "",
+          "locales": ["en-US", "zh-Hant"]
+        }
+      ]
+    }
+  ]
+}
+```
+
+## 7. 创建产品页面优化
+
+```http
+POST /v1/store-management/developer-accounts/{accountId}/apps/{appId}/product-page-optimizations
+Content-Type: application/json
+```
+
+用途：
+
+- 第三方电脑通过中心后台创建 App Store Connect 产品页面优化实验。
+- 当前只支持 iOS App。
+- 创建成功后会返回 App Store Connect 生成的实验 ID 和 treatment ID。
+- 同一 token + 账号 + App 默认限制 `10 次/分钟`、`100 次/小时`。
+- 建议传 `idempotencyKey`，网络重试时中心后台会返回同一份创建结果，避免重复创建。
+
+完整 curl：
+
+```bash
+curl -X POST "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/$APP_ID/product-page-optimizations" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Summer Landing Test",
+    "trafficProportion": 50,
+    "locales": ["en-US", "zh-Hant"],
+    "idempotencyKey": "ppo-summer-landing-20260629",
+    "treatments": [
+      {
+        "name": "Variant A",
+        "locales": ["en-US", "zh-Hant"]
+      },
+      {
+        "name": "Variant B",
+        "locales": ["en-US"]
+      }
+    ]
+  }'
+```
+
+成功响应示例：
+
+```json
+{
+  "accountId": "ceshi",
+  "appId": "app-ios-com-boluchuling-app-lookrva",
+  "experiment": {
+    "id": "123456789",
+    "name": "Summer Landing Test",
+    "platform": "IOS",
+    "state": "PREPARE_FOR_SUBMISSION",
+    "trafficProportion": 50,
+    "reviewRequired": true,
+    "startDate": "",
+    "endDate": "",
+    "treatments": [
+      {
+        "id": "987654321",
+        "name": "Variant A",
+        "appIconName": "",
+        "locales": ["en-US", "zh-Hant"]
+      }
+    ]
+  },
+  "idempotent": false
+}
+```
+
 ## 错误响应
 
 未传或传错 token：

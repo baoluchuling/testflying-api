@@ -184,14 +184,19 @@
             <fieldset>
               <legend>Google Play Console</legend>
               <label>
-                Service Account JSON
-                <input name="googleServiceAccount" type="file" accept=".json,application/json">
+                Service Account JSON 内容
+                <textarea
+                  name="googleServiceAccountJson"
+                  rows="8"
+                  spellcheck="false"
+                  placeholder='粘贴完整 service account JSON，例如 {"type":"service_account","client_email":"..."}'
+                ></textarea>
               </label>
               <p>
                 {% if account_store_platform == "android" %}
-                  当前账号已关联 Android App；不上传 Google 凭据时，安装包不会内置 Google Play 配置。
+                  当前账号已关联 Android App；不填写 Google JSON 时，安装包不会内置 Google Play 配置。
                 {% else %}
-                  如果这个 connector 也要同步 Android App，可以一并上传 Google service account JSON。
+                  如果这个 connector 也要同步 Android App，可以一并粘贴 Google service account JSON。
                 {% endif %}
               </p>
             </fieldset>

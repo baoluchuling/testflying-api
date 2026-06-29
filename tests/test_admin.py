@@ -394,8 +394,9 @@ def test_admin_developer_account_detail_renders_store_sync_entry(
     assert "TESTFLYING_CONNECTOR_APPLE_PRIVATE_KEY_PATH" in response.text
     assert "不上传 Apple 凭据时，安装包不会内置 App Store Connect 配置" in response.text
     assert "Google Play Console" in response.text
-    assert "Service Account JSON" in response.text
+    assert "Service Account JSON 内容" in response.text
     assert "如果这个 connector 也要同步 Android App" in response.text
+    assert 'name="googleServiceAccountJson"' in response.text
     assert 'name="applePrivateKey" type="file" accept=".p8" required' not in response.text
     assert (
         'name="googleServiceAccount" type="file" accept=".json,application/json" required'
@@ -855,6 +856,41 @@ def test_admin_windows_active_connector_package_can_include_google_credentials(
     assert config["google"]["serviceAccountJsonPath"].endswith(
         r"\secrets\google\service-account.json"
     )
+
+
+def test_admin_windows_active_connector_package_accepts_google_json_text(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+
+    response = client.post(
+        "/admin/developer-accounts/account-apple-enterprise/connector/windows-package",
+        headers=_admin_headers(),
+        data={
+            "googleServiceAccountJson": json.dumps(
+                {
+                    "type": "service_account",
+                    "client_email": "robot@example.test",
+                    "private_key": "key",
+                }
+            ),
+        },
+    )
+
+    with ZipFile(BytesIO(response.content)) as archive:
+        names = set(archive.namelist())
+        config = json.loads(archive.read("config.json").decode("utf-8"))
+        google_secret = json.loads(
+            archive.read("secrets/google/service-account.json").decode("utf-8")
+        )
+
+    assert response.status_code == 200
+    assert "secrets/google/service-account.json" in names
+    assert config["google"]["serviceAccountJsonPath"].endswith(
+        r"\secrets\google\service-account.json"
+    )
+    assert google_secret["client_email"] == "robot@example.test"
 
 
 def test_admin_release_notes_page_runs_cached_preflight(

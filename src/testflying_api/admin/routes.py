@@ -507,6 +507,7 @@ async def generate_connector_windows_package(
     _: AdminDep,
     apple_issuer_id: Annotated[str, Form(alias="appleIssuerId")] = "",
     apple_key_id: Annotated[str, Form(alias="appleKeyId")] = "",
+    google_service_account_json: Annotated[str, Form(alias="googleServiceAccountJson")] = "",
     apple_private_key: Annotated[UploadFile | None, File(alias="applePrivateKey")] = None,
     google_service_account: Annotated[UploadFile | None, File(alias="googleServiceAccount")] = None,
 ) -> Response:
@@ -515,7 +516,9 @@ async def generate_connector_windows_package(
         raise ApiError("account_not_found", "开发者账号不存在", status_code=404)
     try:
         apple_file = await _read_optional_upload(apple_private_key)
-        google_file = await _read_optional_upload(google_service_account)
+        google_file = _google_service_account_from_text(
+            google_service_account_json
+        ) or await _read_optional_upload(google_service_account)
         package = _build_windows_connector_package(
             account_id=account_id,
             platform=str(context["account_store_platform"]),
@@ -1912,6 +1915,24 @@ async def _read_optional_upload(upload: UploadFile | None) -> tuple[str, bytes] 
     if not content:
         return None
     return _safe_filename(upload.filename), content
+
+
+def _google_service_account_from_text(value: str) -> tuple[str, bytes] | None:
+    content = value.strip()
+    if not content:
+        return None
+    try:
+        payload = json.loads(content)
+    except json.JSONDecodeError as error:
+        raise ApiError(
+            "invalid_google_key",
+            "Google Play service account 必须是合法 JSON 内容",
+            status_code=422,
+        ) from error
+    return (
+        "service-account.json",
+        json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8"),
+    )
 
 
 def _build_windows_connector_package(

@@ -2330,8 +2330,16 @@ a.ghost-button {
   font-weight: 900;
 }
 
-.connector-package-grid input {
+.connector-package-grid input,
+.connector-package-grid textarea {
   width: 100%;
+}
+
+.connector-package-grid textarea {
+  min-height: 160px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .connector-deploy-guide {

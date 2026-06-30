@@ -47,7 +47,7 @@
 - 自动提审。
 - 定时同步。
 - 跨账号批量同步。
-- Android 版本说明真实同步。Google Play 需要 `track` 和 `versionCode`，当前中心后台协议还没有提供这两个字段；Android 商店元数据同步可先使用。
+- Android 版本说明真实同步。Google Play release 通过 `track` 和 `versionCode` 定位；中心后台对外接口支持显式传 `storeTrack` / `storeVersionCode`，未传时 connector 会从 Google Play tracks 中自动选择最高 `versionCode` 的 release。
 
 ## 中心后台数据
 

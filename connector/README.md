@@ -229,6 +229,7 @@ docker run -d --name testflying-connector-google-a \
 - `GET /v1/apps/{app_id}/supported-locales`
 - `GET /v1/apps/{app_id}/store-listings`
 - `GET /v1/apps/{app_id}/store-images`
+- `GET /v1/apps/{app_id}/store-releases`
 - `POST /v1/sync-runs`
 
 除 `/health` 外，所有接口都需要：
@@ -239,9 +240,9 @@ Authorization: Bearer <connector-token>
 
 `live` 模式当前能力：
 
-- Apple / iOS：支持版本预检查、版本支持语言、版本说明同步、文字类商店元数据同步。
-- Google / Android：支持连接预检查、商店 listing 支持语言、文字类商店元数据同步。
-- Google / Android 版本说明同步暂时返回失败，因为 Google Play 需要 `track` 和 `versionCode`，当前中心后台协议还没有这两个字段。
+- Apple / iOS：支持版本预检查、版本支持语言、版本说明同步、文字类商店元数据同步、商店图同步、自定义产品页面和产品页面优化接口。
+- Google / Android：支持连接预检查、商店 listing 支持语言、商店 release 查询、文字类商店元数据同步、商店图同步、版本说明同步。
+- Google / Android 版本说明同步可以显式传 `storeRelease.track` / `storeRelease.versionCode`；未传时会从 Google Play tracks 中自动选择最高 `versionCode` 的 release。
 
 ## 限流
 

@@ -396,6 +396,7 @@ Content-Type: application/json
 - 只同步已经保存到中心后台的草稿，不会在本接口里修改草稿内容。
 - `metadata` 和 `store_images` 读取当前默认商店页草稿。
 - `release_notes` 读取指定 `version` 的版本说明草稿。
+- Android / Google Play 同步版本说明时，`version` 只用于读取中心后台里的版本说明草稿；目标 Google Play release 默认由 connector 从 Google Play tracks 中选择最高 `versionCode`，也可以通过 `storeTrack` / `storeVersionCode` 显式指定。
 - 中心后台会创建同步记录，并通过当前账号 Connector 调用 App Store Connect 或 Google Play。
 
 请求字段：
@@ -405,6 +406,8 @@ Content-Type: application/json
 | `version` | 是 | 商店版本号。同步版本说明时必须和商店侧版本一致 |
 | `locales` | 是 | 需要同步的语言列表，不能为空 |
 | `scopes` | 否 | 默认 `["metadata", "release_notes", "store_images"]` |
+| `storeTrack` | 否 | Android / Google Play 版本说明目标轨道，例如 `internal`、`alpha`、`beta`、`production`；不传时自动查 Google Play 最新 release |
+| `storeVersionCode` / `versionCode` | 否 | Android / Google Play 版本说明目标 `versionCode`；不传时自动查 Google Play 最新 release |
 | `actor` | 否 | 操作来源，默认 `api` |
 | `idempotencyKey` | 否 | 幂等键，建议第三方电脑必传 |
 
@@ -424,6 +427,8 @@ curl -X POST "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/
     "version": "1.0.0",
     "locales": ["en-US", "zh-Hant"],
     "scopes": ["metadata", "release_notes", "store_images"],
+    "storeTrack": "production",
+    "storeVersionCode": "1000000",
     "actor": "third-party-computer",
     "idempotencyKey": "build-123-store-sync"
   }'

@@ -524,10 +524,17 @@ async def generate_connector_windows_package(
             client_email=google_client_email,
             private_key=google_private_key,
         ) or await _read_optional_upload(google_service_account)
+        existing_connector = account_connector(session, account_id)
+        connector_token = (
+            existing_connector.auth_token
+            if existing_connector is not None and existing_connector.auth_token
+            else secrets.token_urlsafe(32)
+        )
         package = _build_windows_connector_package(
             account_id=account_id,
             platform=str(context["account_store_platform"]),
             center_url=_connector_center_url(request),
+            connector_token=connector_token,
             apple_issuer_id=apple_issuer_id,
             apple_key_id=apple_key_id,
             apple_file=apple_file,
@@ -1979,12 +1986,13 @@ def _build_windows_connector_package(
     account_id: str,
     platform: str,
     center_url: str,
+    connector_token: str,
     apple_issuer_id: str,
     apple_key_id: str,
     apple_file: tuple[str, bytes] | None,
     google_file: tuple[str, bytes] | None,
 ) -> dict[str, object]:
-    token = secrets.token_urlsafe(32)
+    token = connector_token.strip() or secrets.token_urlsafe(32)
     root = f"C:\\ProgramData\\TestFlying\\connectors\\{_safe_filename(account_id)}"
     config: dict[str, object] = {
         "accountId": account_id,

@@ -178,6 +178,144 @@ func TestConnectorMetadataSyncRunSucceeds(t *testing.T) {
 	}
 }
 
+func TestConnectorMetadataSyncRunSupportsImageOnlyScope(t *testing.T) {
+	server := testServer(t, testSettings())
+	payload := testPayload("2.4.0")
+	payload["operation"] = "update_app_metadata"
+	payload["runId"] = "sync-metadata-images"
+	payload["syncScopes"] = []string{"store_images"}
+	payload["metadata"] = map[string]any{
+		"contentSet": map[string]any{
+			"id":   "default",
+			"name": "默认上架内容",
+		},
+		"storeImages": map[string]any{
+			"feature_graphic_url": map[string]any{"urls": []string{}, "assets": []any{}},
+			"phone_screenshots":   map[string]any{"urls": []string{}, "assets": []any{}},
+			"tablet_screenshots":  map[string]any{"urls": []string{}, "assets": []any{}},
+		},
+	}
+
+	response := performJSON(server, http.MethodPost, "/v1/sync-runs", testHeaders(), payload)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	var result SyncRunResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "succeeded" {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestConnectorListsStoreReleases(t *testing.T) {
+	server := testServer(t, testSettings())
+
+	response := performJSON(
+		server,
+		http.MethodGet,
+		"/v1/apps/app-dataflow-android/store-releases?developerAccountId=account-apple-enterprise&platform=android&packageName=com.example.app",
+		testHeaders(),
+		nil,
+	)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	var result StoreReleasesResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Releases) != 2 || result.Releases[0].Track != "production" {
+		t.Fatalf("store releases = %#v", result.Releases)
+	}
+}
+
+func TestGoogleResolveReleaseTargetUsesLatestVersionCode(t *testing.T) {
+	tracks := []googleTrack{
+		{
+			Track: "production",
+			Releases: []googleRelease{
+				{Name: "3.1.0", VersionCodes: []string{"310"}},
+			},
+		},
+		{
+			Track: "internal",
+			Releases: []googleRelease{
+				{Name: "3.2.0", VersionCodes: []string{"320"}},
+			},
+		},
+	}
+
+	target, err := googleResolveReleaseTarget(tracks, nil)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if target.Track != "internal" || target.VersionCode != "320" || target.VersionName != "3.2.0" {
+		t.Fatalf("target = %#v", target)
+	}
+}
+
+func TestGoogleResolveReleaseTargetHonorsExplicitVersionCode(t *testing.T) {
+	tracks := []googleTrack{
+		{
+			Track: "production",
+			Releases: []googleRelease{
+				{Name: "3.1.0", VersionCodes: []string{"310"}},
+			},
+		},
+		{
+			Track: "internal",
+			Releases: []googleRelease{
+				{Name: "3.2.0", VersionCodes: []string{"320"}},
+			},
+		},
+	}
+
+	target, err := googleResolveReleaseTarget(tracks, &StoreReleaseTarget{VersionCode: "310"})
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if target.Track != "production" || target.VersionCode != "310" || target.VersionName != "3.1.0" {
+		t.Fatalf("target = %#v", target)
+	}
+}
+
+func TestStoreMetadataScopeAttributesArePlatformSpecific(t *testing.T) {
+	metadata := &StoreMetadata{
+		Title:            "Readink",
+		Keywords:         "books,novels",
+		PromotionalText:  "Read anywhere.",
+		ShortDescription: "Books and stories.",
+		Description:      "Full store description.",
+		FullDescription:  "Full Google Play description.",
+		VideoURL:         "https://example.test/video",
+	}
+
+	appleAttrs := appleMetadataAttributes(metadata, []string{"description", "keywords"})
+	googleAttrs := googleListingAttributes(metadata, []string{"short_description", "description", "video"})
+
+	if appleAttrs["description"] != "Full store description." || appleAttrs["keywords"] != "books,novels" {
+		t.Fatalf("apple attributes = %#v", appleAttrs)
+	}
+	if _, exists := appleAttrs["promotionalText"]; exists {
+		t.Fatalf("apple attributes should not include promotionalText: %#v", appleAttrs)
+	}
+	if googleAttrs["shortDescription"] != "Books and stories." {
+		t.Fatalf("google shortDescription = %#v", googleAttrs)
+	}
+	if googleAttrs["fullDescription"] != "Full Google Play description." {
+		t.Fatalf("google fullDescription = %#v", googleAttrs)
+	}
+	if googleAttrs["video"] != "https://example.test/video" {
+		t.Fatalf("google video = %#v", googleAttrs)
+	}
+}
+
 func TestConnectorMarketingPageSyncRunSucceeds(t *testing.T) {
 	server := testServer(t, testSettings())
 	payload := testPayload("page-launch")

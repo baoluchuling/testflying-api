@@ -49,6 +49,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.withToken(w, r, s.handleStoreListings)
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/apps/") && strings.HasSuffix(r.URL.Path, "/store-images"):
 		s.withToken(w, r, s.handleStoreImages)
+	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/apps/") && strings.HasSuffix(r.URL.Path, "/store-releases"):
+		s.withToken(w, r, s.handleStoreReleases)
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/apps/") && strings.HasSuffix(r.URL.Path, "/product-page-optimizations"):
 		s.withToken(w, r, s.handleListProductPageOptimizations)
 	case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/v1/apps/") && strings.HasSuffix(r.URL.Path, "/product-page-optimizations"):
@@ -163,6 +165,32 @@ func (s *Server) handleStoreImages(w http.ResponseWriter, r *http.Request) {
 	}
 	appID := appIDFromStoreResourcePath(r.URL.Path, "/store-images")
 	response, err := s.store.StoreImages(
+		r.Context(),
+		appID,
+		accountID,
+		platform,
+		r.URL.Query().Get("version"),
+		r.URL.Query().Get("storeAppId"),
+		r.URL.Query().Get("packageName"),
+	)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, friendlyStoreError(err))
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (s *Server) handleStoreReleases(w http.ResponseWriter, r *http.Request) {
+	accountID := r.URL.Query().Get("developerAccountId")
+	if !s.validateAccount(w, accountID) {
+		return
+	}
+	platform := r.URL.Query().Get("platform")
+	if !s.enforceRateLimit(w, platform) {
+		return
+	}
+	appID := appIDFromStoreResourcePath(r.URL.Path, "/store-releases")
+	response, err := s.store.StoreReleases(
 		r.Context(),
 		appID,
 		accountID,

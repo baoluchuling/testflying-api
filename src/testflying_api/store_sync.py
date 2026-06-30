@@ -45,6 +45,28 @@ APP_STORE_KEYWORDS_MAX_LENGTH = 100
 APP_STORE_PROMOTIONAL_TEXT_MAX_LENGTH = 170
 GOOGLE_PLAY_FULL_DESCRIPTION_MAX_LENGTH = 4000
 GOOGLE_PLAY_FULL_DESCRIPTION_MIN_LENGTH = 10
+GOOGLE_PLAY_SHORT_DESCRIPTION_MAX_LENGTH = 80
+APP_METADATA_SYNC_SCOPE = "metadata"
+APP_METADATA_DESCRIPTION_SCOPE = "description"
+APP_METADATA_PROMOTIONAL_TEXT_SCOPE = "promotional_text"
+APP_METADATA_SHORT_DESCRIPTION_SCOPE = "short_description"
+APP_METADATA_KEYWORDS_SCOPE = "keywords"
+APP_METADATA_STORE_IMAGES_SCOPE = "store_images"
+APP_METADATA_TEXT_SYNC_SCOPES = {
+    APP_METADATA_SYNC_SCOPE,
+    APP_METADATA_DESCRIPTION_SCOPE,
+    APP_METADATA_PROMOTIONAL_TEXT_SCOPE,
+    APP_METADATA_SHORT_DESCRIPTION_SCOPE,
+    APP_METADATA_KEYWORDS_SCOPE,
+}
+APP_METADATA_SYNC_SCOPES = [
+    APP_METADATA_SYNC_SCOPE,
+    APP_METADATA_DESCRIPTION_SCOPE,
+    APP_METADATA_PROMOTIONAL_TEXT_SCOPE,
+    APP_METADATA_SHORT_DESCRIPTION_SCOPE,
+    APP_METADATA_KEYWORDS_SCOPE,
+    APP_METADATA_STORE_IMAGES_SCOPE,
+]
 MARKETING_SYNC_TEXT_SCOPE = "marketing_text"
 MARKETING_SYNC_IMAGE_SCOPE = "store_images"
 
@@ -1163,7 +1185,7 @@ def sync_app_metadata(
     normalized_scopes = sync_scopes or (
         ["metadata", "store_images"] if include_store_images_in_payload else ["metadata"]
     )
-    include_text_metadata_in_payload = "metadata" in normalized_scopes
+    include_text_metadata_in_payload = _has_app_metadata_text_scope(normalized_scopes)
     if include_text_metadata_in_payload:
         validate_app_metadata_for_sync(
             platform=app.platform,
@@ -1171,6 +1193,7 @@ def sync_app_metadata(
             keywords=keywords,
             promotional_text=promotional_text,
             description=description,
+            sync_scopes=normalized_scopes,
         )
     draft = save_app_metadata_draft(
         session,
@@ -1300,6 +1323,8 @@ def sync_existing_release_notes(
     version: str,
     locale: str,
     actor: str,
+    store_track: str = "",
+    store_version_code: str = "",
     client: StoreConnectorClient | None = None,
 ) -> StoreSyncRun:
     app = scoped_app(session, account_id, app_id)
@@ -1356,6 +1381,10 @@ def sync_existing_release_notes(
         version=version,
         locale=locale,
         release_notes=draft.release_notes,
+        store_release=_store_release_payload(
+            track=store_track,
+            version_code=store_version_code,
+        ),
         sync_scopes=["release_notes"],
     )
     run.sync_scopes_json = {"scopes": ["release_notes"]}
@@ -1363,6 +1392,10 @@ def sync_existing_release_notes(
         "version": version,
         "locale": locale,
         "releaseNotes": draft.release_notes,
+        "storeRelease": _store_release_payload(
+            track=store_track,
+            version_code=store_version_code,
+        ),
     }
     connector_client = client or StoreConnectorClient()
     try:
@@ -1376,6 +1409,11 @@ def sync_existing_release_notes(
         run.status = "succeeded" if status in {"ok", "success", "succeeded"} else status
         run.error_code = _optional_str(response.get("errorCode"))
         run.error_summary = _optional_str(response.get("errorSummary") or response.get("message"))
+        store_state = response.get("storeState")
+        if isinstance(store_state, dict):
+            snapshot = dict(run.payload_snapshot_json or {})
+            snapshot["storeState"] = store_state
+            run.payload_snapshot_json = snapshot
         if run.status == "succeeded":
             run.error_code = None
             run.error_summary = None
@@ -1427,8 +1465,8 @@ def sync_existing_current_app_metadata(
             f"{locale} 的默认商店页草稿不存在",
             status_code=422,
         )
-    include_text_metadata_in_payload = "metadata" in normalized_scopes
-    include_store_images_in_payload = "store_images" in normalized_scopes
+    include_text_metadata_in_payload = _has_app_metadata_text_scope(normalized_scopes)
+    include_store_images_in_payload = APP_METADATA_STORE_IMAGES_SCOPE in normalized_scopes
     if include_text_metadata_in_payload:
         validate_app_metadata_for_sync(
             platform=app.platform,
@@ -1436,6 +1474,7 @@ def sync_existing_current_app_metadata(
             keywords=draft.keywords,
             promotional_text=draft.promotional_text,
             description=draft.description,
+            sync_scopes=normalized_scopes,
         )
     preflight = get_or_refresh_preflight(
         session,
@@ -1612,6 +1651,11 @@ def sync_marketing_page(
     else:
         _apply_sync_response(run, response)
         if run.status == "succeeded":
+            store_state = response.get("storeState")
+            if isinstance(store_state, dict):
+                apple_page_id = _optional_str(store_state.get("applePageId"))
+                if apple_page_id:
+                    page.apple_page_id = apple_page_id
             page.status = "synced"
             page.updated_at = datetime.now(UTC)
     run.finished_at = datetime.now(UTC)
@@ -1636,10 +1680,68 @@ def validate_app_metadata_for_sync(
     keywords: str,
     promotional_text: str,
     description: str,
+    sync_scopes: list[str] | None = None,
 ) -> None:
     normalized_description = description.strip()
     normalized_locale = locale.strip() or DEFAULT_LOCALE
+    scopes = (
+        _normalize_app_metadata_sync_scopes(sync_scopes)
+        if sync_scopes
+        else [APP_METADATA_SYNC_SCOPE]
+    )
+    sync_all_metadata = APP_METADATA_SYNC_SCOPE in scopes
+    sync_description = sync_all_metadata or APP_METADATA_DESCRIPTION_SCOPE in scopes
+    sync_promotional_text = sync_all_metadata or APP_METADATA_PROMOTIONAL_TEXT_SCOPE in scopes
+    sync_short_description = sync_all_metadata or APP_METADATA_SHORT_DESCRIPTION_SCOPE in scopes
+    sync_keywords = sync_all_metadata or APP_METADATA_KEYWORDS_SCOPE in scopes
     if platform == "ios":
+        if sync_description:
+            _validate_text_length(
+                locale=normalized_locale,
+                label="Description（描述）",
+                value=normalized_description,
+                min_length=APP_STORE_DESCRIPTION_MIN_LENGTH,
+                max_length=APP_STORE_DESCRIPTION_MAX_LENGTH,
+                required=True,
+            )
+        if sync_promotional_text:
+            _validate_text_length(
+                locale=normalized_locale,
+                label="Promotional Text（宣传文本）",
+                value=promotional_text.strip(),
+                max_length=APP_STORE_PROMOTIONAL_TEXT_MAX_LENGTH,
+            )
+        if sync_keywords:
+            _validate_text_length(
+                locale=normalized_locale,
+                label="Keywords（关键词）",
+                value=keywords.strip(),
+                max_length=APP_STORE_KEYWORDS_MAX_LENGTH,
+            )
+        return
+
+    if platform == "android":
+        if sync_description:
+            _validate_text_length(
+                locale=normalized_locale,
+                label="Full description（完整描述）",
+                value=normalized_description,
+                min_length=GOOGLE_PLAY_FULL_DESCRIPTION_MIN_LENGTH,
+                max_length=GOOGLE_PLAY_FULL_DESCRIPTION_MAX_LENGTH,
+                required=True,
+            )
+        if sync_short_description or sync_promotional_text:
+            _validate_text_length(
+                locale=normalized_locale,
+                label="Short description（简短说明）",
+                value=promotional_text.strip(),
+                max_length=GOOGLE_PLAY_SHORT_DESCRIPTION_MAX_LENGTH,
+                required=APP_METADATA_SHORT_DESCRIPTION_SCOPE in scopes
+                or APP_METADATA_PROMOTIONAL_TEXT_SCOPE in scopes,
+            )
+        return
+
+    if sync_description:
         _validate_text_length(
             locale=normalized_locale,
             label="Description（描述）",
@@ -1648,33 +1750,6 @@ def validate_app_metadata_for_sync(
             max_length=APP_STORE_DESCRIPTION_MAX_LENGTH,
             required=True,
         )
-        _validate_text_length(
-            locale=normalized_locale,
-            label="Promotional Text（宣传文本）",
-            value=promotional_text.strip(),
-            max_length=APP_STORE_PROMOTIONAL_TEXT_MAX_LENGTH,
-        )
-        return
-
-    if platform == "android":
-        _validate_text_length(
-            locale=normalized_locale,
-            label="Full description（完整描述）",
-            value=normalized_description,
-            min_length=GOOGLE_PLAY_FULL_DESCRIPTION_MIN_LENGTH,
-            max_length=GOOGLE_PLAY_FULL_DESCRIPTION_MAX_LENGTH,
-            required=True,
-        )
-        return
-
-    _validate_text_length(
-        locale=normalized_locale,
-        label="Description（描述）",
-        value=normalized_description,
-        min_length=APP_STORE_DESCRIPTION_MIN_LENGTH,
-        max_length=APP_STORE_DESCRIPTION_MAX_LENGTH,
-        required=True,
-    )
 
 
 def _validate_text_length(
@@ -1788,6 +1863,7 @@ def _sync_payload(
     version: str,
     locale: str,
     release_notes: str | None = None,
+    store_release: dict[str, object] | None = None,
     metadata: dict[str, object] | None = None,
     marketing_page: dict[str, object] | None = None,
     sync_scopes: list[str] | None = None,
@@ -1803,6 +1879,8 @@ def _sync_payload(
     }
     if release_notes is not None:
         payload["releaseNotes"] = release_notes
+    if store_release is not None:
+        payload["storeRelease"] = store_release
     if metadata is not None:
         payload["metadata"] = metadata
     if marketing_page is not None:
@@ -1810,6 +1888,17 @@ def _sync_payload(
     if sync_scopes is not None:
         payload["syncScopes"] = sync_scopes
     return payload
+
+
+def _store_release_payload(*, track: str = "", version_code: str = "") -> dict[str, object] | None:
+    body: dict[str, object] = {}
+    normalized_track = track.strip()
+    normalized_version_code = version_code.strip()
+    if normalized_track:
+        body["track"] = normalized_track
+    if normalized_version_code:
+        body["versionCode"] = normalized_version_code
+    return body or None
 
 
 def _app_payload(app: App) -> dict[str, object]:
@@ -1838,12 +1927,14 @@ def _metadata_payload(
         },
     }
     if include_text_metadata:
-        payload.update(
-            {
-                "promotionalText": draft.promotional_text,
-                "description": draft.description,
-            }
-        )
+        text_payload = {
+            "promotionalText": draft.promotional_text,
+            "shortDescription": draft.promotional_text,
+            "description": draft.description,
+        }
+        if draft.keywords.strip():
+            text_payload["keywords"] = draft.keywords
+        payload.update(text_payload)
     if include_store_images:
         payload["storeImages"] = draft.store_images_json
     return payload
@@ -1882,7 +1973,7 @@ def _normalize_marketing_page_type(value: str) -> str:
 
 
 def _normalize_app_metadata_sync_scopes(values: list[str] | None) -> list[str]:
-    allowed = ["metadata", "store_images"]
+    allowed = APP_METADATA_SYNC_SCOPES
     selected = [value for value in values or [] if value in allowed]
     deduped: list[str] = []
     for value in selected:
@@ -1891,10 +1982,14 @@ def _normalize_app_metadata_sync_scopes(values: list[str] | None) -> list[str]:
     if not deduped:
         raise ApiError(
             "invalid_sync_scopes",
-            "同步范围至少需要包含 metadata 或 store_images",
+            "同步范围至少需要包含一个商店页同步项",
             status_code=422,
         )
     return deduped
+
+
+def _has_app_metadata_text_scope(scopes: list[str]) -> bool:
+    return any(scope in APP_METADATA_TEXT_SYNC_SCOPES for scope in scopes)
 
 
 def _normalize_marketing_sync_scopes(values: list[str] | None) -> list[str]:

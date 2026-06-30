@@ -3,15 +3,32 @@ package connector
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
+	"path"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
+)
+
+const (
+	syncScopeMetadata         = "metadata"
+	syncScopeDescription      = "description"
+	syncScopeKeywords         = "keywords"
+	syncScopePromotionalText  = "promotional_text"
+	syncScopeShortDescription = "short_description"
+	syncScopeTitle            = "title"
+	syncScopeVideo            = "video"
+	syncScopeStoreImages      = "store_images"
+	syncScopeMarketingText    = "marketing_text"
 )
 
 type StoreGateway interface {
@@ -19,6 +36,7 @@ type StoreGateway interface {
 	SupportedLocales(ctx context.Context, appID string, accountID string, platform string, version string, storeAppID string, packageName string) (SupportedLocalesResponse, error)
 	StoreListings(ctx context.Context, appID string, accountID string, platform string, version string, storeAppID string, packageName string) (StoreListingsResponse, error)
 	StoreImages(ctx context.Context, appID string, accountID string, platform string, version string, storeAppID string, packageName string) (StoreImagesResponse, error)
+	StoreReleases(ctx context.Context, appID string, accountID string, platform string, version string, storeAppID string, packageName string) (StoreReleasesResponse, error)
 	ListProductPageOptimizations(ctx context.Context, appID string, accountID string, platform string, storeAppID string) (ProductPageOptimizationsResponse, error)
 	CreateProductPageOptimization(ctx context.Context, appID string, payload ProductPageOptimizationCreateRequest) (ProductPageOptimizationCreateResponse, error)
 	SyncRun(ctx context.Context, payload SyncRunRequest) (SyncRunResponse, error)
@@ -116,6 +134,31 @@ func (g MockStoreGateway) StoreImages(_ context.Context, _ string, _ string, pla
 	return StoreImagesResponse{Locales: rows}, nil
 }
 
+func (g MockStoreGateway) StoreReleases(_ context.Context, _ string, _ string, platform string, _ string, _ string, _ string) (StoreReleasesResponse, error) {
+	if normalizePlatform(platform) != "android" {
+		return StoreReleasesResponse{Releases: []StoreRelease{}}, nil
+	}
+	return StoreReleasesResponse{
+		Releases: []StoreRelease{
+			{
+				Track:        "production",
+				Name:         "3.1.0",
+				Status:       "completed",
+				VersionCodes: []string{"310"},
+				ReleaseNotes: []StoreReleaseNote{
+					{Language: "en-US", Text: "Mock release notes."},
+				},
+			},
+			{
+				Track:        "internal",
+				Name:         "3.2.0",
+				Status:       "draft",
+				VersionCodes: []string{"320"},
+			},
+		},
+	}, nil
+}
+
 func (g MockStoreGateway) ListProductPageOptimizations(_ context.Context, appID string, _ string, platform string, _ string) (ProductPageOptimizationsResponse, error) {
 	if normalizePlatform(platform) != "ios" {
 		return ProductPageOptimizationsResponse{Experiments: []ProductPageOptimization{}}, nil
@@ -192,8 +235,20 @@ func (g MockStoreGateway) SyncRun(_ context.Context, payload SyncRunRequest) (Sy
 		if payload.Metadata == nil {
 			return failedSync("empty_metadata", "商店元数据不能为空。"), nil
 		}
-		if strings.TrimSpace(payload.Metadata.Description) == "" {
-			return failedSync("empty_metadata_description", "商店元数据描述不能为空。"), nil
+		scopes := syncScopeSet(payload.SyncScopes)
+		hasTextScope := len(scopes) == 0 || scopes[syncScopeMetadata] || scopes[syncScopeDescription] ||
+			scopes[syncScopeKeywords] || scopes[syncScopePromotionalText] || scopes[syncScopeShortDescription] ||
+			scopes[syncScopeTitle] || scopes[syncScopeVideo]
+		hasImages := scopes[syncScopeStoreImages] && payload.Metadata.StoreImages != nil
+		if hasTextScope {
+			hasText := len(appleMetadataAttributes(payload.Metadata, payload.SyncScopes)) > 0 ||
+				len(googleListingAttributes(payload.Metadata, payload.SyncScopes)) > 0
+			if !hasText && !hasImages {
+				return failedSync("empty_metadata", "商店元数据内容不能为空。"), nil
+			}
+		}
+		if !hasTextScope && !hasImages {
+			return failedSync("empty_sync_payload", "没有可同步的商店内容。"), nil
 		}
 		return SyncRunResponse{Status: "succeeded", Message: "商店元数据已同步。"}, nil
 	}
@@ -268,6 +323,15 @@ func (g *LiveStoreGateway) StoreImages(ctx context.Context, appID string, accoun
 	}
 }
 
+func (g *LiveStoreGateway) StoreReleases(ctx context.Context, _ string, _ string, platform string, _ string, _ string, packageName string) (StoreReleasesResponse, error) {
+	switch normalizePlatform(platform) {
+	case "android":
+		return g.googleStoreReleases(ctx, packageName)
+	default:
+		return StoreReleasesResponse{Releases: []StoreRelease{}}, nil
+	}
+}
+
 func (g *LiveStoreGateway) ListProductPageOptimizations(ctx context.Context, appID string, accountID string, platform string, storeAppID string) (ProductPageOptimizationsResponse, error) {
 	switch normalizePlatform(platform) {
 	case "ios":
@@ -329,6 +393,29 @@ type appleResource struct {
 			Type string `json:"type"`
 		} `json:"data"`
 	} `json:"relationships"`
+}
+
+type appleScreenshotSet struct {
+	ID            string
+	DisplayType   string
+	ScreenshotIDs []string
+}
+
+type appleUploadOperation struct {
+	Method         string `json:"method"`
+	URL            string `json:"url"`
+	Offset         int64  `json:"offset"`
+	Length         int64  `json:"length"`
+	RequestHeaders []struct {
+		Name  string `json:"name"`
+		Value string `json:"value"`
+	} `json:"requestHeaders"`
+}
+
+type downloadedStoreImage struct {
+	FileName    string
+	ContentType string
+	Body        []byte
 }
 
 func (g *LiveStoreGateway) applePreflight(ctx context.Context, payload PreflightRequest) (PreflightResponse, error) {
@@ -711,13 +798,7 @@ func (g *LiveStoreGateway) appleCreateExperimentTreatmentLocalization(ctx contex
 
 func (g *LiveStoreGateway) appleSyncRun(ctx context.Context, payload SyncRunRequest) (SyncRunResponse, error) {
 	if payload.Operation == "update_marketing_page" {
-		if payload.MarketingPage == nil {
-			return failedSync("empty_marketing_page", "营销页面内容不能为空。"), nil
-		}
-		if strings.TrimSpace(payload.MarketingPage.PageName) == "" {
-			return failedSync("empty_marketing_page_name", "营销页面名称不能为空。"), nil
-		}
-		return SyncRunResponse{Status: "succeeded", Message: "营销页面已同步。"}, nil
+		return g.appleSyncMarketingPage(ctx, payload)
 	}
 	version, err := g.appleFindVersion(ctx, payload.App.StoreAppID, payload.Version)
 	if err != nil {
@@ -738,12 +819,15 @@ func (g *LiveStoreGateway) appleSyncRun(ctx context.Context, payload SyncRunRequ
 		if payload.Metadata == nil {
 			return failedSync("empty_metadata", "商店元数据不能为空。"), nil
 		}
-		if err := g.applePatchVersionLocalization(ctx, versionLocalization.ID, map[string]string{
-			"description":     payload.Metadata.Description,
-			"keywords":        payload.Metadata.Keywords,
-			"promotionalText": payload.Metadata.PromotionalText,
-		}); err != nil {
-			return SyncRunResponse{}, err
+		if attributes := appleMetadataAttributes(payload.Metadata, payload.SyncScopes); len(attributes) > 0 {
+			if err := g.applePatchVersionLocalization(ctx, versionLocalization.ID, attributes); err != nil {
+				return SyncRunResponse{}, err
+			}
+		}
+		if shouldSyncStoreImages(payload.SyncScopes) && payload.Metadata.StoreImages != nil {
+			if err := g.appleSyncStoreImages(ctx, "appStoreVersionLocalization", versionLocalization.ID, payload.Metadata.StoreImages); err != nil {
+				return SyncRunResponse{}, err
+			}
 		}
 		return SyncRunResponse{Status: "succeeded", Message: "商店元数据已同步。"}, nil
 	}
@@ -756,6 +840,99 @@ func (g *LiveStoreGateway) appleSyncRun(ctx context.Context, payload SyncRunRequ
 		return SyncRunResponse{}, err
 	}
 	return SyncRunResponse{Status: "succeeded", Message: "版本说明已同步。"}, nil
+}
+
+func (g *LiveStoreGateway) appleSyncMarketingPage(ctx context.Context, payload SyncRunRequest) (SyncRunResponse, error) {
+	if payload.MarketingPage == nil {
+		return failedSync("empty_marketing_page", "营销页面内容不能为空。"), nil
+	}
+	if strings.TrimSpace(payload.MarketingPage.PageName) == "" {
+		return failedSync("empty_marketing_page_name", "营销页面名称不能为空。"), nil
+	}
+	pageID, localizationID, created, err := g.appleEnsureCustomProductPageLocalization(ctx, payload)
+	if err != nil {
+		return SyncRunResponse{}, err
+	}
+	scopes := syncScopeSet(payload.SyncScopes)
+	if len(scopes) == 0 || scopes[syncScopeMarketingText] {
+		attributes := map[string]string{"promotionalText": payload.MarketingPage.PromotionalText}
+		if err := g.applePatchCustomProductPageLocalization(ctx, localizationID, attributes); err != nil {
+			return SyncRunResponse{}, err
+		}
+	}
+	if scopes[syncScopeStoreImages] && payload.MarketingPage.StoreImages != nil {
+		if err := g.appleSyncStoreImages(ctx, "appCustomProductPageLocalization", localizationID, payload.MarketingPage.StoreImages); err != nil {
+			return SyncRunResponse{}, err
+		}
+	}
+	return SyncRunResponse{
+		Status:  "succeeded",
+		Message: "营销页面已同步。",
+		StoreState: map[string]any{
+			"applePageId": pageID,
+			"created":     created,
+		},
+	}, nil
+}
+
+func appleMetadataAttributes(metadata *StoreMetadata, scopes []string) map[string]string {
+	scopeSet := syncScopeSet(scopes)
+	allText := len(scopeSet) == 0 || scopeSet[syncScopeMetadata]
+	attributes := map[string]string{}
+	if allText || scopeSet[syncScopeDescription] {
+		attributes["description"] = metadata.Description
+	}
+	if allText || scopeSet[syncScopeKeywords] {
+		attributes["keywords"] = metadata.Keywords
+	}
+	if allText || scopeSet[syncScopePromotionalText] {
+		attributes["promotionalText"] = metadata.PromotionalText
+	}
+	return cleanStringMap(attributes)
+}
+
+func googleListingAttributes(metadata *StoreMetadata, scopes []string) map[string]string {
+	scopeSet := syncScopeSet(scopes)
+	allText := len(scopeSet) == 0 || scopeSet[syncScopeMetadata]
+	attributes := map[string]string{}
+	if allText || scopeSet[syncScopeTitle] {
+		attributes["title"] = metadata.Title
+	}
+	if allText || scopeSet[syncScopeDescription] {
+		attributes["fullDescription"] = defaultString(metadata.FullDescription, metadata.Description)
+	}
+	if allText || scopeSet[syncScopePromotionalText] || scopeSet[syncScopeShortDescription] {
+		attributes["shortDescription"] = defaultString(metadata.ShortDescription, metadata.PromotionalText)
+	}
+	if allText || scopeSet[syncScopeVideo] {
+		attributes["video"] = metadata.VideoURL
+	}
+	return cleanStringMap(attributes)
+}
+
+func syncScopeSet(scopes []string) map[string]bool {
+	result := map[string]bool{}
+	for _, scope := range scopes {
+		normalized := strings.TrimSpace(scope)
+		if normalized != "" {
+			result[normalized] = true
+		}
+	}
+	return result
+}
+
+func shouldSyncStoreImages(scopes []string) bool {
+	return syncScopeSet(scopes)[syncScopeStoreImages]
+}
+
+func cleanStringMap(values map[string]string) map[string]string {
+	cleaned := map[string]string{}
+	for key, value := range values {
+		if strings.TrimSpace(value) != "" {
+			cleaned[key] = value
+		}
+	}
+	return cleaned
 }
 
 func (g *LiveStoreGateway) appleFindVersion(ctx context.Context, storeAppID string, version string) (*appleVersion, error) {
@@ -818,6 +995,232 @@ func (g *LiveStoreGateway) appleInfoLocalizations(ctx context.Context, storeAppI
 	return appleLocalizationsFromResponse(response.Data), nil
 }
 
+func (g *LiveStoreGateway) appleEnsureCustomProductPageLocalization(ctx context.Context, payload SyncRunRequest) (string, string, bool, error) {
+	page := payload.MarketingPage
+	if page == nil {
+		return "", "", false, errors.New("营销页面内容不能为空")
+	}
+	locale := defaultString(page.Locale, payload.Locale)
+	pageID := strings.TrimSpace(page.ApplePageID)
+	if pageID == "" {
+		createdPageID, localizationID, err := g.appleCreateCustomProductPage(ctx, payload, locale)
+		return createdPageID, localizationID, true, err
+	}
+	versionID, err := g.appleFirstCustomProductPageVersion(ctx, pageID)
+	if err != nil {
+		return "", "", false, err
+	}
+	if strings.TrimSpace(versionID) == "" {
+		return "", "", false, errors.New("App Store Connect 没有返回自定义产品页面版本")
+	}
+	localization, err := g.appleFindCustomProductPageLocalization(ctx, versionID, locale)
+	if err != nil {
+		return "", "", false, err
+	}
+	if localization != nil {
+		return pageID, localization.ID, false, nil
+	}
+	createdLocalization, err := g.appleCreateCustomProductPageLocalization(ctx, versionID, locale, page.PromotionalText)
+	if err != nil {
+		return "", "", false, err
+	}
+	return pageID, createdLocalization.ID, false, nil
+}
+
+func (g *LiveStoreGateway) appleCreateCustomProductPage(ctx context.Context, payload SyncRunRequest, locale string) (string, string, error) {
+	storeAppID := strings.TrimSpace(payload.App.StoreAppID)
+	if storeAppID == "" {
+		return "", "", errors.New("iOS App 缺少 Apple App ID")
+	}
+	templateVersion, err := g.appleLatestVersion(ctx, storeAppID)
+	if err != nil {
+		return "", "", err
+	}
+	if templateVersion == nil {
+		return "", "", errors.New("创建自定义产品页面需要 App Store Connect 中至少存在一个商店版本")
+	}
+	pageName := strings.TrimSpace(payload.MarketingPage.PageName)
+	refSeed := defaultString(payload.RunID, "custom-product-page")
+	versionRef := "version-" + refSeed
+	localizationRef := "localization-" + refSeed
+	localizationAttributes := map[string]string{"locale": locale}
+	if strings.TrimSpace(payload.MarketingPage.PromotionalText) != "" {
+		localizationAttributes["promotionalText"] = payload.MarketingPage.PromotionalText
+	}
+	body := map[string]any{
+		"data": map[string]any{
+			"type": "appCustomProductPages",
+			"attributes": map[string]any{
+				"name": pageName,
+			},
+			"relationships": map[string]any{
+				"app": map[string]any{
+					"data": map[string]string{"type": "apps", "id": storeAppID},
+				},
+				"appStoreVersionTemplate": map[string]any{
+					"data": map[string]string{"type": "appStoreVersions", "id": templateVersion.ID},
+				},
+				"appCustomProductPageVersions": map[string]any{
+					"data": []map[string]string{
+						{"type": "appCustomProductPageVersions", "id": versionRef},
+					},
+				},
+			},
+		},
+		"included": []map[string]any{
+			{
+				"type": "appCustomProductPageVersions",
+				"id":   versionRef,
+				"relationships": map[string]any{
+					"appCustomProductPageLocalizations": map[string]any{
+						"data": []map[string]string{
+							{"type": "appCustomProductPageLocalizations", "id": localizationRef},
+						},
+					},
+				},
+			},
+			{
+				"type":       "appCustomProductPageLocalizations",
+				"id":         localizationRef,
+				"attributes": localizationAttributes,
+			},
+		},
+	}
+	var response struct {
+		Data     appleResource   `json:"data"`
+		Included []appleResource `json:"included"`
+	}
+	if _, err := g.appleRequest(ctx, http.MethodPost, "/v1/appCustomProductPages", body, &response); err != nil {
+		return "", "", err
+	}
+	pageID := response.Data.ID
+	localizationID := ""
+	for _, item := range response.Included {
+		if item.Type == "appCustomProductPageLocalizations" {
+			localizationID = item.ID
+			break
+		}
+	}
+	if pageID == "" {
+		return "", "", errors.New("App Store Connect 没有返回自定义产品页面 ID")
+	}
+	if localizationID != "" {
+		return pageID, localizationID, nil
+	}
+	versionID, err := g.appleFirstCustomProductPageVersion(ctx, pageID)
+	if err != nil {
+		return "", "", err
+	}
+	localization, err := g.appleFindCustomProductPageLocalization(ctx, versionID, locale)
+	if err != nil {
+		return "", "", err
+	}
+	if localization == nil {
+		return "", "", errors.New("App Store Connect 没有返回自定义产品页面语言")
+	}
+	return pageID, localization.ID, nil
+}
+
+func (g *LiveStoreGateway) appleLatestVersion(ctx context.Context, storeAppID string) (*appleVersion, error) {
+	query := url.Values{}
+	query.Set("limit", "1")
+	query.Set("sort", "-createdDate")
+	var response struct {
+		Data []struct {
+			ID         string         `json:"id"`
+			Attributes map[string]any `json:"attributes"`
+		} `json:"data"`
+	}
+	if _, err := g.appleRequest(ctx, http.MethodGet, "/v1/apps/"+url.PathEscape(storeAppID)+"/appStoreVersions?"+query.Encode(), nil, &response); err != nil {
+		return nil, err
+	}
+	if len(response.Data) == 0 {
+		return nil, nil
+	}
+	state, _ := response.Data[0].Attributes["appStoreState"].(string)
+	return &appleVersion{ID: response.Data[0].ID, State: state, Attributes: response.Data[0].Attributes}, nil
+}
+
+func (g *LiveStoreGateway) appleFirstCustomProductPageVersion(ctx context.Context, pageID string) (string, error) {
+	var response struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	path := "/v1/appCustomProductPages/" + url.PathEscape(pageID) + "/appCustomProductPageVersions?limit=1"
+	if _, err := g.appleRequest(ctx, http.MethodGet, path, nil, &response); err != nil {
+		return "", err
+	}
+	if len(response.Data) == 0 {
+		return "", nil
+	}
+	return response.Data[0].ID, nil
+}
+
+func (g *LiveStoreGateway) appleFindCustomProductPageLocalization(ctx context.Context, versionID string, locale string) (*appleLocalization, error) {
+	localizations, err := g.appleCustomProductPageLocalizations(ctx, versionID)
+	if err != nil {
+		return nil, err
+	}
+	return findLocalization(localizations, locale), nil
+}
+
+func (g *LiveStoreGateway) appleCustomProductPageLocalizations(ctx context.Context, versionID string) ([]appleLocalization, error) {
+	var response struct {
+		Data []struct {
+			ID         string         `json:"id"`
+			Attributes map[string]any `json:"attributes"`
+		} `json:"data"`
+	}
+	path := "/v1/appCustomProductPageVersions/" + url.PathEscape(versionID) + "/appCustomProductPageLocalizations?limit=200"
+	if _, err := g.appleRequest(ctx, http.MethodGet, path, nil, &response); err != nil {
+		return nil, err
+	}
+	return appleLocalizationsFromResponse(response.Data), nil
+}
+
+func (g *LiveStoreGateway) appleCreateCustomProductPageLocalization(ctx context.Context, versionID string, locale string, promotionalText string) (*appleLocalization, error) {
+	attributes := map[string]string{"locale": locale}
+	if strings.TrimSpace(promotionalText) != "" {
+		attributes["promotionalText"] = promotionalText
+	}
+	body := map[string]any{
+		"data": map[string]any{
+			"type":       "appCustomProductPageLocalizations",
+			"attributes": attributes,
+			"relationships": map[string]any{
+				"appCustomProductPageVersion": map[string]any{
+					"data": map[string]string{"type": "appCustomProductPageVersions", "id": versionID},
+				},
+			},
+		},
+	}
+	var response struct {
+		Data struct {
+			ID         string         `json:"id"`
+			Attributes map[string]any `json:"attributes"`
+		} `json:"data"`
+	}
+	if _, err := g.appleRequest(ctx, http.MethodPost, "/v1/appCustomProductPageLocalizations", body, &response); err != nil {
+		return nil, err
+	}
+	localization := appleLocalizationsFromResponse([]struct {
+		ID         string         `json:"id"`
+		Attributes map[string]any `json:"attributes"`
+	}{response.Data})
+	if len(localization) == 0 {
+		return nil, errors.New("App Store Connect 没有返回自定义产品页面语言")
+	}
+	return &localization[0], nil
+}
+
+func (g *LiveStoreGateway) applePatchCustomProductPageLocalization(ctx context.Context, localizationID string, attributes map[string]string) error {
+	if len(cleanStringMap(attributes)) == 0 {
+		return nil
+	}
+	return g.applePatchLocalization(ctx, "appCustomProductPageLocalizations", localizationID, attributes)
+}
+
 func (g *LiveStoreGateway) appleFindInfoLocalization(ctx context.Context, storeAppID string, locale string) (*appleLocalization, error) {
 	localizations, err := g.appleInfoLocalizations(ctx, storeAppID)
 	if err != nil {
@@ -841,6 +1244,9 @@ func (g *LiveStoreGateway) applePatchLocalization(ctx context.Context, resourceT
 			cleaned[key] = value
 		}
 	}
+	if len(cleaned) == 0 {
+		return nil
+	}
 	body := map[string]any{
 		"data": map[string]any{
 			"type":       resourceType,
@@ -850,6 +1256,208 @@ func (g *LiveStoreGateway) applePatchLocalization(ctx context.Context, resourceT
 	}
 	_, err := g.appleRequest(ctx, http.MethodPatch, "/v1/"+resourceType+"/"+url.PathEscape(localizationID), body, nil)
 	return err
+}
+
+func (g *LiveStoreGateway) appleSyncStoreImages(ctx context.Context, ownerRelationship string, ownerID string, storeImages *StoreImages) error {
+	if storeImages == nil {
+		return nil
+	}
+	slots := map[string]StoreImageSlot{
+		"phone_screenshots":  storeImages.PhoneScreenshots,
+		"tablet_screenshots": storeImages.TabletScreenshots,
+	}
+	for slotName, slot := range slots {
+		sources := storeImageSources(slot)
+		if len(sources) == 0 {
+			continue
+		}
+		displayType := appleScreenshotDisplayType(slotName)
+		if displayType == "" {
+			continue
+		}
+		set, err := g.appleFindOrCreateScreenshotSet(ctx, ownerRelationship, ownerID, displayType)
+		if err != nil {
+			return err
+		}
+		for _, screenshotID := range set.ScreenshotIDs {
+			if err := g.appleDeleteScreenshot(ctx, screenshotID); err != nil {
+				return err
+			}
+		}
+		for _, source := range sources {
+			image, err := g.downloadStoreImage(ctx, source)
+			if err != nil {
+				return err
+			}
+			if err := g.appleUploadScreenshot(ctx, set.ID, image); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (g *LiveStoreGateway) appleFindOrCreateScreenshotSet(ctx context.Context, ownerRelationship string, ownerID string, displayType string) (*appleScreenshotSet, error) {
+	sets, err := g.appleScreenshotSets(ctx, ownerRelationship, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range sets {
+		if strings.EqualFold(sets[i].DisplayType, displayType) {
+			return &sets[i], nil
+		}
+	}
+	ownerType := appleScreenshotOwnerType(ownerRelationship)
+	if ownerType == "" {
+		return nil, fmt.Errorf("不支持的 Apple 截图归属关系: %s", ownerRelationship)
+	}
+	body := map[string]any{
+		"data": map[string]any{
+			"type": "appScreenshotSets",
+			"attributes": map[string]string{
+				"screenshotDisplayType": displayType,
+			},
+			"relationships": map[string]any{
+				ownerRelationship: map[string]any{
+					"data": map[string]string{"type": ownerType, "id": ownerID},
+				},
+			},
+		},
+	}
+	var response struct {
+		Data struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if _, err := g.appleRequest(ctx, http.MethodPost, "/v1/appScreenshotSets", body, &response); err != nil {
+		return nil, err
+	}
+	if response.Data.ID == "" {
+		return nil, errors.New("App Store Connect 没有返回截图集合 ID")
+	}
+	return &appleScreenshotSet{ID: response.Data.ID, DisplayType: displayType}, nil
+}
+
+func (g *LiveStoreGateway) appleScreenshotSets(ctx context.Context, ownerRelationship string, ownerID string) ([]appleScreenshotSet, error) {
+	ownerType := appleScreenshotOwnerType(ownerRelationship)
+	if ownerType == "" {
+		return nil, fmt.Errorf("不支持的 Apple 截图归属关系: %s", ownerRelationship)
+	}
+	query := url.Values{}
+	query.Set("include", "appScreenshots")
+	query.Set("limit", "200")
+	query.Set("limit[appScreenshots]", "200")
+	path := "/v1/" + ownerType + "/" + url.PathEscape(ownerID) + "/appScreenshotSets?" + query.Encode()
+	var response struct {
+		Data []struct {
+			ID            string         `json:"id"`
+			Attributes    map[string]any `json:"attributes"`
+			Relationships map[string]struct {
+				Data []struct {
+					ID string `json:"id"`
+				} `json:"data"`
+			} `json:"relationships"`
+		} `json:"data"`
+	}
+	if _, err := g.appleRequest(ctx, http.MethodGet, path, nil, &response); err != nil {
+		return nil, err
+	}
+	sets := make([]appleScreenshotSet, 0, len(response.Data))
+	for _, item := range response.Data {
+		set := appleScreenshotSet{
+			ID:          item.ID,
+			DisplayType: stringAttribute(item.Attributes, "screenshotDisplayType"),
+		}
+		if relationship, ok := item.Relationships["appScreenshots"]; ok {
+			for _, linkage := range relationship.Data {
+				if strings.TrimSpace(linkage.ID) != "" {
+					set.ScreenshotIDs = append(set.ScreenshotIDs, linkage.ID)
+				}
+			}
+		}
+		sets = append(sets, set)
+	}
+	return sets, nil
+}
+
+func (g *LiveStoreGateway) appleDeleteScreenshot(ctx context.Context, screenshotID string) error {
+	if strings.TrimSpace(screenshotID) == "" {
+		return nil
+	}
+	_, err := g.appleRequest(ctx, http.MethodDelete, "/v1/appScreenshots/"+url.PathEscape(screenshotID), nil, nil)
+	return err
+}
+
+func (g *LiveStoreGateway) appleUploadScreenshot(ctx context.Context, screenshotSetID string, image downloadedStoreImage) error {
+	checksum := md5.Sum(image.Body)
+	attributes := map[string]any{
+		"fileName":           image.FileName,
+		"fileSize":           len(image.Body),
+		"sourceFileChecksum": hex.EncodeToString(checksum[:]),
+	}
+	body := map[string]any{
+		"data": map[string]any{
+			"type":       "appScreenshots",
+			"attributes": attributes,
+			"relationships": map[string]any{
+				"appScreenshotSet": map[string]any{
+					"data": map[string]string{"type": "appScreenshotSets", "id": screenshotSetID},
+				},
+			},
+		},
+	}
+	var response struct {
+		Data struct {
+			ID         string `json:"id"`
+			Attributes struct {
+				UploadOperations []appleUploadOperation `json:"uploadOperations"`
+			} `json:"attributes"`
+		} `json:"data"`
+	}
+	if _, err := g.appleRequest(ctx, http.MethodPost, "/v1/appScreenshots", body, &response); err != nil {
+		return err
+	}
+	if response.Data.ID == "" {
+		return errors.New("App Store Connect 没有返回截图 ID")
+	}
+	for _, operation := range response.Data.Attributes.UploadOperations {
+		if err := g.appleRunUploadOperation(ctx, operation, image.Body); err != nil {
+			return err
+		}
+	}
+	commit := map[string]any{
+		"data": map[string]any{
+			"type": "appScreenshots",
+			"id":   response.Data.ID,
+			"attributes": map[string]bool{
+				"uploaded": true,
+			},
+		},
+	}
+	_, err := g.appleRequest(ctx, http.MethodPatch, "/v1/appScreenshots/"+url.PathEscape(response.Data.ID), commit, nil)
+	return err
+}
+
+func (g *LiveStoreGateway) appleRunUploadOperation(ctx context.Context, operation appleUploadOperation, body []byte) error {
+	if strings.TrimSpace(operation.URL) == "" {
+		return errors.New("App Store Connect 上传操作缺少 URL")
+	}
+	start := operation.Offset
+	end := int64(len(body))
+	if operation.Length > 0 {
+		end = start + operation.Length
+	}
+	if start < 0 || end < start || end > int64(len(body)) {
+		return fmt.Errorf("App Store Connect 返回了非法上传分片: offset=%d length=%d size=%d", operation.Offset, operation.Length, len(body))
+	}
+	headers := http.Header{}
+	for _, header := range operation.RequestHeaders {
+		if strings.TrimSpace(header.Name) != "" {
+			headers.Set(header.Name, header.Value)
+		}
+	}
+	method := defaultString(operation.Method, http.MethodPut)
+	return doRaw(ctx, g.httpClient, method, operation.URL, "", body[start:end], "", headers, nil, nil)
 }
 
 func (g *LiveStoreGateway) appleRequest(ctx context.Context, method string, path string, body any, out any) (http.Header, error) {
@@ -1010,6 +1618,69 @@ func (g *LiveStoreGateway) googleListingLanguages(ctx context.Context, packageNa
 	return locales, nil
 }
 
+type googleTrack struct {
+	Track    string          `json:"track"`
+	Releases []googleRelease `json:"releases"`
+}
+
+type googleRelease struct {
+	Name         string             `json:"name,omitempty"`
+	Status       string             `json:"status,omitempty"`
+	VersionCodes []string           `json:"versionCodes,omitempty"`
+	ReleaseNotes []StoreReleaseNote `json:"releaseNotes,omitempty"`
+}
+
+func (g *LiveStoreGateway) googleStoreReleases(ctx context.Context, packageName string) (StoreReleasesResponse, error) {
+	if strings.TrimSpace(packageName) == "" {
+		return StoreReleasesResponse{Releases: []StoreRelease{}}, nil
+	}
+	editID, err := g.googleInsertEdit(ctx, packageName)
+	if err != nil {
+		return StoreReleasesResponse{}, err
+	}
+	defer g.googleDeleteEdit(ctx, packageName, editID)
+	tracks, err := g.googleTracks(ctx, packageName, editID)
+	if err != nil {
+		return StoreReleasesResponse{}, err
+	}
+	releases := make([]StoreRelease, 0)
+	for _, track := range tracks {
+		for _, release := range track.Releases {
+			if len(release.VersionCodes) == 0 {
+				continue
+			}
+			releases = append(releases, StoreRelease{
+				Track:        track.Track,
+				Name:         release.Name,
+				Status:       release.Status,
+				VersionCodes: append([]string{}, release.VersionCodes...),
+				ReleaseNotes: append([]StoreReleaseNote{}, release.ReleaseNotes...),
+			})
+		}
+	}
+	sort.SliceStable(releases, func(i int, j int) bool {
+		left := maxVersionCode(releases[i].VersionCodes)
+		right := maxVersionCode(releases[j].VersionCodes)
+		if left == right {
+			return releases[i].Track < releases[j].Track
+		}
+		return left > right
+	})
+	return StoreReleasesResponse{Releases: releases}, nil
+}
+
+func (g *LiveStoreGateway) googleTracks(ctx context.Context, packageName string, editID string) ([]googleTrack, error) {
+	var response struct {
+		Tracks []googleTrack `json:"tracks"`
+	}
+	path := "/androidpublisher/v3/applications/" + url.PathEscape(packageName) +
+		"/edits/" + url.PathEscape(editID) + "/tracks"
+	if err := g.googleRequest(ctx, http.MethodGet, path, nil, &response); err != nil {
+		return nil, err
+	}
+	return response.Tracks, nil
+}
+
 func (g *LiveStoreGateway) googleImagesForType(ctx context.Context, packageName string, editID string, locale string, imageType string) ([]StoreImageRef, error) {
 	var response struct {
 		Images []struct {
@@ -1042,8 +1713,11 @@ func (g *LiveStoreGateway) googleSyncRun(ctx context.Context, payload SyncRunReq
 	if payload.Operation == "update_marketing_page" {
 		return failedSync("google_marketing_page_unsupported", "营销页面控制台当前仅支持 App Store Connect。"), nil
 	}
+	if payload.Operation == "update_release_notes" {
+		return g.googleSyncReleaseNotes(ctx, payload)
+	}
 	if payload.Operation != "update_app_metadata" {
-		return failedSync("google_release_notes_unsupported", "Google Play 版本说明同步需要 track 和 versionCode，当前后台还没有提供这些参数。"), nil
+		return failedSync("unsupported_operation", "Google Play 暂不支持这个同步操作。"), nil
 	}
 	if payload.Metadata == nil {
 		return failedSync("empty_metadata", "商店元数据不能为空。"), nil
@@ -1053,16 +1727,178 @@ func (g *LiveStoreGateway) googleSyncRun(ctx context.Context, payload SyncRunReq
 	if err != nil {
 		return SyncRunResponse{}, err
 	}
-	body := map[string]string{"fullDescription": payload.Metadata.Description}
-	path := "/androidpublisher/v3/applications/" + url.PathEscape(packageName) +
-		"/edits/" + url.PathEscape(editID) + "/listings/" + url.PathEscape(payload.Locale)
-	if err := g.googleRequest(ctx, http.MethodPatch, path, body, nil); err != nil {
-		return SyncRunResponse{}, err
+	committed := false
+	if body := googleListingAttributes(payload.Metadata, payload.SyncScopes); len(body) > 0 {
+		path := "/androidpublisher/v3/applications/" + url.PathEscape(packageName) +
+			"/edits/" + url.PathEscape(editID) + "/listings/" + url.PathEscape(payload.Locale)
+		if err := g.googleRequest(ctx, http.MethodPatch, path, body, nil); err != nil {
+			return SyncRunResponse{}, err
+		}
+		committed = true
+	}
+	if shouldSyncStoreImages(payload.SyncScopes) && payload.Metadata.StoreImages != nil {
+		if err := g.googleSyncStoreImages(ctx, packageName, editID, payload.Locale, payload.Metadata.StoreImages); err != nil {
+			return SyncRunResponse{}, err
+		}
+		committed = true
+	}
+	if !committed {
+		return failedSync("empty_sync_payload", "没有可同步的 Google Play 商店内容。"), nil
 	}
 	if err := g.googleRequest(ctx, http.MethodPost, "/androidpublisher/v3/applications/"+url.PathEscape(packageName)+"/edits/"+url.PathEscape(editID)+":commit", nil, nil); err != nil {
 		return SyncRunResponse{}, err
 	}
 	return SyncRunResponse{Status: "succeeded", Message: "商店元数据已同步。"}, nil
+}
+
+func (g *LiveStoreGateway) googleSyncReleaseNotes(ctx context.Context, payload SyncRunRequest) (SyncRunResponse, error) {
+	if strings.TrimSpace(payload.ReleaseNotes) == "" {
+		return failedSync("empty_release_notes", "版本说明不能为空。"), nil
+	}
+	if strings.TrimSpace(payload.Locale) == "" {
+		return failedSync("locale_missing", "版本说明需要指定语言。"), nil
+	}
+	packageName := defaultString(payload.App.PackageName, payload.App.BundleIdentifier)
+	editID, err := g.googleInsertEdit(ctx, packageName)
+	if err != nil {
+		return SyncRunResponse{}, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			g.googleDeleteEdit(context.Background(), packageName, editID)
+		}
+	}()
+	tracks, err := g.googleTracks(ctx, packageName, editID)
+	if err != nil {
+		return SyncRunResponse{}, err
+	}
+	target, err := googleResolveReleaseTarget(tracks, payload.StoreRelease)
+	if err != nil {
+		return failedSync("google_release_target_missing", err.Error()), nil
+	}
+	trackIndex, releaseIndex := googleFindRelease(tracks, target.Track, target.VersionCode)
+	if trackIndex < 0 || releaseIndex < 0 {
+		return failedSync("google_release_target_missing", "Google Play 没有找到目标版本。"), nil
+	}
+	release := &tracks[trackIndex].Releases[releaseIndex]
+	release.ReleaseNotes = upsertReleaseNote(release.ReleaseNotes, payload.Locale, payload.ReleaseNotes)
+	path := "/androidpublisher/v3/applications/" + url.PathEscape(packageName) +
+		"/edits/" + url.PathEscape(editID) + "/tracks/" + url.PathEscape(tracks[trackIndex].Track)
+	if err := g.googleRequest(ctx, http.MethodPut, path, tracks[trackIndex], nil); err != nil {
+		return SyncRunResponse{}, err
+	}
+	if err := g.googleRequest(ctx, http.MethodPost, "/androidpublisher/v3/applications/"+url.PathEscape(packageName)+"/edits/"+url.PathEscape(editID)+":commit", nil, nil); err != nil {
+		return SyncRunResponse{}, err
+	}
+	committed = true
+	return SyncRunResponse{
+		Status:  "succeeded",
+		Message: "版本说明已同步。",
+		StoreState: map[string]any{
+			"track":       target.Track,
+			"versionCode": target.VersionCode,
+			"versionName": target.VersionName,
+		},
+	}, nil
+}
+
+func googleResolveReleaseTarget(tracks []googleTrack, explicit *StoreReleaseTarget) (StoreReleaseTarget, error) {
+	requestedTrack := ""
+	requestedVersionCode := ""
+	if explicit != nil {
+		requestedTrack = strings.TrimSpace(explicit.Track)
+		requestedVersionCode = strings.TrimSpace(explicit.VersionCode)
+	}
+	var best StoreReleaseTarget
+	bestValue := int64(-1)
+	for _, track := range tracks {
+		if requestedTrack != "" && track.Track != requestedTrack {
+			continue
+		}
+		for _, release := range track.Releases {
+			for _, versionCode := range release.VersionCodes {
+				versionCode = strings.TrimSpace(versionCode)
+				if versionCode == "" {
+					continue
+				}
+				if requestedVersionCode != "" && versionCode != requestedVersionCode {
+					continue
+				}
+				value, ok := parseVersionCode(versionCode)
+				if requestedVersionCode != "" {
+					return StoreReleaseTarget{Track: track.Track, VersionCode: versionCode, VersionName: release.Name}, nil
+				}
+				if !ok {
+					continue
+				}
+				if value > bestValue {
+					bestValue = value
+					best = StoreReleaseTarget{Track: track.Track, VersionCode: versionCode, VersionName: release.Name}
+				}
+			}
+		}
+	}
+	if best.VersionCode != "" {
+		return best, nil
+	}
+	switch {
+	case requestedTrack != "" && requestedVersionCode != "":
+		return StoreReleaseTarget{}, fmt.Errorf("Google Play 没有找到 track=%s versionCode=%s 的 release", requestedTrack, requestedVersionCode)
+	case requestedTrack != "":
+		return StoreReleaseTarget{}, fmt.Errorf("Google Play 没有找到 track=%s 下可同步的 release", requestedTrack)
+	case requestedVersionCode != "":
+		return StoreReleaseTarget{}, fmt.Errorf("Google Play 没有找到 versionCode=%s 的 release", requestedVersionCode)
+	default:
+		return StoreReleaseTarget{}, errors.New("Google Play 没有可同步的 release")
+	}
+}
+
+func googleFindRelease(tracks []googleTrack, targetTrack string, targetVersionCode string) (int, int) {
+	for trackIndex, track := range tracks {
+		if track.Track != targetTrack {
+			continue
+		}
+		for releaseIndex, release := range track.Releases {
+			for _, versionCode := range release.VersionCodes {
+				if strings.TrimSpace(versionCode) == targetVersionCode {
+					return trackIndex, releaseIndex
+				}
+			}
+		}
+	}
+	return -1, -1
+}
+
+func upsertReleaseNote(notes []StoreReleaseNote, locale string, text string) []StoreReleaseNote {
+	locale = strings.TrimSpace(locale)
+	for index := range notes {
+		if strings.EqualFold(notes[index].Language, locale) {
+			notes[index].Language = locale
+			notes[index].Text = text
+			return notes
+		}
+	}
+	return append(notes, StoreReleaseNote{Language: locale, Text: text})
+}
+
+func maxVersionCode(versionCodes []string) int64 {
+	maxValue := int64(-1)
+	for _, versionCode := range versionCodes {
+		value, ok := parseVersionCode(versionCode)
+		if ok && value > maxValue {
+			maxValue = value
+		}
+	}
+	return maxValue
+}
+
+func parseVersionCode(versionCode string) (int64, bool) {
+	value, err := strconv.ParseInt(strings.TrimSpace(versionCode), 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return value, true
 }
 
 func (g *LiveStoreGateway) googleInsertEdit(ctx context.Context, packageName string) (string, error) {
@@ -1094,6 +1930,58 @@ func (g *LiveStoreGateway) googleDeleteEdit(ctx context.Context, packageName str
 	)
 }
 
+func (g *LiveStoreGateway) googleSyncStoreImages(ctx context.Context, packageName string, editID string, locale string, storeImages *StoreImages) error {
+	if storeImages == nil {
+		return nil
+	}
+	slots := map[string]StoreImageSlot{
+		"featureGraphic":       storeImages.FeatureGraphicURL,
+		"phoneScreenshots":     storeImages.PhoneScreenshots,
+		"sevenInchScreenshots": storeImages.TabletScreenshots,
+		"tenInchScreenshots":   storeImages.TabletScreenshots,
+	}
+	for imageType, slot := range slots {
+		sources := storeImageSources(slot)
+		if len(sources) == 0 {
+			continue
+		}
+		if err := g.googleDeleteImagesForType(ctx, packageName, editID, locale, imageType); err != nil {
+			return err
+		}
+		for _, source := range sources {
+			image, err := g.downloadStoreImage(ctx, source)
+			if err != nil {
+				return err
+			}
+			if err := g.googleUploadImage(ctx, packageName, editID, locale, imageType, image); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (g *LiveStoreGateway) googleDeleteImagesForType(ctx context.Context, packageName string, editID string, locale string, imageType string) error {
+	path := "/androidpublisher/v3/applications/" + url.PathEscape(packageName) +
+		"/edits/" + url.PathEscape(editID) +
+		"/listings/" + url.PathEscape(locale) +
+		"/" + url.PathEscape(imageType)
+	return g.googleRequest(ctx, http.MethodDelete, path, nil, nil)
+}
+
+func (g *LiveStoreGateway) googleUploadImage(ctx context.Context, packageName string, editID string, locale string, imageType string, image downloadedStoreImage) error {
+	token, err := g.credential.GoogleAccessToken(ctx, g.httpClient, time.Now())
+	if err != nil {
+		return err
+	}
+	apiBase := strings.TrimRight(g.settings.GoogleAPIBaseURL, "/")
+	path := "/upload/androidpublisher/v3/applications/" + url.PathEscape(packageName) +
+		"/edits/" + url.PathEscape(editID) +
+		"/listings/" + url.PathEscape(locale) +
+		"/" + url.PathEscape(imageType) + "?uploadType=media"
+	return doRaw(ctx, g.httpClient, http.MethodPost, apiBase+path, "Bearer "+token, image.Body, image.ContentType, nil, nil, nil)
+}
+
 func (g *LiveStoreGateway) googleRequest(ctx context.Context, method string, path string, body any, out any) error {
 	token, err := g.credential.GoogleAccessToken(ctx, g.httpClient, time.Now())
 	if err != nil {
@@ -1101,6 +1989,64 @@ func (g *LiveStoreGateway) googleRequest(ctx context.Context, method string, pat
 	}
 	_, err = doJSON(ctx, g.httpClient, method, g.settings.GoogleAPIBaseURL+path, "Bearer "+token, body, out, nil)
 	return err
+}
+
+func (g *LiveStoreGateway) downloadStoreImage(ctx context.Context, source StoreImageAsset) (downloadedStoreImage, error) {
+	rawURL := strings.TrimSpace(source.DownloadURL)
+	if rawURL == "" {
+		rawURL = strings.TrimSpace(source.StorageKey)
+	}
+	if rawURL == "" {
+		return downloadedStoreImage{}, errors.New("商店图缺少可下载地址")
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return downloadedStoreImage{}, err
+	}
+	response, err := g.httpClient.Do(request)
+	if err != nil {
+		return downloadedStoreImage{}, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return downloadedStoreImage{}, fmt.Errorf("商店图下载失败 HTTP %d", response.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, 64<<20))
+	if err != nil {
+		return downloadedStoreImage{}, err
+	}
+	if len(body) == 0 {
+		return downloadedStoreImage{}, errors.New("商店图下载内容为空")
+	}
+	fileName := strings.TrimSpace(source.FileName)
+	if fileName == "" {
+		if parsed, parseErr := url.Parse(rawURL); parseErr == nil {
+			fileName = path.Base(parsed.Path)
+		}
+	}
+	if fileName == "" || fileName == "." || fileName == "/" {
+		fileName = "store-image.png"
+	}
+	contentType := strings.TrimSpace(source.ContentType)
+	if contentType == "" {
+		contentType = response.Header.Get("Content-Type")
+	}
+	if semicolon := strings.Index(contentType, ";"); semicolon >= 0 {
+		contentType = strings.TrimSpace(contentType[:semicolon])
+	}
+	if contentType == "" {
+		contentType = http.DetectContentType(body)
+	}
+	if extension := strings.ToLower(path.Ext(fileName)); extension == "" {
+		if extensions, _ := mime.ExtensionsByType(contentType); len(extensions) > 0 {
+			fileName += extensions[0]
+		}
+	}
+	return downloadedStoreImage{
+		FileName:    fileName,
+		ContentType: contentType,
+		Body:        body,
+	}, nil
 }
 
 func doJSON(ctx context.Context, client *http.Client, method string, url string, authorization string, body any, out any, after func(http.Header)) (http.Header, error) {
@@ -1141,6 +2087,43 @@ func doJSON(ctx context.Context, client *http.Client, method string, url string,
 		}
 	}
 	return response.Header, nil
+}
+
+func doRaw(ctx context.Context, client *http.Client, method string, url string, authorization string, body []byte, contentType string, headers http.Header, out any, after func(http.Header)) error {
+	request, err := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Accept", "application/json")
+	if contentType != "" {
+		request.Header.Set("Content-Type", contentType)
+	}
+	for key, values := range headers {
+		for _, value := range values {
+			request.Header.Add(key, value)
+		}
+	}
+	if authorization != "" {
+		request.Header.Set("Authorization", authorization)
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if after != nil {
+		after(response.Header)
+	}
+	responseBody, _ := io.ReadAll(io.LimitReader(response.Body, 2<<20))
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return fmt.Errorf("商店接口返回 HTTP %d: %s", response.StatusCode, strings.TrimSpace(string(responseBody)))
+	}
+	if out != nil && len(responseBody) > 0 {
+		if err := json.Unmarshal(responseBody, out); err != nil {
+			return fmt.Errorf("商店接口响应解析失败: %w", err)
+		}
+	}
+	return nil
 }
 
 func appleLocalizationsFromResponse(data []struct {
@@ -1251,6 +2234,28 @@ func appleScreenshotSlot(displayType string) string {
 	}
 }
 
+func appleScreenshotDisplayType(slot string) string {
+	switch slot {
+	case "phone_screenshots":
+		return "APP_IPHONE_67"
+	case "tablet_screenshots":
+		return "APP_IPAD_PRO_3GEN_129"
+	default:
+		return ""
+	}
+}
+
+func appleScreenshotOwnerType(ownerRelationship string) string {
+	switch ownerRelationship {
+	case "appStoreVersionLocalization":
+		return "appStoreVersionLocalizations"
+	case "appCustomProductPageLocalization":
+		return "appCustomProductPageLocalizations"
+	default:
+		return ""
+	}
+}
+
 func googleImageTypes() []string {
 	return []string{
 		"featureGraphic",
@@ -1279,6 +2284,30 @@ func googleImageSlot(imageType string) string {
 	default:
 		return imageType
 	}
+}
+
+func storeImageSources(slot StoreImageSlot) []StoreImageAsset {
+	sources := make([]StoreImageAsset, 0, len(slot.Assets)+len(slot.URLs))
+	for _, asset := range slot.Assets {
+		if strings.TrimSpace(asset.DownloadURL) != "" || strings.TrimSpace(asset.StorageKey) != "" {
+			sources = append(sources, asset)
+		}
+	}
+	for _, rawURL := range slot.URLs {
+		trimmed := strings.TrimSpace(rawURL)
+		if trimmed == "" {
+			continue
+		}
+		fileName := ""
+		if parsed, err := url.Parse(trimmed); err == nil {
+			fileName = path.Base(parsed.Path)
+		}
+		sources = append(sources, StoreImageAsset{
+			FileName:    fileName,
+			DownloadURL: trimmed,
+		})
+	}
+	return sources
 }
 
 func failedSync(code string, summary string) SyncRunResponse {

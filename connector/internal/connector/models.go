@@ -101,12 +101,39 @@ type ProductPageOptimizationCreateResponse struct {
 	Experiment ProductPageOptimization `json:"experiment"`
 }
 
+type StoreRelease struct {
+	Track        string             `json:"track"`
+	Name         string             `json:"name,omitempty"`
+	Status       string             `json:"status,omitempty"`
+	VersionCodes []string           `json:"versionCodes"`
+	ReleaseNotes []StoreReleaseNote `json:"releaseNotes,omitempty"`
+}
+
+type StoreReleaseNote struct {
+	Language string `json:"language"`
+	Text     string `json:"text"`
+}
+
+type StoreReleasesResponse struct {
+	Releases []StoreRelease `json:"releases"`
+}
+
+type StoreReleaseTarget struct {
+	Track       string `json:"track,omitempty"`
+	VersionCode string `json:"versionCode,omitempty"`
+	VersionName string `json:"versionName,omitempty"`
+}
+
 type StoreMetadata struct {
-	ContentSet      *ContentSet  `json:"contentSet"`
-	Keywords        string       `json:"keywords"`
-	PromotionalText string       `json:"promotionalText"`
-	Description     string       `json:"description"`
-	StoreImages     *StoreImages `json:"storeImages"`
+	ContentSet       *ContentSet  `json:"contentSet"`
+	Title            string       `json:"title"`
+	Keywords         string       `json:"keywords"`
+	PromotionalText  string       `json:"promotionalText"`
+	ShortDescription string       `json:"shortDescription"`
+	Description      string       `json:"description"`
+	FullDescription  string       `json:"fullDescription"`
+	VideoURL         string       `json:"videoUrl"`
+	StoreImages      *StoreImages `json:"storeImages"`
 }
 
 type MarketingPage struct {
@@ -147,18 +174,20 @@ type StoreImageAsset struct {
 
 type SyncRunRequest struct {
 	PreflightRequest
-	RunID         string         `json:"runId"`
-	ReleaseNotes  string         `json:"releaseNotes"`
-	Metadata      *StoreMetadata `json:"metadata"`
-	MarketingPage *MarketingPage `json:"marketingPage"`
-	SyncScopes    []string       `json:"syncScopes"`
+	RunID         string              `json:"runId"`
+	ReleaseNotes  string              `json:"releaseNotes"`
+	StoreRelease  *StoreReleaseTarget `json:"storeRelease,omitempty"`
+	Metadata      *StoreMetadata      `json:"metadata"`
+	MarketingPage *MarketingPage      `json:"marketingPage"`
+	SyncScopes    []string            `json:"syncScopes"`
 }
 
 type SyncRunResponse struct {
-	Status       string  `json:"status"`
-	Message      string  `json:"message"`
-	ErrorCode    *string `json:"errorCode"`
-	ErrorSummary *string `json:"errorSummary"`
+	Status       string         `json:"status"`
+	Message      string         `json:"message"`
+	ErrorCode    *string        `json:"errorCode"`
+	ErrorSummary *string        `json:"errorSummary"`
+	StoreState   map[string]any `json:"storeState,omitempty"`
 }
 
 type ConnectorError struct {

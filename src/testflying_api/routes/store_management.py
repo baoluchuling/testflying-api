@@ -11,13 +11,14 @@ from typing import Annotated
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Query, Request
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy.orm import Session
 
 from testflying_api.database import get_db_session
 from testflying_api.errors import ApiError
 from testflying_api.store_image_requirements import validate_store_image
 from testflying_api.store_sync import (
+    APP_METADATA_SYNC_SCOPES,
     CURRENT_METADATA_VERSION,
     DEFAULT_CONTENT_SET_ID,
     DEFAULT_CONTENT_SET_NAME,
@@ -55,6 +56,7 @@ STORE_IMAGE_SLOT_ALIASES = {
     "tablet_screenshots": "tablet_screenshots",
 }
 DEFAULT_DIRECT_STORE_SYNC_SCOPES = ["metadata", "release_notes", "store_images"]
+DIRECT_STORE_SYNC_SCOPES = [*APP_METADATA_SYNC_SCOPES, "release_notes"]
 DEFAULT_DIRECT_MARKETING_SYNC_SCOPES = ["marketing_text", "store_images"]
 DIRECT_SYNC_RATE_LIMIT_PER_MINUTE = 10
 DIRECT_SYNC_RATE_LIMIT_PER_HOUR = 100
@@ -82,7 +84,11 @@ class ContentSetInput(CamelModel):
 class LocaleMetadataInput(CamelModel):
     locale: str
     keywords: str = ""
-    promotional_text: str = Field(default="", alias="promotionalText")
+    promotional_text: str = Field(
+        default="",
+        alias="promotionalText",
+        validation_alias=AliasChoices("promotionalText", "shortDescription", "short_description"),
+    )
     description: str = ""
     store_images: dict[str, object] = Field(default_factory=dict, alias="storeImages")
 
@@ -107,7 +113,11 @@ class MetadataContentSetResponse(CamelModel):
 class VersionLocaleDraftInput(CamelModel):
     locale: str
     keywords: str = ""
-    promotional_text: str = Field(default="", alias="promotionalText")
+    promotional_text: str = Field(
+        default="",
+        alias="promotionalText",
+        validation_alias=AliasChoices("promotionalText", "shortDescription", "short_description"),
+    )
     description: str = ""
     release_notes: str = Field(default="", alias="releaseNotes")
 
@@ -155,6 +165,12 @@ class StoreDirectSyncRequest(CamelModel):
     version: str
     locales: list[str] = Field(default_factory=list)
     scopes: list[str] = Field(default_factory=lambda: list(DEFAULT_DIRECT_STORE_SYNC_SCOPES))
+    store_track: str = Field(default="", alias="storeTrack")
+    store_version_code: str | int = Field(
+        default="",
+        alias="storeVersionCode",
+        validation_alias=AliasChoices("storeVersionCode", "versionCode"),
+    )
     actor: str = "api"
     idempotency_key: str = Field(default="", alias="idempotencyKey")
 
@@ -673,12 +689,12 @@ def trigger_default_store_sync(
             raise ApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
         scopes = _normalize_direct_sync_scopes(
             payload.scopes,
-            allowed=DEFAULT_DIRECT_STORE_SYNC_SCOPES,
+            allowed=DIRECT_STORE_SYNC_SCOPES,
         )
         locales = _normalize_requested_locales(payload.locales)
         actor = payload.actor.strip() or "api"
         runs = []
-        metadata_scopes = [scope for scope in scopes if scope in {"metadata", "store_images"}]
+        metadata_scopes = [scope for scope in scopes if scope in APP_METADATA_SYNC_SCOPES]
         for locale in locales:
             if metadata_scopes:
                 runs.append(
@@ -701,6 +717,8 @@ def trigger_default_store_sync(
                         version=version,
                         locale=locale,
                         actor=actor,
+                        store_track=payload.store_track,
+                        store_version_code=str(payload.store_version_code or ""),
                     )
                 )
         session.commit()

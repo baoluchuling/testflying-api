@@ -20,6 +20,7 @@ from testflying_api.store_sync import (
     UPDATE_APP_METADATA,
     UPDATE_MARKETING_PAGE,
     UPDATE_RELEASE_NOTES,
+    sync_marketing_page,
 )
 from tests.fixtures import make_png_header_bytes
 
@@ -145,6 +146,108 @@ def test_store_management_direct_sync_default_store_page_from_existing_drafts(
     assert {run.sync_scopes_json["scopes"][0] for run in runs} == {
         "metadata",
         "release_notes",
+    }
+
+
+def test_store_management_direct_sync_android_short_description_scope(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _reset_direct_sync_guards_for_tests()
+    seed_demo_catalog(db_session)
+    db_session.add(
+        DeveloperAccountApp(
+            developer_account_id="account-apple-enterprise",
+            app_id="app-dataflow-android",
+        )
+    )
+    db_session.commit()
+    draft_response = client.post(
+        (
+            "/v1/store-management/developer-accounts/account-apple-enterprise"
+            "/apps/app-dataflow-android/metadata-content-sets"
+        ),
+        headers={"Authorization": "Bearer dev-token"},
+        data={"metadata": json.dumps(_android_metadata_payload())},
+    )
+    assert draft_response.status_code == 200
+
+    response = client.post(
+        (
+            "/v1/store-management/developer-accounts/account-apple-enterprise"
+            "/apps/app-dataflow-android/sync-runs"
+        ),
+        headers={"Authorization": "Bearer dev-token"},
+        json={
+            "version": "3.1.0",
+            "locales": ["en-US"],
+            "scopes": ["short_description"],
+            "actor": "third-party-computer",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["scopes"] == ["short_description"]
+    assert [(item["operation"], item["locale"], item["status"]) for item in body["runs"]] == [
+        (UPDATE_APP_METADATA, "en-US", "succeeded")
+    ]
+    run = db_session.query(StoreSyncRun).filter_by(app_id="app-dataflow-android").one()
+    assert run.sync_scopes_json == {"scopes": ["short_description"]}
+    assert run.payload_snapshot_json["metadata"]["shortDescription"] == "Quick data flow."
+
+
+def test_store_management_direct_sync_android_release_notes_accepts_store_version_code(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _reset_direct_sync_guards_for_tests()
+    seed_demo_catalog(db_session)
+    db_session.add(
+        DeveloperAccountApp(
+            developer_account_id="account-apple-enterprise",
+            app_id="app-dataflow-android",
+        )
+    )
+    db_session.add(
+        StoreReleaseNoteDraft(
+            id="release-note-android-310-en",
+            developer_account_id="account-apple-enterprise",
+            app_id="app-dataflow-android",
+            platform="android",
+            version="3.1.0",
+            locale="en-US",
+            release_notes="Fix Android playback bugs.",
+        )
+    )
+    db_session.commit()
+
+    response = client.post(
+        (
+            "/v1/store-management/developer-accounts/account-apple-enterprise"
+            "/apps/app-dataflow-android/sync-runs"
+        ),
+        headers={"Authorization": "Bearer dev-token"},
+        json={
+            "version": "3.1.0",
+            "locales": ["en-US"],
+            "scopes": ["release_notes"],
+            "storeTrack": "production",
+            "versionCode": 310,
+            "actor": "third-party-computer",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [(item["operation"], item["locale"], item["status"]) for item in body["runs"]] == [
+        (UPDATE_RELEASE_NOTES, "en-US", "succeeded")
+    ]
+    run = db_session.query(StoreSyncRun).filter_by(app_id="app-dataflow-android").one()
+    assert run.payload_snapshot_json["releaseNotes"] == "Fix Android playback bugs."
+    assert run.payload_snapshot_json["storeRelease"] == {
+        "track": "production",
+        "versionCode": "310",
     }
 
 
@@ -532,6 +635,39 @@ def test_store_management_imports_marketing_page_without_store_sync(
     assert f"/{body['pageId']}/marketing/en-US/phone_screenshots/" in phone_assets[0]["storageKey"]
 
 
+def test_store_management_marketing_sync_saves_apple_page_id(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+    response = client.post(
+        (
+            "/v1/store-management/developer-accounts/account-apple-enterprise"
+            "/apps/app-aurora-ios/marketing-pages"
+        ),
+        headers={"Authorization": "Bearer dev-token"},
+        data={"metadata": json.dumps(_marketing_page_payload())},
+    )
+    page_id = response.json()["pageId"]
+
+    run = sync_marketing_page(
+        db_session,
+        account_id="account-apple-enterprise",
+        app_id="app-aurora-ios",
+        page_id=page_id,
+        locale="en-US",
+        sync_scopes=["marketing_text"],
+        actor="api",
+        client=_MarketingSyncClient(),
+    )
+    db_session.commit()
+
+    page = db_session.query(StoreMarketingPage).filter_by(page_id=page_id).one()
+    assert run.status == "succeeded"
+    assert page.status == "synced"
+    assert page.apple_page_id == "cpp-apple-created"
+
+
 def test_store_management_imports_metadata_content_set_without_store_sync(
     client: TestClient,
     db_session: Session,
@@ -686,3 +822,38 @@ def _metadata_payload() -> dict[str, object]:
             },
         ],
     }
+
+
+def _android_metadata_payload() -> dict[str, object]:
+    return {
+        "version": "3.1.0",
+        "sourceLocale": "en-US",
+        "locales": [
+            {
+                "locale": "en-US",
+                "shortDescription": "Quick data flow.",
+                "description": "Long Google Play description for import testing.",
+            }
+        ],
+    }
+
+
+class _MarketingSyncClient:
+    def preflight(self, connector: object, payload: dict[str, object]) -> dict[str, object]:
+        return {
+            "canSync": True,
+            "reasonCode": None,
+            "message": "可同步",
+            "storeState": {"versionExists": True, "editable": True},
+        }
+
+    def sync_store_operation(
+        self,
+        connector: object,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        return {
+            "status": "succeeded",
+            "message": "营销页面已同步。",
+            "storeState": {"applePageId": "cpp-apple-created"},
+        }

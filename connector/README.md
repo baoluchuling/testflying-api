@@ -72,6 +72,14 @@ schtasks /Run /TN testflying-connector-<account_id>
 C:\ProgramData\TestFlying\connectors\<account_id>\logs\connector.log
 ```
 
+后续更新不需要重新复制 zip 或重新填写配置。首次安装完成后，直接在 Windows 上运行安装目录里的更新脚本：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\ProgramData\TestFlying\connectors\<account_id>\update.ps1"
+```
+
+`update.ps1` 会从 GitHub Release 自动下载最新 Windows connector，停止计划任务，备份旧的 `testflying-connector.exe`，只替换新的 exe，再重启计划任务。它不会覆盖 `config.json`、`secrets`、账号信息或商店凭据。
+
 安装包内的 `config.json` 会配置 active 模式：
 
 ```json

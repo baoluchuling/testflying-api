@@ -765,11 +765,13 @@ def test_admin_can_generate_windows_active_connector_package(
         names = set(archive.namelist())
         config = json.loads(archive.read("config.json").decode("utf-8"))
         install_script = archive.read("install.ps1").decode("utf-8")
+        update_script = archive.read("update.ps1").decode("utf-8")
 
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/zip"
     assert "config.json" in names
     assert "install.ps1" in names
+    assert "update.ps1" in names
     assert "README.txt" in names
     assert "secrets/apple/AuthKey_ABC123.p8" in names
     assert config["accountId"] == "account-apple-enterprise"
@@ -789,7 +791,14 @@ def test_admin_can_generate_windows_active_connector_package(
     assert "System32\\WindowsPowerShell\\v1.0\\powershell.exe" in install_script
     assert "Failed to create scheduled task" in install_script
     assert "Failed to start scheduled task" in install_script
+    assert "testflying-connector-updater" in update_script
+    assert "testflying-connector-windows-amd64-*.zip" in update_script
+    assert "Copy-Item -Force $Exe.FullName $CurrentExe" in update_script
+    assert "config.json" in update_script
+    assert 'Copy-Item -Force "$PSScriptRoot\\config.json"' not in update_script
+    assert "secrets" not in update_script
     install_script.encode("ascii")
+    update_script.encode("ascii")
 
 
 def test_admin_can_generate_windows_active_connector_package_without_store_credentials(
@@ -813,6 +822,7 @@ def test_admin_can_generate_windows_active_connector_package_without_store_crede
     assert response.headers["content-type"] == "application/zip"
     assert "config.json" in names
     assert "install.ps1" in names
+    assert "update.ps1" in names
     assert "README.txt" in names
     assert not any(name.startswith("secrets/apple/") for name in names)
     assert not any(name.startswith("secrets/google/") for name in names)

@@ -2036,6 +2036,7 @@ def _build_windows_connector_package(
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("config.json", json.dumps(config, ensure_ascii=False, indent=2))
         archive.writestr("install.ps1", _windows_install_script(account_id=account_id, root=root))
+        archive.writestr("update.ps1", _windows_update_script(account_id=account_id, root=root))
         archive.writestr("README.txt", _windows_package_readme(account_id=account_id, root=root))
         for path, content in secrets_to_write:
             archive.writestr(path, content)
@@ -2122,6 +2123,9 @@ if (Test-Path "$PSScriptRoot\secrets") {
 if (Test-Path "$PSScriptRoot\testflying-connector.exe") {
   Copy-Item -Force "$PSScriptRoot\testflying-connector.exe" "$Root\testflying-connector.exe"
 }
+if (Test-Path "$PSScriptRoot\update.ps1") {
+  Copy-Item -Force "$PSScriptRoot\update.ps1" "$Root\update.ps1"
+}
 
 if (!(Test-Path "$Root\testflying-connector.exe")) {
   $Release = Invoke-RestMethod `
@@ -2185,6 +2189,121 @@ Write-Host "Log:  $Root\logs\connector.log"
     return template.replace("__ROOT__", root).replace("__TASK_NAME__", task_name)
 
 
+def _windows_update_script(*, account_id: str, root: str) -> str:
+    task_name = f"testflying-connector-{_safe_filename(account_id)}"
+    template = r'''param(
+  [string]$Repo = "baoluchuling/testflying-api",
+  [string]$ReleaseTag = "",
+  [string]$AssetUrl = "",
+  [string]$GitHubToken = ""
+)
+
+$ErrorActionPreference = "Stop"
+$Root = "__ROOT__"
+$TaskName = "__TASK_NAME__"
+$UserAgent = "testflying-connector-updater"
+$CurrentExe = "$Root\testflying-connector.exe"
+$BackupDir = "$Root\backups"
+$TempName = "testflying-connector-update-" + [System.Guid]::NewGuid().ToString("N")
+$TempRoot = Join-Path ([System.IO.Path]::GetTempPath()) $TempName
+
+function Get-RequestHeaders {
+  $Headers = @{"User-Agent" = $UserAgent}
+  if ($GitHubToken.Trim().Length -gt 0) {
+    $Headers["Authorization"] = "Bearer $GitHubToken"
+  }
+  return $Headers
+}
+
+function Stop-Connector {
+  & schtasks.exe /End /TN $TaskName 2>$null | Out-Null
+  Start-Sleep -Seconds 2
+  Get-Process -ErrorAction SilentlyContinue |
+    Where-Object { $_.Path -eq $CurrentExe } |
+    Stop-Process -Force -ErrorAction SilentlyContinue
+}
+
+function Start-Connector {
+  & schtasks.exe /Run /TN $TaskName | Out-Null
+  if ($LASTEXITCODE -ne 0) {
+    throw "Failed to start scheduled task: $TaskName"
+  }
+}
+
+if (!(Test-Path "$Root\config.json")) {
+  throw "Missing config.json. Run install.ps1 once before update.ps1."
+}
+
+if (!(Test-Path $CurrentExe)) {
+  throw "Missing current connector exe: $CurrentExe"
+}
+
+New-Item -ItemType Directory -Force $BackupDir, $TempRoot | Out-Null
+$Headers = Get-RequestHeaders
+
+if ($AssetUrl.Trim().Length -eq 0) {
+  if ($ReleaseTag.Trim().Length -gt 0) {
+    $ReleaseUri = "https://api.github.com/repos/$Repo/releases/tags/$ReleaseTag"
+  } else {
+    $ReleaseUri = "https://api.github.com/repos/$Repo/releases/latest"
+  }
+  $Release = Invoke-RestMethod -Headers $Headers -Uri $ReleaseUri
+  $Asset = $Release.assets |
+    Where-Object { $_.name -like "testflying-connector-windows-amd64-*.zip" } |
+    Select-Object -First 1
+  if ($null -eq $Asset) {
+    throw "Windows connector release asset not found"
+  }
+  $AssetUrl = $Asset.browser_download_url
+  $ReleaseTag = $Release.tag_name
+}
+
+$Timestamp = Get-Date -Format "yyyyMMddHHmmss"
+$BackupExe = "$BackupDir\testflying-connector-$Timestamp.exe"
+$ZipPath = "$TempRoot\connector-windows.zip"
+$ExtractPath = "$TempRoot\extract"
+
+try {
+  Invoke-WebRequest -Headers $Headers -Uri $AssetUrl -OutFile $ZipPath
+  Expand-Archive -Force $ZipPath $ExtractPath
+  $Exe = Get-ChildItem -Path $ExtractPath -Filter "*.exe" -Recurse |
+    Where-Object { $_.Name -like "testflying-connector*.exe" } |
+    Select-Object -First 1
+  if ($null -eq $Exe) {
+    throw "Windows connector exe not found in release asset"
+  }
+
+  Copy-Item -Force $CurrentExe $BackupExe
+  Stop-Connector
+  Copy-Item -Force $Exe.FullName $CurrentExe
+
+  try {
+    Start-Connector
+  } catch {
+    Stop-Connector
+    Copy-Item -Force $BackupExe $CurrentExe
+    Start-Connector
+    throw "Update failed after replacement. Old exe restored. $($_.Exception.Message)"
+  }
+
+  Write-Host "testflying connector updated."
+  Write-Host "Task: $TaskName"
+  Write-Host "Root: $Root"
+  Write-Host "Release: $ReleaseTag"
+  Write-Host "Backup: $BackupExe"
+  Write-Host "Log: $Root\logs\connector.log"
+  if (Test-Path "$Root\logs\connector.log") {
+    Get-Content "$Root\logs\connector.log" -Tail 30
+  }
+} finally {
+  if (Test-Path $TempRoot) {
+    Remove-Item -Recurse -Force $TempRoot -ErrorAction SilentlyContinue
+  }
+}
+'''
+    return template.replace("__ROOT__", root).replace("__TASK_NAME__", task_name)
+
+
 def _windows_package_readme(*, account_id: str, root: str) -> str:
     task_name = f"testflying-connector-{_safe_filename(account_id)}"
     return f"""testflying Windows Connector 安装包
@@ -2202,6 +2321,9 @@ def _windows_package_readme(*, account_id: str, root: str) -> str:
 手动重启:
    schtasks /Run /TN {task_name}
 
+更新:
+   powershell.exe -ExecutionPolicy Bypass -File {root}\\update.ps1
+
 查看日志:
    {root}\\logs\\connector.log
 
@@ -2209,6 +2331,8 @@ def _windows_package_readme(*, account_id: str, root: str) -> str:
 - Apple/Google 凭据只在这个安装包和 Windows 本机安装目录中保存。
 - 如果同目录下没有 testflying-connector.exe，
   install.ps1 会自动从 GitHub Release 下载最新 Windows 构建产物。
+- 后续更新只需要运行安装目录里的 update.ps1。它只替换
+  testflying-connector.exe，不会覆盖 config.json 或 secrets 目录。
 """
 
 

@@ -165,6 +165,12 @@ class StoreDirectSyncRequest(CamelModel):
     version: str
     locales: list[str] = Field(default_factory=list)
     scopes: list[str] = Field(default_factory=lambda: list(DEFAULT_DIRECT_STORE_SYNC_SCOPES))
+    ios_app_id: str = Field(
+        default="",
+        alias="iosAppId",
+        validation_alias=AliasChoices("iosAppId", "storeAppId", "appleAppId"),
+    )
+    package_name: str = Field(default="", alias="packageName")
     store_track: str = Field(default="", alias="storeTrack")
     store_version_code: str | int = Field(
         default="",
@@ -178,6 +184,11 @@ class StoreDirectSyncRequest(CamelModel):
 class MarketingDirectSyncRequest(CamelModel):
     locales: list[str] = Field(default_factory=list)
     scopes: list[str] = Field(default_factory=lambda: list(DEFAULT_DIRECT_MARKETING_SYNC_SCOPES))
+    ios_app_id: str = Field(
+        default="",
+        alias="iosAppId",
+        validation_alias=AliasChoices("iosAppId", "storeAppId", "appleAppId"),
+    )
     actor: str = "api"
     idempotency_key: str = Field(default="", alias="idempotencyKey")
 
@@ -728,6 +739,7 @@ def trigger_default_store_sync(
         app = scoped_app(session, account_id, app_id)
         if app is None:
             raise ApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
+        store_app_id, package_name = _direct_sync_store_target(payload, platform=app.platform)
         scopes = _normalize_direct_sync_scopes(
             payload.scopes,
             allowed=DIRECT_STORE_SYNC_SCOPES,
@@ -747,6 +759,8 @@ def trigger_default_store_sync(
                         locale=locale,
                         actor=actor,
                         sync_scopes=metadata_scopes,
+                        store_app_id=store_app_id,
+                        package_name=package_name,
                     )
                 )
             if "release_notes" in scopes:
@@ -760,6 +774,8 @@ def trigger_default_store_sync(
                         actor=actor,
                         store_track=payload.store_track,
                         store_version_code=str(payload.store_version_code or ""),
+                        store_app_id=store_app_id,
+                        package_name=package_name,
                     )
                 )
         session.commit()
@@ -823,6 +839,7 @@ def trigger_marketing_page_sync(
         )
         if page is None:
             raise ApiError("marketing_page_not_found", "营销页面不存在", status_code=404)
+        store_app_id, _package_name = _direct_sync_store_target(payload, platform=app.platform)
         scopes = _normalize_direct_sync_scopes(
             payload.scopes,
             allowed=DEFAULT_DIRECT_MARKETING_SYNC_SCOPES,
@@ -846,6 +863,7 @@ def trigger_marketing_page_sync(
                 locale=locale,
                 sync_scopes=scopes,
                 actor=actor,
+                store_app_id=store_app_id,
             )
             for locale in locales
         ]
@@ -1136,6 +1154,22 @@ def _direct_sync_response(
         locales=locales,
         runs=results,
     )
+
+
+def _direct_sync_store_target(
+    payload: StoreDirectSyncRequest | MarketingDirectSyncRequest,
+    *,
+    platform: str,
+) -> tuple[str | None, str | None]:
+    ios_app_id = payload.ios_app_id.strip()
+    package_name = (
+        payload.package_name.strip() if isinstance(payload, StoreDirectSyncRequest) else ""
+    )
+    if platform == "ios":
+        return ios_app_id or None, None
+    if platform == "android":
+        return None, package_name or None
+    return None, None
 
 
 def _reset_direct_sync_guards_for_tests() -> None:

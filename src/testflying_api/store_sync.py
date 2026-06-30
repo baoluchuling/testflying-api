@@ -963,6 +963,8 @@ def get_or_refresh_preflight(
     locale: str,
     operation: str = UPDATE_RELEASE_NOTES,
     force_refresh: bool = False,
+    store_app_id: str | None = None,
+    package_name: str | None = None,
     client: StoreConnectorClient | None = None,
 ) -> PreflightState:
     app = scoped_app(session, account_id, app_id)
@@ -988,6 +990,8 @@ def get_or_refresh_preflight(
         operation=operation,
         version=version,
         locale=locale,
+        store_app_id=store_app_id,
+        package_name=package_name,
     )
     request_hash = _request_hash(payload)
     now = datetime.now(UTC)
@@ -1351,6 +1355,8 @@ def sync_existing_release_notes(
     actor: str,
     store_track: str = "",
     store_version_code: str = "",
+    store_app_id: str | None = None,
+    package_name: str | None = None,
     client: StoreConnectorClient | None = None,
 ) -> StoreSyncRun:
     app = scoped_app(session, account_id, app_id)
@@ -1379,6 +1385,8 @@ def sync_existing_release_notes(
         app_id=app.id,
         version=version,
         locale=locale,
+        store_app_id=store_app_id,
+        package_name=package_name,
         client=client,
     )
     if not preflight.can_sync:
@@ -1411,12 +1419,15 @@ def sync_existing_release_notes(
             track=store_track,
             version_code=store_version_code,
         ),
+        store_app_id=store_app_id,
+        package_name=package_name,
         sync_scopes=["release_notes"],
     )
     run.sync_scopes_json = {"scopes": ["release_notes"]}
     run.payload_snapshot_json = {
         "version": version,
         "locale": locale,
+        "app": payload["app"],
         "releaseNotes": draft.release_notes,
         "storeRelease": _store_release_payload(
             track=store_track,
@@ -1467,6 +1478,8 @@ def sync_existing_current_app_metadata(
     locale: str,
     actor: str,
     sync_scopes: list[str],
+    store_app_id: str | None = None,
+    package_name: str | None = None,
     client: StoreConnectorClient | None = None,
 ) -> StoreSyncRun:
     app = scoped_app(session, account_id, app_id)
@@ -1509,6 +1522,8 @@ def sync_existing_current_app_metadata(
         version=version,
         locale=locale,
         operation=UPDATE_APP_METADATA,
+        store_app_id=store_app_id,
+        package_name=package_name,
         client=client,
     )
     if not preflight.can_sync:
@@ -1541,12 +1556,15 @@ def sync_existing_current_app_metadata(
             include_text_metadata=include_text_metadata_in_payload,
             include_store_images=include_store_images_in_payload,
         ),
+        store_app_id=store_app_id,
+        package_name=package_name,
         sync_scopes=normalized_scopes,
     )
     run.sync_scopes_json = {"scopes": normalized_scopes}
     run.payload_snapshot_json = {
         "version": version,
         "locale": locale,
+        "app": payload["app"],
         "metadata": payload.get("metadata", {}),
     }
     connector_client = client or StoreConnectorClient()
@@ -1582,6 +1600,7 @@ def sync_marketing_page(
     locale: str,
     sync_scopes: list[str],
     actor: str,
+    store_app_id: str | None = None,
     client: StoreConnectorClient | None = None,
 ) -> StoreSyncRun:
     app = scoped_app(session, account_id, app_id)
@@ -1627,6 +1646,7 @@ def sync_marketing_page(
         version=page.page_id,
         locale=locale,
         operation=UPDATE_MARKETING_PAGE,
+        store_app_id=store_app_id,
         client=client,
     )
     if not preflight.can_sync:
@@ -1659,12 +1679,14 @@ def sync_marketing_page(
         version=page.page_id,
         locale=locale,
         marketing_page=marketing_payload,
+        store_app_id=store_app_id,
         sync_scopes=normalized_scopes,
     )
     run.sync_scopes_json = {"scopes": normalized_scopes}
     run.payload_snapshot_json = {
         "pageId": page.page_id,
         "locale": locale,
+        "app": payload["app"],
         "marketingPage": marketing_payload,
     }
     connector_client = client or StoreConnectorClient()
@@ -1868,6 +1890,8 @@ def _preflight_payload(
     operation: str,
     version: str,
     locale: str,
+    store_app_id: str | None = None,
+    package_name: str | None = None,
 ) -> dict[str, object]:
     return {
         "developerAccountId": account_id,
@@ -1876,7 +1900,7 @@ def _preflight_payload(
         "platform": app.platform,
         "version": version,
         "locale": locale,
-        "app": _app_payload(app),
+        "app": _app_payload(app, store_app_id=store_app_id, package_name=package_name),
     }
 
 
@@ -1892,6 +1916,8 @@ def _sync_payload(
     store_release: dict[str, object] | None = None,
     metadata: dict[str, object] | None = None,
     marketing_page: dict[str, object] | None = None,
+    store_app_id: str | None = None,
+    package_name: str | None = None,
     sync_scopes: list[str] | None = None,
 ) -> dict[str, object]:
     payload: dict[str, object] = {
@@ -1901,7 +1927,7 @@ def _sync_payload(
         "platform": app.platform,
         "version": version,
         "locale": locale,
-        "app": _app_payload(app),
+        "app": _app_payload(app, store_app_id=store_app_id, package_name=package_name),
     }
     if release_notes is not None:
         payload["releaseNotes"] = release_notes
@@ -1927,12 +1953,25 @@ def _store_release_payload(*, track: str = "", version_code: str = "") -> dict[s
     return body or None
 
 
-def _app_payload(app: App) -> dict[str, object]:
+def _app_payload(
+    app: App,
+    *,
+    store_app_id: str | None = None,
+    package_name: str | None = None,
+) -> dict[str, object]:
+    normalized_store_app_id = _optional_str(store_app_id)
+    normalized_package_name = _optional_str(package_name)
     return {
         "appId": app.id,
         "bundleIdentifier": app.bundle_identifier,
-        "storeAppId": app.store_app_id,
-        "packageName": app.store_package_name or app.bundle_identifier,
+        "storeAppId": (
+            normalized_store_app_id
+            if normalized_store_app_id is not None
+            else app.store_app_id
+        ),
+        "packageName": normalized_package_name
+        if normalized_package_name is not None
+        else app.store_package_name or app.bundle_identifier,
     }
 
 

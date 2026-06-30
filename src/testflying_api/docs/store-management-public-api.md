@@ -8,8 +8,8 @@
 - 鉴权：所有接口都需要请求头 `Authorization: Bearer <TOKEN>`
 - `{accountId}`：testflying 开发者账号 ID，例如 `738W4ARM22`
 - `{appId}`：testflying 内部 App ID，不是 Apple 数字 App ID，也不是 Android package name
-- iOS 调商店时使用后台绑定的 App Store Connect App ID
-- Android 调商店时优先使用后台绑定的 `storePackageName`，没有时使用包里解析出的 package name
+- 默认情况下，iOS 调商店时使用后台绑定的 App Store Connect App ID；直接同步接口可用 `iosAppId` 显式覆盖
+- 默认情况下，Android 调商店时优先使用后台绑定的 `storePackageName`，没有时使用包里解析出的 package name；直接同步接口可用 `packageName` 显式覆盖
 - Google Play 同步会提交 edit，但默认带 `changesNotSentForReview=true`，不会直接送审；如果已有变更正在审核中，会按 `changesInReviewBehavior=ERROR_IF_IN_REVIEW` 返回错误
 
 ## 接口总览
@@ -310,6 +310,8 @@ POST /v1/store-management/developer-accounts/{accountId}/apps/{appId}/sync-runs
 | `version` | body | 是 | 商店版本号 |
 | `locales` | body | 是 | 需要同步的语言 |
 | `scopes` | body | 否 | 默认 `["metadata","release_notes","store_images"]` |
+| `iosAppId` | body | 否 | iOS 直传 App Store Connect 数字 App ID；传了就直接下发给 connector，不再使用后台绑定值 |
+| `packageName` | body | 否 | Android 直传 Google Play package name；传了就直接下发给 connector，不再使用后台绑定值 |
 | `storeTrack` | body | 否 | Android 版本说明目标轨道 |
 | `storeVersionCode` | body | 否 | Android 版本说明目标 versionCode |
 | `actor` | body | 否 | 操作来源 |
@@ -319,7 +321,7 @@ POST /v1/store-management/developer-accounts/{accountId}/apps/{appId}/sync-runs
 curl -X POST "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/$APP_ID/sync-runs" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"version":"1.0.0","locales":["en-US"],"scopes":["metadata","release_notes","store_images"],"idempotencyKey":"sync-001"}'
+  -d '{"version":"1.0.0","locales":["en-US"],"scopes":["metadata","release_notes","store_images"],"iosAppId":"1234567890","packageName":"com.example.android","idempotencyKey":"sync-001"}'
 ```
 
 ```json
@@ -352,6 +354,7 @@ POST /v1/store-management/developer-accounts/{accountId}/apps/{appId}/marketing-
 | `pageId` | path | 是 | 自定义产品页面 ID |
 | `locales` | body | 是 | 需要同步的语言 |
 | `scopes` | body | 否 | 默认 `["marketing_text","store_images"]` |
+| `iosAppId` | body | 否 | 直传 App Store Connect 数字 App ID；传了就直接下发给 connector，不再使用后台绑定值 |
 | `actor` | body | 否 | 操作来源 |
 | `idempotencyKey` | body | 否 | 幂等键 |
 
@@ -359,7 +362,7 @@ POST /v1/store-management/developer-accounts/{accountId}/apps/{appId}/marketing-
 curl -X POST "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/$APP_ID/marketing-pages/$PAGE_ID/sync-runs" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"locales":["en-US"],"scopes":["marketing_text","store_images"],"idempotencyKey":"page-sync-001"}'
+  -d '{"locales":["en-US"],"scopes":["marketing_text","store_images"],"iosAppId":"1234567890","idempotencyKey":"page-sync-001"}'
 ```
 
 ```json

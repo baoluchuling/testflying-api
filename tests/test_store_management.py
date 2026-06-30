@@ -197,6 +197,89 @@ def test_store_management_direct_sync_android_short_description_scope(
     assert run.payload_snapshot_json["metadata"]["shortDescription"] == "Quick data flow."
 
 
+def test_store_management_direct_sync_uses_explicit_ios_app_id(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _reset_direct_sync_guards_for_tests()
+    seed_demo_catalog(db_session)
+    client.post(
+        (
+            "/v1/store-management/developer-accounts/account-apple-enterprise"
+            "/apps/app-aurora-ios/store-versions/1.0.0/draft"
+        ),
+        headers={"Authorization": "Bearer dev-token"},
+        json=_version_payload(),
+    )
+
+    response = client.post(
+        (
+            "/v1/store-management/developer-accounts/account-apple-enterprise"
+            "/apps/app-aurora-ios/sync-runs"
+        ),
+        headers={"Authorization": "Bearer dev-token"},
+        json={
+            "version": "1.0.0",
+            "locales": ["en-US"],
+            "scopes": ["metadata"],
+            "iosAppId": "9876543210",
+            "actor": "third-party-computer",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["appId"] == "app-aurora-ios"
+    run = db_session.query(StoreSyncRun).one()
+    assert run.payload_snapshot_json["app"]["storeAppId"] == "9876543210"
+    assert run.payload_snapshot_json["app"]["packageName"] == "com.internal.aurora"
+
+
+def test_store_management_direct_sync_uses_explicit_android_package_name(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _reset_direct_sync_guards_for_tests()
+    seed_demo_catalog(db_session)
+    db_session.add(
+        DeveloperAccountApp(
+            developer_account_id="account-apple-enterprise",
+            app_id="app-dataflow-android",
+        )
+    )
+    db_session.commit()
+    client.post(
+        (
+            "/v1/store-management/developer-accounts/account-apple-enterprise"
+            "/apps/app-dataflow-android/metadata-content-sets"
+        ),
+        headers={"Authorization": "Bearer dev-token"},
+        data={"metadata": json.dumps(_android_metadata_payload())},
+    )
+
+    response = client.post(
+        (
+            "/v1/store-management/developer-accounts/account-apple-enterprise"
+            "/apps/app-dataflow-android/sync-runs"
+        ),
+        headers={"Authorization": "Bearer dev-token"},
+        json={
+            "version": "3.1.0",
+            "locales": ["en-US"],
+            "scopes": ["short_description"],
+            "packageName": "com.app.android.qw.newreadink",
+            "actor": "third-party-computer",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["appId"] == "app-dataflow-android"
+    run = db_session.query(StoreSyncRun).filter_by(app_id="app-dataflow-android").one()
+    assert run.payload_snapshot_json["app"]["storeAppId"] is None
+    assert run.payload_snapshot_json["app"]["packageName"] == "com.app.android.qw.newreadink"
+
+
 def test_store_management_direct_sync_android_release_notes_accepts_store_version_code(
     client: TestClient,
     db_session: Session,

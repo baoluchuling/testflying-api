@@ -23,6 +23,37 @@ PAGE_ID="page-xxxxxxxx"
 Authorization: Bearer <TESTFLYING_STATIC_TOKEN>
 ```
 
+路径参数规则：
+
+- `{accountId}` 是 testflying 中心后台里的开发者账号 ID，例如 `738W4ARM22`。
+- `{appId}` 是 testflying 中心后台里的内部 App ID，不是 App Store Connect 数字 App ID，也不是 Google Play package name。
+- `appId` 在 App 创建或上传包解析后生成，格式为：
+
+```text
+app-{platform}-{slug(bundleIdentifier/packageName)}
+```
+
+`slug` 规则：
+
+1. 将 `bundleIdentifier` 或 `packageName` 中连续的非英文字母、数字字符替换为 `-`。
+2. 去掉开头和结尾的 `-`。
+3. 转成小写。
+4. 最多保留 48 个字符。
+5. 如果结果为空，使用随机 12 位字符串兜底。正常包名不会触发这个兜底。
+
+示例：
+
+| 平台 | 商店应用标识 | testflying `appId` |
+| --- | --- | --- |
+| iOS | `com.boluchuling.app.lookrva` | `app-ios-com-boluchuling-app-lookrva` |
+| Android | `com.novelago.android.app` | `app-android-com-novelago-android-app` |
+| Android | `com.app.android.qw.readink` | `app-android-com-app-android-qw-readink` |
+
+商店侧应用标识和 `appId` 的区别：
+
+- iOS 调用 App Store Connect 时使用 App Store Connect App ID，也就是 Apple 的数字 App ID；它和路径里的 `{appId}` 不是同一个字段。
+- Android 调用 Google Play 时使用 `storePackageName`；如果没有单独配置，则使用上传 APK 解析出来的 `packageName`。Google service account JSON 里的 `project_id` 只表示 Google Cloud 项目，不指定具体 App。
+
 当前接口有两类行为：
 
 - 只保存到 testflying：导入默认商店页草稿、导入版本草稿、创建自定义产品页面草稿。

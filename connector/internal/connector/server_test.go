@@ -239,6 +239,59 @@ func TestConnectorListsSupportedLocales(t *testing.T) {
 	}
 }
 
+func TestConnectorListsStoreListings(t *testing.T) {
+	server := testServer(t, testSettings())
+
+	response := performJSON(
+		server,
+		http.MethodGet,
+		"/v1/apps/app-aurora-ios/store-listings?developerAccountId=account-apple-enterprise&platform=ios&version=2.4.0",
+		testHeaders(),
+		nil,
+	)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	var result StoreListingsResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Listings) != 4 {
+		t.Fatalf("listings = %d, want 4", len(result.Listings))
+	}
+	if result.Listings[0].Locale != "zh-Hans" || result.Listings[0].Description == "" {
+		t.Fatalf("first listing = %#v", result.Listings[0])
+	}
+}
+
+func TestConnectorListsStoreImages(t *testing.T) {
+	server := testServer(t, testSettings())
+
+	response := performJSON(
+		server,
+		http.MethodGet,
+		"/v1/apps/app-aurora-ios/store-images?developerAccountId=account-apple-enterprise&platform=ios&version=2.4.0",
+		testHeaders(),
+		nil,
+	)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	var result StoreImagesResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Locales) != 4 {
+		t.Fatalf("locales = %d, want 4", len(result.Locales))
+	}
+	phoneScreenshots := result.Locales[0].Images["phone_screenshots"]
+	if len(phoneScreenshots) != 1 || phoneScreenshots[0].Width != 1290 {
+		t.Fatalf("phone screenshots = %#v", phoneScreenshots)
+	}
+}
+
 func TestConnectorListsProductPageOptimizations(t *testing.T) {
 	server := testServer(t, testSettings())
 

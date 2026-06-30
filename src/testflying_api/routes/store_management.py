@@ -10,7 +10,7 @@ from threading import Lock
 from typing import Annotated
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy.orm import Session
 
@@ -185,6 +185,30 @@ class DirectSyncResponse(CamelModel):
     locales: list[str]
     runs: list[DirectSyncRunResult]
     idempotent: bool = False
+
+
+class StoreLocalesResponse(CamelModel):
+    account_id: str = Field(alias="accountId")
+    app_id: str = Field(alias="appId")
+    platform: str
+    version: str = ""
+    locales: list[str]
+
+
+class StoreListingsResponse(CamelModel):
+    account_id: str = Field(alias="accountId")
+    app_id: str = Field(alias="appId")
+    platform: str
+    version: str = ""
+    listings: list[dict[str, object]]
+
+
+class StoreImagesResponse(CamelModel):
+    account_id: str = Field(alias="accountId")
+    app_id: str = Field(alias="appId")
+    platform: str
+    version: str = ""
+    locales: list[dict[str, object]]
 
 
 class ProductPageOptimizationTreatmentInput(CamelModel):
@@ -401,6 +425,104 @@ async def import_marketing_page(
         savedLocales=len(rows),
         uploadedAssets=_uploaded_asset_count(uploaded_assets),
         warnings=[],
+    )
+
+
+@router.get(
+    "/developer-accounts/{account_id}/apps/{app_id}/store-locales",
+    response_model=StoreLocalesResponse,
+)
+def list_store_locales(
+    account_id: str,
+    app_id: str,
+    request: Request,
+    session: SessionDep,
+    version: str = Query(default=""),
+) -> StoreLocalesResponse:
+    _require_static_token(request)
+    app = _scoped_app_or_error(session, account_id=account_id, app_id=app_id)
+    connector = _account_connector_or_error(session, account_id)
+    try:
+        locales = StoreConnectorClient().supported_locales(
+            connector,
+            account_id=account_id,
+            app=app,
+            version=version.strip(),
+        )
+    except ConnectorCallError as error:
+        raise _connector_api_error(error) from error
+    return StoreLocalesResponse(
+        accountId=account_id,
+        appId=app.id,
+        platform=app.platform,
+        version=version.strip(),
+        locales=locales,
+    )
+
+
+@router.get(
+    "/developer-accounts/{account_id}/apps/{app_id}/store-listings",
+    response_model=StoreListingsResponse,
+)
+def list_store_listings(
+    account_id: str,
+    app_id: str,
+    request: Request,
+    session: SessionDep,
+    version: str = Query(default=""),
+) -> StoreListingsResponse:
+    _require_static_token(request)
+    app = _scoped_app_or_error(session, account_id=account_id, app_id=app_id)
+    connector = _account_connector_or_error(session, account_id)
+    try:
+        raw_response = StoreConnectorClient().store_listings(
+            connector,
+            account_id=account_id,
+            app=app,
+            version=version.strip(),
+        )
+    except ConnectorCallError as error:
+        raise _connector_api_error(error) from error
+    listings = raw_response.get("listings")
+    return StoreListingsResponse(
+        accountId=account_id,
+        appId=app.id,
+        platform=app.platform,
+        version=version.strip(),
+        listings=listings if isinstance(listings, list) else [],
+    )
+
+
+@router.get(
+    "/developer-accounts/{account_id}/apps/{app_id}/store-images",
+    response_model=StoreImagesResponse,
+)
+def list_store_images(
+    account_id: str,
+    app_id: str,
+    request: Request,
+    session: SessionDep,
+    version: str = Query(default=""),
+) -> StoreImagesResponse:
+    _require_static_token(request)
+    app = _scoped_app_or_error(session, account_id=account_id, app_id=app_id)
+    connector = _account_connector_or_error(session, account_id)
+    try:
+        raw_response = StoreConnectorClient().store_images(
+            connector,
+            account_id=account_id,
+            app=app,
+            version=version.strip(),
+        )
+    except ConnectorCallError as error:
+        raise _connector_api_error(error) from error
+    locales = raw_response.get("locales")
+    return StoreImagesResponse(
+        accountId=account_id,
+        appId=app.id,
+        platform=app.platform,
+        version=version.strip(),
+        locales=locales if isinstance(locales, list) else [],
     )
 
 
@@ -695,15 +817,20 @@ def trigger_marketing_page_sync(
 
 
 def _product_page_optimization_app(session: Session, *, account_id: str, app_id: str):
-    app = scoped_app(session, account_id, app_id)
-    if app is None:
-        raise ApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
+    app = _scoped_app_or_error(session, account_id=account_id, app_id=app_id)
     if app.platform != "ios":
         raise ApiError(
             "unsupported_product_page_optimization",
             "产品页面优化当前仅支持 App Store Connect",
             status_code=422,
         )
+    return app
+
+
+def _scoped_app_or_error(session: Session, *, account_id: str, app_id: str):
+    app = scoped_app(session, account_id, app_id)
+    if app is None:
+        raise ApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
     return app
 
 
@@ -716,6 +843,15 @@ def _account_connector_or_error(session: Session, account_id: str):
             status_code=422,
         )
     return connector
+
+
+def _connector_api_error(error: ConnectorCallError) -> ApiError:
+    return ApiError(
+        "connector_call_failed",
+        error.message,
+        status_code=502,
+        retryable=True,
+    )
 
 
 def _product_page_optimization_treatments(

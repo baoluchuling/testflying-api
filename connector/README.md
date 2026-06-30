@@ -217,6 +217,8 @@ docker run -d --name testflying-connector-google-a \
 - `GET /health`
 - `POST /v1/preflight`
 - `GET /v1/apps/{app_id}/supported-locales`
+- `GET /v1/apps/{app_id}/store-listings`
+- `GET /v1/apps/{app_id}/store-images`
 - `POST /v1/sync-runs`
 
 除 `/health` 外，所有接口都需要：

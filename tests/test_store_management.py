@@ -301,6 +301,82 @@ def test_store_management_lists_product_page_optimizations(
     assert experiment["treatments"][0]["name"] == "Variant A"
 
 
+def test_store_management_lists_current_store_locales(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+
+    response = client.get(
+        (
+            "/v1/store-management/developer-accounts/account-apple-enterprise"
+            "/apps/app-aurora-ios/store-locales?version=1.0.0"
+        ),
+        headers={"Authorization": "Bearer dev-token"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body == {
+        "accountId": "account-apple-enterprise",
+        "appId": "app-aurora-ios",
+        "platform": "ios",
+        "version": "1.0.0",
+        "locales": ["zh-Hans", "en-US", "ja", "ko"],
+    }
+
+
+def test_store_management_lists_current_store_listings(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+
+    response = client.get(
+        (
+            "/v1/store-management/developer-accounts/account-apple-enterprise"
+            "/apps/app-aurora-ios/store-listings?version=1.0.0"
+        ),
+        headers={"Authorization": "Bearer dev-token"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["accountId"] == "account-apple-enterprise"
+    assert body["appId"] == "app-aurora-ios"
+    assert body["platform"] == "ios"
+    assert body["version"] == "1.0.0"
+    assert [item["locale"] for item in body["listings"]] == ["zh-Hans", "en-US", "ja", "ko"]
+    assert body["listings"][0]["description"] == "Mock store description."
+    assert body["listings"][0]["promotionalText"] == "Mock promotional text."
+
+
+def test_store_management_lists_current_store_images(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+
+    response = client.get(
+        (
+            "/v1/store-management/developer-accounts/account-apple-enterprise"
+            "/apps/app-aurora-ios/store-images?version=1.0.0"
+        ),
+        headers={"Authorization": "Bearer dev-token"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["accountId"] == "account-apple-enterprise"
+    assert body["appId"] == "app-aurora-ios"
+    assert body["platform"] == "ios"
+    assert [item["locale"] for item in body["locales"]] == ["zh-Hans", "en-US", "ja", "ko"]
+    first_image = body["locales"][0]["images"]["phone_screenshots"][0]
+    assert first_image["fileName"] == "phone-1.png"
+    assert first_image["width"] == 1290
+    assert first_image["height"] == 2796
+
+
 def test_store_management_creates_product_page_optimization_idempotently(
     client: TestClient,
     db_session: Session,

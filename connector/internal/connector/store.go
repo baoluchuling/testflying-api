@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 )
@@ -16,6 +17,8 @@ import (
 type StoreGateway interface {
 	Preflight(ctx context.Context, payload PreflightRequest) (PreflightResponse, error)
 	SupportedLocales(ctx context.Context, appID string, accountID string, platform string, version string, storeAppID string, packageName string) (SupportedLocalesResponse, error)
+	StoreListings(ctx context.Context, appID string, accountID string, platform string, version string, storeAppID string, packageName string) (StoreListingsResponse, error)
+	StoreImages(ctx context.Context, appID string, accountID string, platform string, version string, storeAppID string, packageName string) (StoreImagesResponse, error)
 	ListProductPageOptimizations(ctx context.Context, appID string, accountID string, platform string, storeAppID string) (ProductPageOptimizationsResponse, error)
 	CreateProductPageOptimization(ctx context.Context, appID string, payload ProductPageOptimizationCreateRequest) (ProductPageOptimizationCreateResponse, error)
 	SyncRun(ctx context.Context, payload SyncRunRequest) (SyncRunResponse, error)
@@ -66,6 +69,51 @@ func (g MockStoreGateway) SupportedLocales(_ context.Context, _ string, _ string
 		return SupportedLocalesResponse{Locales: []string{"zh-Hans", "en-US", "ja", "ko"}}, nil
 	}
 	return SupportedLocalesResponse{Locales: []string{"zh-Hans", "en-US"}}, nil
+}
+
+func (g MockStoreGateway) StoreListings(_ context.Context, _ string, _ string, platform string, _ string, _ string, _ string) (StoreListingsResponse, error) {
+	locales, _ := g.SupportedLocales(context.Background(), "", "", platform, "", "", "")
+	listings := make([]StoreListing, 0, len(locales.Locales))
+	for _, locale := range locales.Locales {
+		listing := StoreListing{
+			Locale:          locale,
+			Description:     "Mock store description.",
+			FullDescription: "Mock store description.",
+			Keywords:        "mock,test",
+			PromotionalText: "Mock promotional text.",
+			ReleaseNotes:    "Mock release notes.",
+		}
+		if normalizePlatform(platform) == "android" {
+			listing.Title = "Mock Android App"
+			listing.ShortDescription = "Mock short description."
+			listing.VideoURL = "https://example.test/video"
+		}
+		listings = append(listings, listing)
+	}
+	return StoreListingsResponse{Listings: listings}, nil
+}
+
+func (g MockStoreGateway) StoreImages(_ context.Context, _ string, _ string, platform string, _ string, _ string, _ string) (StoreImagesResponse, error) {
+	locales, _ := g.SupportedLocales(context.Background(), "", "", platform, "", "", "")
+	rows := make([]StoreImageLocale, 0, len(locales.Locales))
+	for _, locale := range locales.Locales {
+		rows = append(rows, StoreImageLocale{
+			Locale: locale,
+			Images: map[string][]StoreImageRef{
+				"phone_screenshots": {
+					{
+						ID:       "mock-phone-1-" + locale,
+						FileName: "phone-1.png",
+						URL:      "https://cdn.example.test/" + locale + "/phone-1.png",
+						Width:    1290,
+						Height:   2796,
+					},
+				},
+				"tablet_screenshots": {},
+			},
+		})
+	}
+	return StoreImagesResponse{Locales: rows}, nil
 }
 
 func (g MockStoreGateway) ListProductPageOptimizations(_ context.Context, appID string, _ string, platform string, _ string) (ProductPageOptimizationsResponse, error) {
@@ -195,6 +243,28 @@ func (g *LiveStoreGateway) SupportedLocales(ctx context.Context, appID string, a
 		return g.googleSupportedLocales(ctx, packageName)
 	default:
 		return SupportedLocalesResponse{Locales: []string{}}, nil
+	}
+}
+
+func (g *LiveStoreGateway) StoreListings(ctx context.Context, appID string, accountID string, platform string, version string, storeAppID string, packageName string) (StoreListingsResponse, error) {
+	switch normalizePlatform(platform) {
+	case "ios":
+		return g.appleStoreListings(ctx, storeAppID, version)
+	case "android":
+		return g.googleStoreListings(ctx, packageName)
+	default:
+		return StoreListingsResponse{Listings: []StoreListing{}}, nil
+	}
+}
+
+func (g *LiveStoreGateway) StoreImages(ctx context.Context, appID string, accountID string, platform string, version string, storeAppID string, packageName string) (StoreImagesResponse, error) {
+	switch normalizePlatform(platform) {
+	case "ios":
+		return g.appleStoreImages(ctx, storeAppID, version)
+	case "android":
+		return g.googleStoreImages(ctx, packageName)
+	default:
+		return StoreImagesResponse{Locales: []StoreImageLocale{}}, nil
 	}
 }
 
@@ -330,6 +400,144 @@ func (g *LiveStoreGateway) appleSupportedLocales(ctx context.Context, storeAppID
 		return SupportedLocalesResponse{}, err
 	}
 	return SupportedLocalesResponse{Locales: localizationLocales(locales)}, nil
+}
+
+func (g *LiveStoreGateway) appleStoreListings(ctx context.Context, storeAppID string, version string) (StoreListingsResponse, error) {
+	if strings.TrimSpace(storeAppID) == "" {
+		return StoreListingsResponse{Listings: []StoreListing{}}, nil
+	}
+	infoLocalizations, err := g.appleInfoLocalizations(ctx, storeAppID)
+	if err != nil {
+		return StoreListingsResponse{}, err
+	}
+	infoByLocale := map[string]appleLocalization{}
+	for _, item := range infoLocalizations {
+		if strings.TrimSpace(item.Locale) != "" {
+			infoByLocale[item.Locale] = item
+		}
+	}
+
+	versionLocalizations := []appleLocalization{}
+	if strings.TrimSpace(version) != "" {
+		versionInfo, err := g.appleFindVersion(ctx, storeAppID, version)
+		if err != nil {
+			return StoreListingsResponse{}, err
+		}
+		if versionInfo != nil {
+			versionLocalizations, err = g.appleVersionLocalizations(ctx, versionInfo.ID)
+			if err != nil {
+				return StoreListingsResponse{}, err
+			}
+		}
+	}
+
+	listingsByLocale := map[string]StoreListing{}
+	for _, item := range infoLocalizations {
+		listingsByLocale[item.Locale] = StoreListing{
+			Locale:   item.Locale,
+			Title:    stringAttribute(item.Attributes, "name"),
+			Subtitle: stringAttribute(item.Attributes, "subtitle"),
+		}
+	}
+	for _, item := range versionLocalizations {
+		listing := listingsByLocale[item.Locale]
+		listing.Locale = item.Locale
+		if info, ok := infoByLocale[item.Locale]; ok {
+			listing.Title = stringAttribute(info.Attributes, "name")
+			listing.Subtitle = stringAttribute(info.Attributes, "subtitle")
+		}
+		listing.Description = stringAttribute(item.Attributes, "description")
+		listing.FullDescription = listing.Description
+		listing.Keywords = stringAttribute(item.Attributes, "keywords")
+		listing.PromotionalText = stringAttribute(item.Attributes, "promotionalText")
+		listing.ReleaseNotes = stringAttribute(item.Attributes, "whatsNew")
+		listingsByLocale[item.Locale] = listing
+	}
+	return StoreListingsResponse{Listings: sortedStoreListings(listingsByLocale)}, nil
+}
+
+func (g *LiveStoreGateway) appleStoreImages(ctx context.Context, storeAppID string, version string) (StoreImagesResponse, error) {
+	if strings.TrimSpace(storeAppID) == "" || strings.TrimSpace(version) == "" {
+		return StoreImagesResponse{Locales: []StoreImageLocale{}}, nil
+	}
+	versionInfo, err := g.appleFindVersion(ctx, storeAppID, version)
+	if err != nil {
+		return StoreImagesResponse{}, err
+	}
+	if versionInfo == nil {
+		return StoreImagesResponse{Locales: []StoreImageLocale{}}, nil
+	}
+	localizations, err := g.appleVersionLocalizations(ctx, versionInfo.ID)
+	if err != nil {
+		return StoreImagesResponse{}, err
+	}
+	locales := make([]StoreImageLocale, 0, len(localizations))
+	for _, localization := range localizations {
+		images, err := g.appleImagesForVersionLocalization(ctx, localization.ID)
+		if err != nil {
+			return StoreImagesResponse{}, err
+		}
+		locales = append(locales, StoreImageLocale{
+			Locale: localization.Locale,
+			Images: images,
+		})
+	}
+	return StoreImagesResponse{Locales: locales}, nil
+}
+
+func (g *LiveStoreGateway) appleImagesForVersionLocalization(ctx context.Context, localizationID string) (map[string][]StoreImageRef, error) {
+	query := url.Values{}
+	query.Set("include", "appScreenshots")
+	query.Set("limit", "200")
+	query.Set("limit[appScreenshots]", "200")
+	var response struct {
+		Data []struct {
+			ID            string         `json:"id"`
+			Attributes    map[string]any `json:"attributes"`
+			Relationships map[string]struct {
+				Data []struct {
+					ID   string `json:"id"`
+					Type string `json:"type"`
+				} `json:"data"`
+			} `json:"relationships"`
+		} `json:"data"`
+		Included []struct {
+			ID         string         `json:"id"`
+			Type       string         `json:"type"`
+			Attributes map[string]any `json:"attributes"`
+		} `json:"included"`
+	}
+	path := "/v1/appStoreVersionLocalizations/" + url.PathEscape(localizationID) + "/appScreenshotSets?" + query.Encode()
+	if _, err := g.appleRequest(ctx, http.MethodGet, path, nil, &response); err != nil {
+		return nil, err
+	}
+	screenshotsByID := map[string]StoreImageRef{}
+	for _, item := range response.Included {
+		if item.Type != "appScreenshots" {
+			continue
+		}
+		screenshotsByID[item.ID] = appleImageRefFromAttributes(item.ID, item.Attributes)
+	}
+	images := map[string][]StoreImageRef{
+		"phone_screenshots":  {},
+		"tablet_screenshots": {},
+	}
+	for _, set := range response.Data {
+		slot := appleScreenshotSlot(stringAttribute(set.Attributes, "screenshotDisplayType"))
+		if slot == "" {
+			continue
+		}
+		relationship, ok := set.Relationships["appScreenshots"]
+		if !ok {
+			continue
+		}
+		for _, linkage := range relationship.Data {
+			if image, exists := screenshotsByID[linkage.ID]; exists {
+				images[slot] = append(images[slot], image)
+			}
+		}
+	}
+	return images, nil
 }
 
 func (g *LiveStoreGateway) appleProductPageOptimizations(ctx context.Context, storeAppID string) (ProductPageOptimizationsResponse, error) {
@@ -689,6 +897,7 @@ func (g *LiveStoreGateway) googleSupportedLocales(ctx context.Context, packageNa
 	if err != nil {
 		return SupportedLocalesResponse{}, err
 	}
+	defer g.googleDeleteEdit(ctx, packageName, editID)
 	var response struct {
 		Listings []struct {
 			Language string `json:"language"`
@@ -704,6 +913,129 @@ func (g *LiveStoreGateway) googleSupportedLocales(ctx context.Context, packageNa
 		}
 	}
 	return SupportedLocalesResponse{Locales: locales}, nil
+}
+
+func (g *LiveStoreGateway) googleStoreListings(ctx context.Context, packageName string) (StoreListingsResponse, error) {
+	if strings.TrimSpace(packageName) == "" {
+		return StoreListingsResponse{Listings: []StoreListing{}}, nil
+	}
+	editID, err := g.googleInsertEdit(ctx, packageName)
+	if err != nil {
+		return StoreListingsResponse{}, err
+	}
+	defer g.googleDeleteEdit(ctx, packageName, editID)
+	var response struct {
+		Listings []struct {
+			Language         string `json:"language"`
+			Title            string `json:"title"`
+			FullDescription  string `json:"fullDescription"`
+			ShortDescription string `json:"shortDescription"`
+			Video            string `json:"video"`
+		} `json:"listings"`
+	}
+	path := "/androidpublisher/v3/applications/" + url.PathEscape(packageName) +
+		"/edits/" + url.PathEscape(editID) + "/listings"
+	if err := g.googleRequest(ctx, http.MethodGet, path, nil, &response); err != nil {
+		return StoreListingsResponse{}, err
+	}
+	listings := make([]StoreListing, 0, len(response.Listings))
+	for _, item := range response.Listings {
+		if strings.TrimSpace(item.Language) == "" {
+			continue
+		}
+		listings = append(listings, StoreListing{
+			Locale:           item.Language,
+			Title:            item.Title,
+			ShortDescription: item.ShortDescription,
+			FullDescription:  item.FullDescription,
+			Description:      item.FullDescription,
+			VideoURL:         item.Video,
+		})
+	}
+	sort.SliceStable(listings, func(i int, j int) bool {
+		return listings[i].Locale < listings[j].Locale
+	})
+	return StoreListingsResponse{Listings: listings}, nil
+}
+
+func (g *LiveStoreGateway) googleStoreImages(ctx context.Context, packageName string) (StoreImagesResponse, error) {
+	if strings.TrimSpace(packageName) == "" {
+		return StoreImagesResponse{Locales: []StoreImageLocale{}}, nil
+	}
+	editID, err := g.googleInsertEdit(ctx, packageName)
+	if err != nil {
+		return StoreImagesResponse{}, err
+	}
+	defer g.googleDeleteEdit(ctx, packageName, editID)
+	locales, err := g.googleListingLanguages(ctx, packageName, editID)
+	if err != nil {
+		return StoreImagesResponse{}, err
+	}
+	rows := make([]StoreImageLocale, 0, len(locales))
+	for _, locale := range locales {
+		images := map[string][]StoreImageRef{}
+		for _, imageType := range googleImageTypes() {
+			items, err := g.googleImagesForType(ctx, packageName, editID, locale, imageType)
+			if err != nil {
+				return StoreImagesResponse{}, err
+			}
+			images[googleImageSlot(imageType)] = items
+		}
+		rows = append(rows, StoreImageLocale{
+			Locale: locale,
+			Images: images,
+		})
+	}
+	return StoreImagesResponse{Locales: rows}, nil
+}
+
+func (g *LiveStoreGateway) googleListingLanguages(ctx context.Context, packageName string, editID string) ([]string, error) {
+	var response struct {
+		Listings []struct {
+			Language string `json:"language"`
+		} `json:"listings"`
+	}
+	path := "/androidpublisher/v3/applications/" + url.PathEscape(packageName) +
+		"/edits/" + url.PathEscape(editID) + "/listings"
+	if err := g.googleRequest(ctx, http.MethodGet, path, nil, &response); err != nil {
+		return nil, err
+	}
+	locales := make([]string, 0, len(response.Listings))
+	for _, item := range response.Listings {
+		if strings.TrimSpace(item.Language) != "" {
+			locales = append(locales, item.Language)
+		}
+	}
+	sort.Strings(locales)
+	return locales, nil
+}
+
+func (g *LiveStoreGateway) googleImagesForType(ctx context.Context, packageName string, editID string, locale string, imageType string) ([]StoreImageRef, error) {
+	var response struct {
+		Images []struct {
+			ID     string `json:"id"`
+			URL    string `json:"url"`
+			SHA1   string `json:"sha1"`
+			SHA256 string `json:"sha256"`
+		} `json:"images"`
+	}
+	path := "/androidpublisher/v3/applications/" + url.PathEscape(packageName) +
+		"/edits/" + url.PathEscape(editID) +
+		"/listings/" + url.PathEscape(locale) +
+		"/" + url.PathEscape(imageType)
+	if err := g.googleRequest(ctx, http.MethodGet, path, nil, &response); err != nil {
+		return nil, err
+	}
+	images := make([]StoreImageRef, 0, len(response.Images))
+	for _, item := range response.Images {
+		images = append(images, StoreImageRef{
+			ID:     item.ID,
+			URL:    item.URL,
+			SHA1:   item.SHA1,
+			SHA256: item.SHA256,
+		})
+	}
+	return images, nil
 }
 
 func (g *LiveStoreGateway) googleSyncRun(ctx context.Context, payload SyncRunRequest) (SyncRunResponse, error) {
@@ -747,6 +1079,19 @@ func (g *LiveStoreGateway) googleInsertEdit(ctx context.Context, packageName str
 		return "", errors.New("Google Play 没有返回 edit id")
 	}
 	return response.ID, nil
+}
+
+func (g *LiveStoreGateway) googleDeleteEdit(ctx context.Context, packageName string, editID string) {
+	if strings.TrimSpace(packageName) == "" || strings.TrimSpace(editID) == "" {
+		return
+	}
+	_ = g.googleRequest(
+		ctx,
+		http.MethodDelete,
+		"/androidpublisher/v3/applications/"+url.PathEscape(packageName)+"/edits/"+url.PathEscape(editID),
+		nil,
+		nil,
+	)
 }
 
 func (g *LiveStoreGateway) googleRequest(ctx context.Context, method string, path string, body any, out any) error {
@@ -844,6 +1189,95 @@ func appleProductPageOptimizationFromResource(item appleResource) ProductPageOpt
 		StartDate:         item.Attributes.StartDate,
 		EndDate:           item.Attributes.EndDate,
 		Treatments:        []ProductPageOptimizationTreatment{},
+	}
+}
+
+func stringAttribute(attributes map[string]any, key string) string {
+	value, _ := attributes[key].(string)
+	return strings.TrimSpace(value)
+}
+
+func sortedStoreListings(listingsByLocale map[string]StoreListing) []StoreListing {
+	listings := make([]StoreListing, 0, len(listingsByLocale))
+	for _, listing := range listingsByLocale {
+		if strings.TrimSpace(listing.Locale) != "" {
+			listings = append(listings, listing)
+		}
+	}
+	sort.SliceStable(listings, func(i int, j int) bool {
+		return listings[i].Locale < listings[j].Locale
+	})
+	return listings
+}
+
+func appleImageRefFromAttributes(id string, attributes map[string]any) StoreImageRef {
+	image := StoreImageRef{
+		ID:       id,
+		FileName: stringAttribute(attributes, "fileName"),
+		URL:      stringAttribute(attributes, "url"),
+	}
+	if image.URL == "" {
+		if asset, ok := attributes["imageAsset"].(map[string]any); ok {
+			image.URL = stringAttribute(asset, "templateUrl")
+			image.Width = intAttribute(asset, "width")
+			image.Height = intAttribute(asset, "height")
+		}
+	}
+	return image
+}
+
+func intAttribute(attributes map[string]any, key string) int {
+	switch value := attributes[key].(type) {
+	case int:
+		return value
+	case int64:
+		return int(value)
+	case float64:
+		return int(value)
+	default:
+		return 0
+	}
+}
+
+func appleScreenshotSlot(displayType string) string {
+	normalized := strings.ToUpper(strings.TrimSpace(displayType))
+	switch {
+	case strings.Contains(normalized, "IPHONE"):
+		return "phone_screenshots"
+	case strings.Contains(normalized, "IPAD"):
+		return "tablet_screenshots"
+	default:
+		return ""
+	}
+}
+
+func googleImageTypes() []string {
+	return []string{
+		"featureGraphic",
+		"phoneScreenshots",
+		"sevenInchScreenshots",
+		"tenInchScreenshots",
+		"tvScreenshots",
+		"wearScreenshots",
+	}
+}
+
+func googleImageSlot(imageType string) string {
+	switch imageType {
+	case "featureGraphic":
+		return "feature_graphic_url"
+	case "phoneScreenshots":
+		return "phone_screenshots"
+	case "sevenInchScreenshots":
+		return "seven_inch_screenshots"
+	case "tenInchScreenshots":
+		return "ten_inch_screenshots"
+	case "tvScreenshots":
+		return "tv_screenshots"
+	case "wearScreenshots":
+		return "wear_screenshots"
+	default:
+		return imageType
 	}
 }
 

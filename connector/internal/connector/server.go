@@ -45,6 +45,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.withToken(w, r, s.handleSyncRun)
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/apps/") && strings.HasSuffix(r.URL.Path, "/supported-locales"):
 		s.withToken(w, r, s.handleSupportedLocales)
+	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/apps/") && strings.HasSuffix(r.URL.Path, "/store-listings"):
+		s.withToken(w, r, s.handleStoreListings)
+	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/apps/") && strings.HasSuffix(r.URL.Path, "/store-images"):
+		s.withToken(w, r, s.handleStoreImages)
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/apps/") && strings.HasSuffix(r.URL.Path, "/product-page-optimizations"):
 		s.withToken(w, r, s.handleListProductPageOptimizations)
 	case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/v1/apps/") && strings.HasSuffix(r.URL.Path, "/product-page-optimizations"):
@@ -107,6 +111,58 @@ func (s *Server) handleSupportedLocales(w http.ResponseWriter, r *http.Request) 
 	}
 	appID := appIDFromSupportedLocalesPath(r.URL.Path)
 	response, err := s.store.SupportedLocales(
+		r.Context(),
+		appID,
+		accountID,
+		platform,
+		r.URL.Query().Get("version"),
+		r.URL.Query().Get("storeAppId"),
+		r.URL.Query().Get("packageName"),
+	)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, friendlyStoreError(err))
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (s *Server) handleStoreListings(w http.ResponseWriter, r *http.Request) {
+	accountID := r.URL.Query().Get("developerAccountId")
+	if !s.validateAccount(w, accountID) {
+		return
+	}
+	platform := r.URL.Query().Get("platform")
+	if !s.enforceRateLimit(w, platform) {
+		return
+	}
+	appID := appIDFromStoreResourcePath(r.URL.Path, "/store-listings")
+	response, err := s.store.StoreListings(
+		r.Context(),
+		appID,
+		accountID,
+		platform,
+		r.URL.Query().Get("version"),
+		r.URL.Query().Get("storeAppId"),
+		r.URL.Query().Get("packageName"),
+	)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, friendlyStoreError(err))
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (s *Server) handleStoreImages(w http.ResponseWriter, r *http.Request) {
+	accountID := r.URL.Query().Get("developerAccountId")
+	if !s.validateAccount(w, accountID) {
+		return
+	}
+	platform := r.URL.Query().Get("platform")
+	if !s.enforceRateLimit(w, platform) {
+		return
+	}
+	appID := appIDFromStoreResourcePath(r.URL.Path, "/store-images")
+	response, err := s.store.StoreImages(
 		r.Context(),
 		appID,
 		accountID,
@@ -241,5 +297,11 @@ func appIDFromSupportedLocalesPath(path string) string {
 func appIDFromProductPageOptimizationsPath(path string) string {
 	trimmed := strings.TrimPrefix(path, "/v1/apps/")
 	trimmed = strings.TrimSuffix(trimmed, "/product-page-optimizations")
+	return strings.Trim(trimmed, "/")
+}
+
+func appIDFromStoreResourcePath(path string, suffix string) string {
+	trimmed := strings.TrimPrefix(path, "/v1/apps/")
+	trimmed = strings.TrimSuffix(trimmed, suffix)
 	return strings.Trim(trimmed, "/")
 }

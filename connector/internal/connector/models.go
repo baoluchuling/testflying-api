@@ -28,6 +28,42 @@ type SupportedLocalesResponse struct {
 	Locales []string `json:"locales"`
 }
 
+type StoreListingsResponse struct {
+	Listings []StoreListing `json:"listings"`
+}
+
+type StoreListing struct {
+	Locale           string `json:"locale"`
+	Title            string `json:"title,omitempty"`
+	Subtitle         string `json:"subtitle,omitempty"`
+	ShortDescription string `json:"shortDescription,omitempty"`
+	FullDescription  string `json:"fullDescription,omitempty"`
+	Description      string `json:"description,omitempty"`
+	Keywords         string `json:"keywords,omitempty"`
+	PromotionalText  string `json:"promotionalText,omitempty"`
+	ReleaseNotes     string `json:"releaseNotes,omitempty"`
+	VideoURL         string `json:"videoUrl,omitempty"`
+}
+
+type StoreImagesResponse struct {
+	Locales []StoreImageLocale `json:"locales"`
+}
+
+type StoreImageLocale struct {
+	Locale string                     `json:"locale"`
+	Images map[string][]StoreImageRef `json:"images"`
+}
+
+type StoreImageRef struct {
+	ID       string `json:"id,omitempty"`
+	FileName string `json:"fileName,omitempty"`
+	URL      string `json:"url,omitempty"`
+	Width    int    `json:"width,omitempty"`
+	Height   int    `json:"height,omitempty"`
+	SHA1     string `json:"sha1,omitempty"`
+	SHA256   string `json:"sha256,omitempty"`
+}
+
 type ProductPageOptimizationTreatment struct {
 	ID          string   `json:"id,omitempty"`
 	Name        string   `json:"name"`

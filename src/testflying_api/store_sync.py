@@ -116,6 +116,58 @@ class StoreConnectorClient:
         )
         return _normalize_connector_locales(response.get("locales"))
 
+    def store_listings(
+        self,
+        connector: StoreConnector,
+        *,
+        account_id: str,
+        app: App,
+        version: str = "",
+    ) -> dict[str, object]:
+        if connector.base_url.startswith("mock://"):
+            return _mock_store_listings(app)
+        query = urlencode(
+            {
+                "developerAccountId": account_id,
+                "platform": app.platform,
+                "version": version,
+                "storeAppId": app.store_app_id or "",
+                "packageName": app.store_package_name or app.bundle_identifier,
+            }
+        )
+        path = f"/v1/apps/{app.id}/store-listings?{query}"
+        return (
+            _active_request_json(connector, "GET", path)
+            if _is_active_connector(connector)
+            else _get_json(connector, path)
+        )
+
+    def store_images(
+        self,
+        connector: StoreConnector,
+        *,
+        account_id: str,
+        app: App,
+        version: str = "",
+    ) -> dict[str, object]:
+        if connector.base_url.startswith("mock://"):
+            return _mock_store_images(app)
+        query = urlencode(
+            {
+                "developerAccountId": account_id,
+                "platform": app.platform,
+                "version": version,
+                "storeAppId": app.store_app_id or "",
+                "packageName": app.store_package_name or app.bundle_identifier,
+            }
+        )
+        path = f"/v1/apps/{app.id}/store-images?{query}"
+        return (
+            _active_request_json(connector, "GET", path)
+            if _is_active_connector(connector)
+            else _get_json(connector, path)
+        )
+
     def product_page_optimizations(
         self,
         connector: StoreConnector,
@@ -2062,6 +2114,54 @@ def _mock_preflight(payload: dict[str, object]) -> dict[str, object]:
 
 def _mock_supported_locales(platform: str) -> list[str]:
     return ["zh-Hans", "en-US", "ja", "ko"] if platform == "ios" else ["zh-Hans", "en-US"]
+
+
+def _mock_store_listings(app: App) -> dict[str, object]:
+    locales = _mock_supported_locales(app.platform)
+    listings: list[dict[str, object]] = []
+    for locale in locales:
+        listing: dict[str, object] = {
+            "locale": locale,
+            "description": "Mock store description.",
+            "fullDescription": "Mock store description.",
+            "keywords": "mock,test",
+            "promotionalText": "Mock promotional text.",
+            "releaseNotes": "Mock release notes.",
+        }
+        if app.platform == "android":
+            listing.update(
+                {
+                    "title": app.name,
+                    "shortDescription": "Mock short description.",
+                    "videoUrl": "https://example.test/video",
+                }
+            )
+        listings.append(listing)
+    return {"listings": listings}
+
+
+def _mock_store_images(app: App) -> dict[str, object]:
+    locales = _mock_supported_locales(app.platform)
+    return {
+        "locales": [
+            {
+                "locale": locale,
+                "images": {
+                    "phone_screenshots": [
+                        {
+                            "id": f"mock-phone-{locale}",
+                            "fileName": "phone-1.png",
+                            "url": f"https://cdn.example.test/{locale}/phone-1.png",
+                            "width": 1290,
+                            "height": 2796,
+                        }
+                    ],
+                    "tablet_screenshots": [],
+                },
+            }
+            for locale in locales
+        ]
+    }
 
 
 def _mock_product_page_optimizations(app: App) -> dict[str, object]:

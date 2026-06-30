@@ -1745,7 +1745,7 @@ func (g *LiveStoreGateway) googleSyncRun(ctx context.Context, payload SyncRunReq
 	if !committed {
 		return failedSync("empty_sync_payload", "没有可同步的 Google Play 商店内容。"), nil
 	}
-	if err := g.googleRequest(ctx, http.MethodPost, "/androidpublisher/v3/applications/"+url.PathEscape(packageName)+"/edits/"+url.PathEscape(editID)+":commit", nil, nil); err != nil {
+	if err := g.googleCommitEdit(ctx, packageName, editID); err != nil {
 		return SyncRunResponse{}, err
 	}
 	return SyncRunResponse{Status: "succeeded", Message: "商店元数据已同步。"}, nil
@@ -1788,7 +1788,7 @@ func (g *LiveStoreGateway) googleSyncReleaseNotes(ctx context.Context, payload S
 	if err := g.googleRequest(ctx, http.MethodPut, path, tracks[trackIndex], nil); err != nil {
 		return SyncRunResponse{}, err
 	}
-	if err := g.googleRequest(ctx, http.MethodPost, "/androidpublisher/v3/applications/"+url.PathEscape(packageName)+"/edits/"+url.PathEscape(editID)+":commit", nil, nil); err != nil {
+	if err := g.googleCommitEdit(ctx, packageName, editID); err != nil {
 		return SyncRunResponse{}, err
 	}
 	committed = true
@@ -1915,6 +1915,18 @@ func (g *LiveStoreGateway) googleInsertEdit(ctx context.Context, packageName str
 		return "", errors.New("Google Play 没有返回 edit id")
 	}
 	return response.ID, nil
+}
+
+func (g *LiveStoreGateway) googleCommitEdit(ctx context.Context, packageName string, editID string) error {
+	return g.googleRequest(ctx, http.MethodPost, googleCommitEditPath(packageName, editID), nil, nil)
+}
+
+func googleCommitEditPath(packageName string, editID string) string {
+	values := url.Values{}
+	values.Set("changesInReviewBehavior", "ERROR_IF_IN_REVIEW")
+	values.Set("changesNotSentForReview", "true")
+	return "/androidpublisher/v3/applications/" + url.PathEscape(packageName) +
+		"/edits/" + url.PathEscape(editID) + ":commit?" + values.Encode()
 }
 
 func (g *LiveStoreGateway) googleDeleteEdit(ctx context.Context, packageName string, editID string) {

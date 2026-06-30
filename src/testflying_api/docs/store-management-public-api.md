@@ -10,6 +10,7 @@
 - `{appId}`：testflying 内部 App ID，不是 Apple 数字 App ID，也不是 Android package name
 - iOS 调商店时使用后台绑定的 App Store Connect App ID
 - Android 调商店时优先使用后台绑定的 `storePackageName`，没有时使用包里解析出的 package name
+- Google Play 同步会提交 edit，但默认带 `changesNotSentForReview=true`，不会直接送审；如果已有变更正在审核中，会按 `changesInReviewBehavior=ERROR_IF_IN_REVIEW` 返回错误
 
 ## 接口总览
 
@@ -298,7 +299,7 @@ curl -X POST "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/
 POST /v1/store-management/developer-accounts/{accountId}/apps/{appId}/sync-runs
 ```
 
-用于把默认商店页草稿同步到真实商店。可同步文案、商店图、版本说明。
+用于把默认商店页草稿同步到真实商店。可同步文案、商店图、版本说明。后台 UI 和第三方电脑直接调用都走同一条 connector 同步链路。
 
 参数：
 

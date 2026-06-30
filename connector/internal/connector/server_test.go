@@ -210,6 +210,21 @@ func TestConnectorMetadataSyncRunSupportsImageOnlyScope(t *testing.T) {
 	}
 }
 
+func TestGoogleCommitEditPathKeepsChangesOutOfReview(t *testing.T) {
+	path := googleCommitEditPath("com.example.app", "edit 1")
+
+	if !strings.HasPrefix(path, "/androidpublisher/v3/applications/com.example.app/edits/edit%201:commit?") {
+		t.Fatalf("commit path = %s", path)
+	}
+	query := strings.TrimPrefix(path, "/androidpublisher/v3/applications/com.example.app/edits/edit%201:commit?")
+	if !strings.Contains(query, "changesNotSentForReview=true") {
+		t.Fatalf("commit query = %s, want changesNotSentForReview=true", query)
+	}
+	if !strings.Contains(query, "changesInReviewBehavior=ERROR_IF_IN_REVIEW") {
+		t.Fatalf("commit query = %s, want ERROR_IF_IN_REVIEW", query)
+	}
+}
+
 func TestConnectorListsStoreReleases(t *testing.T) {
 	server := testServer(t, testSettings())
 

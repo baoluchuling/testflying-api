@@ -227,6 +227,14 @@ class StoreImagesResponse(CamelModel):
     locales: list[dict[str, object]]
 
 
+class StoreReleasesResponse(CamelModel):
+    account_id: str = Field(alias="accountId")
+    app_id: str = Field(alias="appId")
+    platform: str
+    version: str = ""
+    releases: list[dict[str, object]]
+
+
 class ProductPageOptimizationTreatmentInput(CamelModel):
     name: str
     app_icon_name: str = Field(default="", alias="appIconName")
@@ -539,6 +547,39 @@ def list_store_images(
         platform=app.platform,
         version=version.strip(),
         locales=locales if isinstance(locales, list) else [],
+    )
+
+
+@router.get(
+    "/developer-accounts/{account_id}/apps/{app_id}/store-releases",
+    response_model=StoreReleasesResponse,
+)
+def list_store_releases(
+    account_id: str,
+    app_id: str,
+    request: Request,
+    session: SessionDep,
+    version: str = Query(default=""),
+) -> StoreReleasesResponse:
+    _require_static_token(request)
+    app = _scoped_app_or_error(session, account_id=account_id, app_id=app_id)
+    connector = _account_connector_or_error(session, account_id)
+    try:
+        raw_response = StoreConnectorClient().store_releases(
+            connector,
+            account_id=account_id,
+            app=app,
+            version=version.strip(),
+        )
+    except ConnectorCallError as error:
+        raise _connector_api_error(error) from error
+    releases = raw_response.get("releases")
+    return StoreReleasesResponse(
+        accountId=account_id,
+        appId=app.id,
+        platform=app.platform,
+        version=version.strip(),
+        releases=releases if isinstance(releases, list) else [],
     )
 
 

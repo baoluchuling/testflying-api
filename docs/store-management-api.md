@@ -57,7 +57,7 @@ app-{platform}-{slug(bundleIdentifier/packageName)}
 当前接口有两类行为：
 
 - 只保存到 testflying：导入默认商店页草稿、导入版本草稿、创建自定义产品页面草稿。
-- 会连接真实商店：读取商店语言、读取商店文案、读取商店图、同步默认商店页、同步自定义产品页面、查询/创建产品页面优化。
+- 会连接真实商店：读取商店语言、读取商店文案、读取商店图、读取 Google Play release 列表、同步默认商店页、同步自定义产品页面、查询/创建产品页面优化。
 
 图片上传字段规则：
 
@@ -91,6 +91,7 @@ storeImageFiles__featureGraphicUrl__en-US
 | `/v1/store-management/developer-accounts/{accountId}/apps/{appId}/store-locales` | GET | 是 | 从商店读取 App 支持语言 |
 | `/v1/store-management/developer-accounts/{accountId}/apps/{appId}/store-listings` | GET | 是 | 从商店读取当前文案配置 |
 | `/v1/store-management/developer-accounts/{accountId}/apps/{appId}/store-images` | GET | 是 | 从商店读取当前截图/商店图配置 |
+| `/v1/store-management/developer-accounts/{accountId}/apps/{appId}/store-releases` | GET | 是 | 从 Google Play 读取 tracks / releases / versionCodes |
 | `/v1/store-management/developer-accounts/{accountId}/apps/{appId}/metadata-content-sets` | POST | 否 | 导入默认商店页文案和截图草稿 |
 | `/v1/store-management/developer-accounts/{accountId}/apps/{appId}/store-versions/{version}/draft` | POST | 否 | 导入版本说明和可选文案草稿 |
 | `/v1/store-management/developer-accounts/{accountId}/apps/{appId}/marketing-pages` | POST | 否 | 创建自定义产品页面草稿 |
@@ -209,7 +210,60 @@ curl "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/$APP_ID/
 }
 ```
 
-## 4. 导入默认商店页草稿
+## 4. 读取 Google Play Release 列表
+
+```http
+GET /v1/store-management/developer-accounts/{accountId}/apps/{appId}/store-releases?version={version}
+```
+
+用途：
+
+- 通过账号 Connector 查询 Google Play 当前 App 的 tracks、releases、versionCodes 和 release notes。
+- 这个接口用于第三方电脑先确认 Google Play 后台当前有哪些 release，再调用同步接口时传 `storeTrack` / `storeVersionCode`。
+- Android App 返回真实 release 列表；iOS App 当前返回空列表。
+- `{appId}` 仍然是 testflying 内部 App ID。中心后台会优先使用 App 绑定的 `storePackageName` 请求 Google Play；没有单独配置时使用包里解析出的 `packageName`。
+- `version` 可选，只作为查询上下文透传给 connector；Google Play 的实际目标 release 以返回里的 `track` 和 `versionCodes` 为准。
+
+完整 curl：
+
+```bash
+curl "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/$APP_ID/store-releases?version=$VERSION" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+成功响应示例：
+
+```json
+{
+  "accountId": "rdk-ng",
+  "appId": "app-android-readink",
+  "platform": "android",
+  "version": "",
+  "releases": [
+    {
+      "track": "production",
+      "name": "3.1.0",
+      "status": "completed",
+      "versionCodes": ["310"],
+      "releaseNotes": [
+        {
+          "language": "en-US",
+          "text": "Fix bugs"
+        }
+      ]
+    },
+    {
+      "track": "internal",
+      "name": "3.2.0",
+      "status": "draft",
+      "versionCodes": ["320"],
+      "releaseNotes": []
+    }
+  ]
+}
+```
+
+## 5. 导入默认商店页草稿
 
 ```http
 POST /v1/store-management/developer-accounts/{accountId}/apps/{appId}/metadata-content-sets
@@ -272,7 +326,7 @@ curl -X POST "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/
 }
 ```
 
-## 5. 导入版本草稿
+## 6. 导入版本草稿
 
 ```http
 POST /v1/store-management/developer-accounts/{accountId}/apps/{appId}/store-versions/{version}/draft
@@ -325,7 +379,7 @@ curl -X POST "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/
 }
 ```
 
-## 6. 创建自定义产品页面草稿
+## 7. 创建自定义产品页面草稿
 
 ```http
 POST /v1/store-management/developer-accounts/{accountId}/apps/{appId}/marketing-pages
@@ -383,7 +437,7 @@ curl -X POST "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/
 }
 ```
 
-## 7. 同步默认商店页、商店图和版本说明
+## 8. 同步默认商店页、商店图和版本说明
 
 ```http
 POST /v1/store-management/developer-accounts/{accountId}/apps/{appId}/sync-runs
@@ -467,7 +521,7 @@ curl -X POST "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/
 }
 ```
 
-## 8. 同步自定义产品页面
+## 9. 同步自定义产品页面
 
 ```http
 POST /v1/store-management/developer-accounts/{accountId}/apps/{appId}/marketing-pages/{pageId}/sync-runs
@@ -535,7 +589,7 @@ curl -X POST "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/
 }
 ```
 
-## 9. 查询产品页面优化实验
+## 10. 查询产品页面优化实验
 
 ```http
 GET /v1/store-management/developer-accounts/{accountId}/apps/{appId}/product-page-optimizations
@@ -583,7 +637,7 @@ curl "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/$APP_ID/
 }
 ```
 
-## 10. 创建产品页面优化实验
+## 11. 创建产品页面优化实验
 
 ```http
 POST /v1/store-management/developer-accounts/{accountId}/apps/{appId}/product-page-optimizations

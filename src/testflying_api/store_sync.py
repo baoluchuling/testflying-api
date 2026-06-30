@@ -190,6 +190,32 @@ class StoreConnectorClient:
             else _get_json(connector, path)
         )
 
+    def store_releases(
+        self,
+        connector: StoreConnector,
+        *,
+        account_id: str,
+        app: App,
+        version: str = "",
+    ) -> dict[str, object]:
+        if connector.base_url.startswith("mock://"):
+            return _mock_store_releases(app)
+        query = urlencode(
+            {
+                "developerAccountId": account_id,
+                "platform": app.platform,
+                "version": version,
+                "storeAppId": app.store_app_id or "",
+                "packageName": app.store_package_name or app.bundle_identifier,
+            }
+        )
+        path = f"/v1/apps/{app.id}/store-releases?{query}"
+        return (
+            _active_request_json(connector, "GET", path)
+            if _is_active_connector(connector)
+            else _get_json(connector, path)
+        )
+
     def product_page_optimizations(
         self,
         connector: StoreConnector,
@@ -2255,6 +2281,34 @@ def _mock_store_images(app: App) -> dict[str, object]:
                 },
             }
             for locale in locales
+        ]
+    }
+
+
+def _mock_store_releases(app: App) -> dict[str, object]:
+    if app.platform != "android":
+        return {"releases": []}
+    return {
+        "releases": [
+            {
+                "track": "production",
+                "name": "3.1.0",
+                "status": "completed",
+                "versionCodes": ["310"],
+                "releaseNotes": [
+                    {
+                        "language": "en-US",
+                        "text": "Mock production release notes.",
+                    }
+                ],
+            },
+            {
+                "track": "internal",
+                "name": "3.2.0",
+                "status": "draft",
+                "versionCodes": ["320"],
+                "releaseNotes": [],
+            },
         ]
     }
 

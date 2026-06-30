@@ -480,6 +480,37 @@ def test_store_management_lists_current_store_images(
     assert first_image["height"] == 2796
 
 
+def test_store_management_lists_google_play_store_releases(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+    db_session.add(
+        DeveloperAccountApp(
+            developer_account_id="account-apple-enterprise",
+            app_id="app-dataflow-android",
+        )
+    )
+    db_session.commit()
+
+    response = client.get(
+        (
+            "/v1/store-management/developer-accounts/account-apple-enterprise"
+            "/apps/app-dataflow-android/store-releases"
+        ),
+        headers={"Authorization": "Bearer dev-token"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["accountId"] == "account-apple-enterprise"
+    assert body["appId"] == "app-dataflow-android"
+    assert body["platform"] == "android"
+    assert [item["track"] for item in body["releases"]] == ["production", "internal"]
+    assert body["releases"][0]["versionCodes"] == ["310"]
+    assert body["releases"][0]["releaseNotes"][0]["language"] == "en-US"
+
+
 def test_store_management_creates_product_page_optimization_idempotently(
     client: TestClient,
     db_session: Session,

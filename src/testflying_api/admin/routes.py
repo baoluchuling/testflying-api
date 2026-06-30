@@ -6,6 +6,7 @@ import re
 import secrets
 import zipfile
 from datetime import UTC, datetime, timedelta
+from importlib import resources
 from io import BytesIO
 from pathlib import Path
 from typing import Annotated, Any
@@ -90,6 +91,7 @@ AdminDep = Annotated[None, Depends(require_admin)]
 CONNECTOR_AUTO_CHECK_TTL = timedelta(minutes=5)
 ADMIN_CSS_PATH = Path(__file__).parents[1] / "static" / "admin" / "admin.css"
 ADMIN_ASSET_VERSION = hashlib.sha256(ADMIN_CSS_PATH.read_bytes()).hexdigest()[:12]
+PUBLIC_API_DOC_PATH = "docs/store-management-public-api.md"
 
 
 def preflight_title_label(preflight: object | None) -> str:
@@ -115,6 +117,84 @@ templates.env.filters["preflight_summary"] = preflight_summary_label
 templates.env.filters["preflight_action"] = preflight_action_label
 
 
+def _public_api_markdown() -> str:
+    return (
+        resources.files("testflying_api")
+        .joinpath(PUBLIC_API_DOC_PATH)
+        .read_text(encoding="utf-8")
+    )
+
+
+def _public_api_doc_context() -> dict[str, object]:
+    markdown = _public_api_markdown()
+    return {
+        "api_doc_markdown": markdown,
+        "api_endpoints": _parse_public_api_endpoints(markdown),
+    }
+
+
+def _parse_public_api_endpoints(markdown: str) -> list[dict[str, object]]:
+    headings = list(re.finditer(r"^##\s+\d+\.\s+(.+)$", markdown, flags=re.MULTILINE))
+    endpoints: list[dict[str, object]] = []
+    for index, heading in enumerate(headings, start=1):
+        section_end = headings[index].start() if index < len(headings) else len(markdown)
+        section = markdown[heading.start() : section_end]
+        request_line = _first_markdown_code_block(section, "http").splitlines()[0].strip()
+        method, path = (request_line.split(" ", 1) + [""])[:2]
+        endpoints.append(
+            {
+                "anchor": f"endpoint-{index}",
+                "title": heading.group(1).strip(),
+                "method": method,
+                "path": path.strip(),
+                "summary": _public_api_section_summary(section),
+                "params": _parse_public_api_params(section),
+                "curl": _first_markdown_code_block(section, "bash").strip(),
+                "response": _first_markdown_code_block(section, "json").strip(),
+            }
+        )
+    return endpoints
+
+
+def _public_api_section_summary(section: str) -> str:
+    without_code = re.sub(r"```.*?```", "", section, flags=re.DOTALL)
+    for line in without_code.splitlines()[1:]:
+        value = line.strip()
+        if not value or value == "参数：" or value.startswith("|"):
+            continue
+        return value
+    return ""
+
+
+def _parse_public_api_params(section: str) -> list[dict[str, str]]:
+    match = re.search(r"参数：\n\n((?:\|.*\|\n?)+)", section)
+    if not match:
+        return []
+    params: list[dict[str, str]] = []
+    for line in match.group(1).splitlines():
+        cells = [_strip_markdown_cell(cell) for cell in line.strip().strip("|").split("|")]
+        if len(cells) < 4 or cells[0] in {"参数", "---"} or set(cells[0]) == {"-"}:
+            continue
+        params.append(
+            {
+                "name": cells[0],
+                "location": cells[1],
+                "required": cells[2],
+                "description": cells[3],
+            }
+        )
+    return params
+
+
+def _first_markdown_code_block(section: str, language: str) -> str:
+    match = re.search(rf"```{re.escape(language)}\n(.*?)\n```", section, flags=re.DOTALL)
+    return match.group(1).strip() if match else ""
+
+
+def _strip_markdown_cell(value: str) -> str:
+    return value.strip().strip("`").replace("**", "")
+
+
 @router.get("", response_class=HTMLResponse)
 @router.get("/", response_class=HTMLResponse)
 def dashboard(request: Request, session: SessionDep, _: AdminDep) -> HTMLResponse:
@@ -131,6 +211,26 @@ def apps_page(request: Request, session: SessionDep, _: AdminDep) -> HTMLRespons
         request,
         "admin/apps.html",
         _context(request, active="apps", apps=list_apps(session)),
+    )
+
+
+@router.get("/api-docs", response_class=HTMLResponse)
+def api_docs_page(request: Request, _: AdminDep) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request,
+        "admin/api_docs.html",
+        _context(request, active="api-docs", **_public_api_doc_context()),
+    )
+
+
+@router.get("/api-docs/store-management.md")
+def api_docs_markdown(_: AdminDep) -> Response:
+    return Response(
+        content=_public_api_markdown(),
+        media_type="text/markdown; charset=utf-8",
+        headers={
+            "Content-Disposition": 'attachment; filename="testflying-store-management-api.md"'
+        },
     )
 
 
@@ -3133,6 +3233,7 @@ def _context(request: Request, *, active: str, **values: object) -> dict[str, ob
             ("dashboard", "/admin", "总览"),
             ("uploads", "/admin/uploads", "上传"),
             ("apps", "/admin/apps", "商店管理"),
+            ("api-docs", "/admin/api-docs", "接口文档"),
             ("builds", "/admin/builds", "构建"),
             ("devices", "/admin/devices", "设备"),
             ("app-logs", "/admin/app-logs", "App 日志"),

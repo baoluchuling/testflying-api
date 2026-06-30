@@ -1,0 +1,110 @@
+{% extends "admin/base.html" %}
+
+{% block title %}对外 API - testflying 管理后台{% endblock %}
+{% block main_class %}api-docs-main{% endblock %}
+{% block heading %}对外 API{% endblock %}
+{% block heading_meta %}
+  <p class="page-subtitle">第三方电脑通过中心后台调用商店连接能力，只包含可公开调用的商店接口。</p>
+{% endblock %}
+{% block page_actions %}
+  <a class="button primary-button" href="/admin/api-docs/store-management.md">下载 Markdown</a>
+{% endblock %}
+
+{% block content %}
+  <section class="api-docs-summary panel" data-api-docs-page>
+    <div>
+      <p class="eyebrow">Store Management API</p>
+      <h2>商店连接对外接口</h2>
+      <p>接口使用 Bearer Token 鉴权，路径里的 <code>accountId</code> 是 testflying 开发者账号 ID，<code>appId</code> 是 testflying 内部 App ID。</p>
+    </div>
+    <dl class="api-docs-facts">
+      <div>
+        <dt>基础地址</dt>
+        <dd><code>http://47.90.163.122:8000</code></dd>
+      </div>
+      <div>
+        <dt>鉴权</dt>
+        <dd><code>Authorization: Bearer &lt;TOKEN&gt;</code></dd>
+      </div>
+      <div>
+        <dt>范围</dt>
+        <dd>语言、文案、截图、版本、同步、营销页面、产品页面优化</dd>
+      </div>
+    </dl>
+  </section>
+
+  <div class="api-docs-layout">
+    <aside class="api-docs-index panel" aria-label="接口目录">
+      <div class="panel-header compact">
+        <h2>接口目录</h2>
+        <span>{{ api_endpoints|length }} 个接口</span>
+      </div>
+      <nav>
+        {% for endpoint in api_endpoints %}
+          <a class="api-index-link" href="#{{ endpoint.anchor }}">
+            <span class="api-method api-method-{{ endpoint.method|lower }}">{{ endpoint.method }}</span>
+            <span>{{ endpoint.title }}</span>
+          </a>
+        {% endfor %}
+      </nav>
+    </aside>
+
+    <section class="api-docs-content" aria-label="接口详情">
+      {% for endpoint in api_endpoints %}
+        <article class="api-endpoint-card panel" id="{{ endpoint.anchor }}">
+          <header class="api-endpoint-head">
+            <div>
+              <div class="api-endpoint-title-row">
+                <span class="api-method api-method-{{ endpoint.method|lower }}">{{ endpoint.method }}</span>
+                <h2>{{ endpoint.title }}</h2>
+              </div>
+              <code class="api-path">{{ endpoint.path }}</code>
+            </div>
+            <a class="api-anchor-link" href="#{{ endpoint.anchor }}">#</a>
+          </header>
+          <p class="api-endpoint-summary">{{ endpoint.summary }}</p>
+
+          <div class="api-section-title">参数</div>
+          <div class="api-param-table-wrap">
+            <table class="api-param-table">
+              <thead>
+                <tr>
+                  <th>参数</th>
+                  <th>位置</th>
+                  <th>必填</th>
+                  <th>说明</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for param in endpoint.params %}
+                  <tr>
+                    <td><code>{{ param.name }}</code></td>
+                    <td>{{ param.location }}</td>
+                    <td>{{ param.required }}</td>
+                    <td>{{ param.description }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+
+          <div class="api-code-grid">
+            <section class="api-code-block">
+              <div class="api-code-head">
+                <h3>curl</h3>
+                <button class="button ghost-button" type="button" data-copy="{{ endpoint.curl }}">复制</button>
+              </div>
+              <pre><code>{{ endpoint.curl }}</code></pre>
+            </section>
+            <section class="api-code-block">
+              <div class="api-code-head">
+                <h3>响应示例</h3>
+              </div>
+              <pre><code>{{ endpoint.response }}</code></pre>
+            </section>
+          </div>
+        </article>
+      {% endfor %}
+    </section>
+  </div>
+{% endblock %}

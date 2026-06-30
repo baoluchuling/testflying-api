@@ -35,6 +35,7 @@ where = ["src"]
 testflying_api = [
   "templates/*.html",
   "templates/admin/*.html",
+  "docs/*.md",
   "static/admin/*.css",
 ]
 

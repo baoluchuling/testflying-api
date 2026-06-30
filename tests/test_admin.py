@@ -89,6 +89,35 @@ def test_admin_shell_versions_static_css(client: TestClient) -> None:
     assert 'href="/static/admin/admin.css?v=' in response.text
 
 
+def test_admin_api_docs_page_renders_public_store_api(client: TestClient) -> None:
+    response = client.get("/admin/api-docs", headers=_admin_headers())
+
+    assert response.status_code == 200
+    assert "对外 API" in response.text
+    assert "第三方电脑通过中心后台调用商店连接能力" in response.text
+    assert "下载 Markdown" in response.text
+    assert "data-api-docs-page" in response.text
+    assert "读取 Google Play Release" in response.text
+    assert (
+        "/v1/store-management/developer-accounts/{accountId}/apps/{appId}/sync-runs"
+        in response.text
+    )
+    assert "/v1/connectors" not in response.text
+
+
+def test_admin_api_docs_markdown_download(client: TestClient) -> None:
+    response = client.get("/admin/api-docs/store-management.md", headers=_admin_headers())
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/markdown")
+    assert 'filename="testflying-store-management-api.md"' in response.headers[
+        "content-disposition"
+    ]
+    assert "# testflying 商店连接对外 API" in response.text
+    assert "第三方电脑或外部系统调用" in response.text
+    assert "/v1/connectors" not in response.text
+
+
 def test_admin_inline_script_has_valid_syntax(client: TestClient, tmp_path) -> None:
     node = shutil.which("node")
     if not node:

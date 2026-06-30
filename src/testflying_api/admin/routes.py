@@ -2206,6 +2206,7 @@ $CurrentExe = "$Root\testflying-connector.exe"
 $BackupDir = "$Root\backups"
 $TempName = "testflying-connector-update-" + [System.Guid]::NewGuid().ToString("N")
 $TempRoot = Join-Path ([System.IO.Path]::GetTempPath()) $TempName
+$InstalledUpdater = "$Root\update.ps1"
 
 function Get-RequestHeaders {
   $Headers = @{"User-Agent" = $UserAgent}
@@ -2236,6 +2237,12 @@ if (!(Test-Path "$Root\config.json")) {
 
 if (!(Test-Path $CurrentExe)) {
   throw "Missing current connector exe: $CurrentExe"
+}
+
+if ($MyInvocation.MyCommand.Path -and (Test-Path $MyInvocation.MyCommand.Path)) {
+  if ($MyInvocation.MyCommand.Path -ne $InstalledUpdater) {
+    Copy-Item -Force $MyInvocation.MyCommand.Path $InstalledUpdater
+  }
 }
 
 New-Item -ItemType Directory -Force $BackupDir, $TempRoot | Out-Null

@@ -793,6 +793,8 @@ def test_admin_can_generate_windows_active_connector_package(
     assert "Failed to start scheduled task" in install_script
     assert "testflying-connector-updater" in update_script
     assert "testflying-connector-windows-amd64-*.zip" in update_script
+    assert "$InstalledUpdater = \"$Root\\update.ps1\"" in update_script
+    assert "Copy-Item -Force $MyInvocation.MyCommand.Path $InstalledUpdater" in update_script
     assert "Copy-Item -Force $Exe.FullName $CurrentExe" in update_script
     assert "config.json" in update_script
     assert 'Copy-Item -Force "$PSScriptRoot\\config.json"' not in update_script

@@ -80,6 +80,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\ProgramData\TestFlyi
 
 `update.ps1` 会从 GitHub Release 自动下载最新 Windows connector，停止计划任务，备份旧的 `testflying-connector.exe`，只替换新的 exe，再重启计划任务。它不会覆盖 `config.json`、`secrets`、账号信息或商店凭据。
 
+如果是已经装过的旧机器，安装目录里还没有 `update.ps1`，不用重新运行 `install.ps1`。下载一次新的 Windows 安装包，解压后直接运行解压目录里的 `.\update.ps1`；脚本会自动把自己复制到 `C:\ProgramData\TestFlying\connectors\<account_id>\update.ps1`，以后就只运行安装目录里的脚本。
+
 安装包内的 `config.json` 会配置 active 模式：
 
 ```json

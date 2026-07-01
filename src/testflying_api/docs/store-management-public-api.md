@@ -8,8 +8,8 @@
 - 鉴权：所有接口都需要请求头 `Authorization: Bearer <TOKEN>`
 - `{accountId}`：testflying 开发者账号 ID，例如 `738W4ARM22`
 - `{appId}`：testflying 内部 App ID，不是 Apple 数字 App ID，也不是 Android package name
-- 默认情况下，iOS 调商店时使用后台绑定的 App Store Connect App ID；直接同步接口可用 `iosAppId` 显式覆盖
-- 默认情况下，Android 调商店时优先使用后台绑定的 `storePackageName`，没有时使用包里解析出的 package name；直接同步接口可用 `packageName` 显式覆盖
+- 所有连接真实商店的接口都支持显式覆盖商店目标：iOS 用 `iosAppId`（兼容 `storeAppId` / `appleAppId`），Android 用 `packageName`
+- 传了真实 `iosAppId` 或 `packageName` 后，中心后台会直接下发给 connector；不传才使用后台绑定值或包解析值
 - Google Play 同步会提交 edit，但默认带 `changesNotSentForReview=true`，不会直接送审；如果已有变更正在审核中，会按 `changesInReviewBehavior=ERROR_IF_IN_REVIEW` 返回错误
 
 ## 接口总览
@@ -44,9 +44,11 @@ GET /v1/store-management/developer-accounts/{accountId}/apps/{appId}/store-local
 | `accountId` | path | 是 | 开发者账号 ID |
 | `appId` | path | 是 | testflying 内部 App ID |
 | `version` | query | 否 | 商店版本上下文 |
+| `iosAppId` / `storeAppId` / `appleAppId` | query | 否 | iOS 真实 App Store Connect 数字 App ID |
+| `packageName` | query | 否 | Android 真实 Google Play package name |
 
 ```bash
-curl "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/$APP_ID/store-locales" \
+curl "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/$APP_ID/store-locales?iosAppId=1234567890" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -75,9 +77,11 @@ GET /v1/store-management/developer-accounts/{accountId}/apps/{appId}/store-listi
 | `accountId` | path | 是 | 开发者账号 ID |
 | `appId` | path | 是 | testflying 内部 App ID |
 | `version` | query | 否 | 商店版本上下文 |
+| `iosAppId` / `storeAppId` / `appleAppId` | query | 否 | iOS 真实 App Store Connect 数字 App ID |
+| `packageName` | query | 否 | Android 真实 Google Play package name |
 
 ```bash
-curl "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/$APP_ID/store-listings" \
+curl "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/$APP_ID/store-listings?packageName=com.example.android" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -111,9 +115,11 @@ GET /v1/store-management/developer-accounts/{accountId}/apps/{appId}/store-image
 | `accountId` | path | 是 | 开发者账号 ID |
 | `appId` | path | 是 | testflying 内部 App ID |
 | `version` | query | 否 | 商店版本上下文 |
+| `iosAppId` / `storeAppId` / `appleAppId` | query | 否 | iOS 真实 App Store Connect 数字 App ID |
+| `packageName` | query | 否 | Android 真实 Google Play package name |
 
 ```bash
-curl "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/$APP_ID/store-images" \
+curl "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/$APP_ID/store-images?iosAppId=1234567890" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -153,9 +159,10 @@ GET /v1/store-management/developer-accounts/{accountId}/apps/{appId}/store-relea
 | `accountId` | path | 是 | 开发者账号 ID |
 | `appId` | path | 是 | testflying 内部 Android App ID |
 | `version` | query | 否 | 查询上下文 |
+| `packageName` | query | 否 | Android 真实 Google Play package name |
 
 ```bash
-curl "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/$APP_ID/store-releases" \
+curl "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/$APP_ID/store-releases?packageName=com.example.android" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -189,7 +196,7 @@ GET /v1/store-management/developer-accounts/{accountId}/apps/{appId}/store-revie
 | --- | --- | --- | --- |
 | `accountId` | path | 是 | 开发者账号 ID |
 | `appId` | path | 是 | testflying 内部 App ID |
-| `iosAppId` | query | 否 | iOS 直传 App Store Connect 数字 App ID |
+| `iosAppId` / `storeAppId` / `appleAppId` | query | 否 | iOS 直传 App Store Connect 数字 App ID |
 | `packageName` | query | 否 | Android 直传 Google Play package name |
 | `date` | query | 否 | 指定日期，格式 `YYYY-MM-DD`，不能和 `startDate/endDate` 同时使用 |
 | `startDate` | query | 否 | 起始日期，格式 `YYYY-MM-DD` |
@@ -445,9 +452,10 @@ GET /v1/store-management/developer-accounts/{accountId}/apps/{appId}/product-pag
 | --- | --- | --- | --- |
 | `accountId` | path | 是 | 开发者账号 ID |
 | `appId` | path | 是 | testflying 内部 iOS App ID |
+| `iosAppId` / `storeAppId` / `appleAppId` | query | 否 | iOS 真实 App Store Connect 数字 App ID |
 
 ```bash
-curl "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/$APP_ID/product-page-optimizations" \
+curl "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/$APP_ID/product-page-optimizations?iosAppId=1234567890" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -477,13 +485,14 @@ POST /v1/store-management/developer-accounts/{accountId}/apps/{appId}/product-pa
 | `trafficProportion` | body | 否 | 流量比例，默认 `50` |
 | `locales` | body | 否 | 实验语言 |
 | `treatments` | body | 是 | 实验变体 |
+| `iosAppId` | body | 否 | iOS 真实 App Store Connect 数字 App ID；兼容 `storeAppId` / `appleAppId` |
 | `idempotencyKey` | body | 否 | 幂等键 |
 
 ```bash
 curl -X POST "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/$APP_ID/product-page-optimizations" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"name":"Landing Test","trafficProportion":50,"locales":["en-US"],"treatments":[{"name":"Variant A"}],"idempotencyKey":"ppo-001"}'
+  -d '{"name":"Landing Test","trafficProportion":50,"locales":["en-US"],"treatments":[{"name":"Variant A"}],"iosAppId":"1234567890","idempotencyKey":"ppo-001"}'
 ```
 
 ```json

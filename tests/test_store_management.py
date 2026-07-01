@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from fastapi.testclient import TestClient
+from pytest import MonkeyPatch
 from sqlalchemy.orm import Session
 
 from testflying_api.routes.store_management import _reset_direct_sync_guards_for_tests
@@ -563,6 +564,233 @@ def test_store_management_lists_current_store_images(
     assert first_image["height"] == 2796
 
 
+def test_store_management_store_read_apis_use_explicit_ios_app_id(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    seed_demo_catalog(db_session)
+    captured: list[tuple[str, str | None, str | None]] = []
+
+    def fake_supported_locales(
+        self,
+        connector,
+        *,
+        account_id: str,
+        app,
+        version: str,
+        store_app_id: str | None = None,
+        package_name: str | None = None,
+    ) -> list[str]:
+        captured.append(("store-locales", store_app_id, package_name))
+        return ["en-US"]
+
+    def fake_store_listings(
+        self,
+        connector,
+        *,
+        account_id: str,
+        app,
+        version: str = "",
+        store_app_id: str | None = None,
+        package_name: str | None = None,
+    ) -> dict[str, object]:
+        captured.append(("store-listings", store_app_id, package_name))
+        return {"listings": []}
+
+    def fake_store_images(
+        self,
+        connector,
+        *,
+        account_id: str,
+        app,
+        version: str = "",
+        store_app_id: str | None = None,
+        package_name: str | None = None,
+    ) -> dict[str, object]:
+        captured.append(("store-images", store_app_id, package_name))
+        return {"locales": []}
+
+    def fake_product_page_optimizations(
+        self,
+        connector,
+        *,
+        account_id: str,
+        app,
+        store_app_id: str | None = None,
+    ) -> dict[str, object]:
+        captured.append(("product-page-optimizations", store_app_id, None))
+        return {"experiments": []}
+
+    monkeypatch.setattr(
+        "testflying_api.routes.store_management.StoreConnectorClient.supported_locales",
+        fake_supported_locales,
+    )
+    monkeypatch.setattr(
+        "testflying_api.routes.store_management.StoreConnectorClient.store_listings",
+        fake_store_listings,
+    )
+    monkeypatch.setattr(
+        "testflying_api.routes.store_management.StoreConnectorClient.store_images",
+        fake_store_images,
+    )
+    monkeypatch.setattr(
+        "testflying_api.routes.store_management.StoreConnectorClient.product_page_optimizations",
+        fake_product_page_optimizations,
+    )
+
+    paths = [
+        "store-locales?version=1.0.0&iosAppId=9876543210&packageName=ignored",
+        "store-listings?version=1.0.0&storeAppId=9876543210&packageName=ignored",
+        "store-images?version=1.0.0&appleAppId=9876543210&packageName=ignored",
+        "product-page-optimizations?iosAppId=9876543210",
+    ]
+    for path in paths:
+        response = client.get(
+            (
+                "/v1/store-management/developer-accounts/account-apple-enterprise"
+                f"/apps/app-aurora-ios/{path}"
+            ),
+            headers={"Authorization": "Bearer dev-token"},
+        )
+        assert response.status_code == 200
+
+    assert captured == [
+        ("store-locales", "9876543210", None),
+        ("store-listings", "9876543210", None),
+        ("store-images", "9876543210", None),
+        ("product-page-optimizations", "9876543210", None),
+    ]
+
+
+def test_store_management_store_read_apis_use_explicit_android_package_name(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    seed_demo_catalog(db_session)
+    db_session.add(
+        DeveloperAccountApp(
+            developer_account_id="account-apple-enterprise",
+            app_id="app-dataflow-android",
+        )
+    )
+    db_session.commit()
+    captured: list[tuple[str, str | None, str | None]] = []
+
+    def fake_supported_locales(
+        self,
+        connector,
+        *,
+        account_id: str,
+        app,
+        version: str,
+        store_app_id: str | None = None,
+        package_name: str | None = None,
+    ) -> list[str]:
+        captured.append(("store-locales", store_app_id, package_name))
+        return ["en-US"]
+
+    def fake_store_listings(
+        self,
+        connector,
+        *,
+        account_id: str,
+        app,
+        version: str = "",
+        store_app_id: str | None = None,
+        package_name: str | None = None,
+    ) -> dict[str, object]:
+        captured.append(("store-listings", store_app_id, package_name))
+        return {"listings": []}
+
+    def fake_store_images(
+        self,
+        connector,
+        *,
+        account_id: str,
+        app,
+        version: str = "",
+        store_app_id: str | None = None,
+        package_name: str | None = None,
+    ) -> dict[str, object]:
+        captured.append(("store-images", store_app_id, package_name))
+        return {"locales": []}
+
+    def fake_store_releases(
+        self,
+        connector,
+        *,
+        account_id: str,
+        app,
+        version: str = "",
+        store_app_id: str | None = None,
+        package_name: str | None = None,
+    ) -> dict[str, object]:
+        captured.append(("store-releases", store_app_id, package_name))
+        return {"releases": []}
+
+    def fake_store_reviews(
+        self,
+        connector,
+        *,
+        account_id: str,
+        app,
+        store_app_id: str | None = None,
+        package_name: str | None = None,
+        store_query: dict[str, str] | None = None,
+    ) -> dict[str, object]:
+        captured.append(("store-reviews", store_app_id, package_name))
+        return {"reviews": [], "nextPageToken": ""}
+
+    monkeypatch.setattr(
+        "testflying_api.routes.store_management.StoreConnectorClient.supported_locales",
+        fake_supported_locales,
+    )
+    monkeypatch.setattr(
+        "testflying_api.routes.store_management.StoreConnectorClient.store_listings",
+        fake_store_listings,
+    )
+    monkeypatch.setattr(
+        "testflying_api.routes.store_management.StoreConnectorClient.store_images",
+        fake_store_images,
+    )
+    monkeypatch.setattr(
+        "testflying_api.routes.store_management.StoreConnectorClient.store_releases",
+        fake_store_releases,
+    )
+    monkeypatch.setattr(
+        "testflying_api.routes.store_management.StoreConnectorClient.store_reviews",
+        fake_store_reviews,
+    )
+
+    package_name = "com.app.android.qw.newreadink"
+    paths = [
+        f"store-locales?version=3.1.0&packageName={package_name}&iosAppId=ignored",
+        f"store-listings?version=3.1.0&packageName={package_name}&iosAppId=ignored",
+        f"store-images?version=3.1.0&packageName={package_name}&iosAppId=ignored",
+        f"store-releases?version=3.1.0&packageName={package_name}&iosAppId=ignored",
+        f"store-reviews?packageName={package_name}&iosAppId=ignored",
+    ]
+    for path in paths:
+        response = client.get(
+            (
+                "/v1/store-management/developer-accounts/account-apple-enterprise"
+                f"/apps/app-dataflow-android/{path}"
+            ),
+            headers={"Authorization": "Bearer dev-token"},
+        )
+        assert response.status_code == 200
+
+    assert captured == [
+        ("store-locales", None, package_name),
+        ("store-listings", None, package_name),
+        ("store-images", None, package_name),
+        ("store-releases", None, package_name),
+        ("store-reviews", None, package_name),
+    ]
+
+
 def test_store_management_lists_store_reviews_and_filters_in_center(
     client: TestClient,
     db_session: Session,
@@ -687,6 +915,67 @@ def test_store_management_creates_product_page_optimization_idempotently(
         ["en-US"],
     ]
     assert db_session.query(StoreSyncRun).count() == 0
+
+
+def test_store_management_create_product_page_optimization_uses_explicit_ios_app_id(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    _reset_direct_sync_guards_for_tests()
+    seed_demo_catalog(db_session)
+    captured: dict[str, str | None] = {}
+
+    def fake_create_product_page_optimization(
+        self,
+        connector,
+        *,
+        account_id: str,
+        app,
+        name: str,
+        traffic_proportion: int,
+        locales: list[str],
+        treatments: list[dict[str, object]],
+        store_app_id: str | None = None,
+    ) -> dict[str, object]:
+        captured["store_app_id"] = store_app_id
+        return {
+            "experiment": {
+                "id": "ppo-explicit-ios-app-id",
+                "name": name,
+                "platform": "ios",
+                "state": "PREPARE_FOR_SUBMISSION",
+                "trafficProportion": traffic_proportion,
+                "reviewRequired": False,
+                "startDate": "",
+                "endDate": "",
+                "treatments": [],
+            }
+        }
+
+    monkeypatch.setattr(
+        "testflying_api.routes.store_management.StoreConnectorClient."
+        "create_product_page_optimization",
+        fake_create_product_page_optimization,
+    )
+
+    response = client.post(
+        (
+            "/v1/store-management/developer-accounts/account-apple-enterprise"
+            "/apps/app-aurora-ios/product-page-optimizations"
+        ),
+        headers={"Authorization": "Bearer dev-token"},
+        json={
+            "name": "Explicit Target Test",
+            "trafficProportion": 25,
+            "locales": ["en-US"],
+            "iosAppId": "9876543210",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["experiment"]["id"] == "ppo-explicit-ios-app-id"
+    assert captured["store_app_id"] == "9876543210"
 
 
 def test_store_management_rejects_product_page_optimization_for_android(

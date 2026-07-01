@@ -268,6 +268,11 @@ class ProductPageOptimizationCreateRequest(CamelModel):
     traffic_proportion: int = Field(default=50, alias="trafficProportion")
     locales: list[str] = Field(default_factory=list)
     treatments: list[ProductPageOptimizationTreatmentInput] = Field(default_factory=list)
+    ios_app_id: str = Field(
+        default="",
+        alias="iosAppId",
+        validation_alias=AliasChoices("iosAppId", "storeAppId", "appleAppId"),
+    )
     idempotency_key: str = Field(default="", alias="idempotencyKey")
 
 
@@ -484,16 +489,29 @@ def list_store_locales(
     request: Request,
     session: SessionDep,
     version: str = Query(default=""),
+    ios_app_id: str = Query(default="", alias="iosAppId"),
+    store_app_id: str = Query(default="", alias="storeAppId"),
+    apple_app_id: str = Query(default="", alias="appleAppId"),
+    package_name: str = Query(default="", alias="packageName"),
 ) -> StoreLocalesResponse:
     _require_static_token(request)
     app = _scoped_app_or_error(session, account_id=account_id, app_id=app_id)
     connector = _account_connector_or_error(session, account_id)
+    target_store_app_id, target_package_name = _query_store_target(
+        platform=app.platform,
+        ios_app_id=ios_app_id,
+        store_app_id=store_app_id,
+        apple_app_id=apple_app_id,
+        package_name=package_name,
+    )
     try:
         locales = StoreConnectorClient().supported_locales(
             connector,
             account_id=account_id,
             app=app,
             version=version.strip(),
+            store_app_id=target_store_app_id,
+            package_name=target_package_name,
         )
     except ConnectorCallError as error:
         raise _connector_api_error(error) from error
@@ -516,16 +534,29 @@ def list_store_listings(
     request: Request,
     session: SessionDep,
     version: str = Query(default=""),
+    ios_app_id: str = Query(default="", alias="iosAppId"),
+    store_app_id: str = Query(default="", alias="storeAppId"),
+    apple_app_id: str = Query(default="", alias="appleAppId"),
+    package_name: str = Query(default="", alias="packageName"),
 ) -> StoreListingsResponse:
     _require_static_token(request)
     app = _scoped_app_or_error(session, account_id=account_id, app_id=app_id)
     connector = _account_connector_or_error(session, account_id)
+    target_store_app_id, target_package_name = _query_store_target(
+        platform=app.platform,
+        ios_app_id=ios_app_id,
+        store_app_id=store_app_id,
+        apple_app_id=apple_app_id,
+        package_name=package_name,
+    )
     try:
         raw_response = StoreConnectorClient().store_listings(
             connector,
             account_id=account_id,
             app=app,
             version=version.strip(),
+            store_app_id=target_store_app_id,
+            package_name=target_package_name,
         )
     except ConnectorCallError as error:
         raise _connector_api_error(error) from error
@@ -549,16 +580,29 @@ def list_store_images(
     request: Request,
     session: SessionDep,
     version: str = Query(default=""),
+    ios_app_id: str = Query(default="", alias="iosAppId"),
+    store_app_id: str = Query(default="", alias="storeAppId"),
+    apple_app_id: str = Query(default="", alias="appleAppId"),
+    package_name: str = Query(default="", alias="packageName"),
 ) -> StoreImagesResponse:
     _require_static_token(request)
     app = _scoped_app_or_error(session, account_id=account_id, app_id=app_id)
     connector = _account_connector_or_error(session, account_id)
+    target_store_app_id, target_package_name = _query_store_target(
+        platform=app.platform,
+        ios_app_id=ios_app_id,
+        store_app_id=store_app_id,
+        apple_app_id=apple_app_id,
+        package_name=package_name,
+    )
     try:
         raw_response = StoreConnectorClient().store_images(
             connector,
             account_id=account_id,
             app=app,
             version=version.strip(),
+            store_app_id=target_store_app_id,
+            package_name=target_package_name,
         )
     except ConnectorCallError as error:
         raise _connector_api_error(error) from error
@@ -582,16 +626,29 @@ def list_store_releases(
     request: Request,
     session: SessionDep,
     version: str = Query(default=""),
+    ios_app_id: str = Query(default="", alias="iosAppId"),
+    store_app_id: str = Query(default="", alias="storeAppId"),
+    apple_app_id: str = Query(default="", alias="appleAppId"),
+    package_name: str = Query(default="", alias="packageName"),
 ) -> StoreReleasesResponse:
     _require_static_token(request)
     app = _scoped_app_or_error(session, account_id=account_id, app_id=app_id)
     connector = _account_connector_or_error(session, account_id)
+    target_store_app_id, target_package_name = _query_store_target(
+        platform=app.platform,
+        ios_app_id=ios_app_id,
+        store_app_id=store_app_id,
+        apple_app_id=apple_app_id,
+        package_name=package_name,
+    )
     try:
         raw_response = StoreConnectorClient().store_releases(
             connector,
             account_id=account_id,
             app=app,
             version=version.strip(),
+            store_app_id=target_store_app_id,
+            package_name=target_package_name,
         )
     except ConnectorCallError as error:
         raise _connector_api_error(error) from error
@@ -634,15 +691,20 @@ def list_store_reviews(
     _require_static_token(request)
     app = _scoped_app_or_error(session, account_id=account_id, app_id=app_id)
     connector = _account_connector_or_error(session, account_id)
-    target_store_app_id = _first_non_empty(ios_app_id, store_app_id, apple_app_id)
-    target_package_name = package_name.strip()
+    target_store_app_id, target_package_name = _query_store_target(
+        platform=app.platform,
+        ios_app_id=ios_app_id,
+        store_app_id=store_app_id,
+        apple_app_id=apple_app_id,
+        package_name=package_name,
+    )
     try:
         raw_response = StoreConnectorClient().store_reviews(
             connector,
             account_id=account_id,
             app=app,
-            store_app_id=target_store_app_id if app.platform == "ios" else None,
-            package_name=target_package_name if app.platform == "android" else None,
+            store_app_id=target_store_app_id,
+            package_name=target_package_name,
             store_query=_store_reviews_connector_query(
                 page_size=_store_review_page_size_for_platform(app.platform, page_size),
                 page_token=page_token,
@@ -688,15 +750,25 @@ def list_product_page_optimizations(
     app_id: str,
     request: Request,
     session: SessionDep,
+    ios_app_id: str = Query(default="", alias="iosAppId"),
+    store_app_id: str = Query(default="", alias="storeAppId"),
+    apple_app_id: str = Query(default="", alias="appleAppId"),
 ) -> ProductPageOptimizationsResponse:
     _require_static_token(request)
     app = _product_page_optimization_app(session, account_id=account_id, app_id=app_id)
     connector = _account_connector_or_error(session, account_id)
+    target_store_app_id, _target_package_name = _query_store_target(
+        platform=app.platform,
+        ios_app_id=ios_app_id,
+        store_app_id=store_app_id,
+        apple_app_id=apple_app_id,
+    )
     try:
         raw_response = StoreConnectorClient().product_page_optimizations(
             connector,
             account_id=account_id,
             app=app,
+            store_app_id=target_store_app_id,
         )
     except ConnectorCallError as error:
         raise ApiError(
@@ -761,6 +833,7 @@ def create_product_page_optimization(
                 traffic_proportion=payload.traffic_proportion,
                 locales=_unique_non_empty(tuple(payload.locales)),
                 treatments=_product_page_optimization_treatments(payload.treatments),
+                store_app_id=payload.ios_app_id.strip() or None,
             )
         except ConnectorCallError as error:
             raise ApiError(
@@ -1254,6 +1327,23 @@ def _direct_sync_store_target(
         return ios_app_id or None, None
     if platform == "android":
         return None, package_name or None
+    return None, None
+
+
+def _query_store_target(
+    *,
+    platform: str,
+    ios_app_id: str = "",
+    store_app_id: str = "",
+    apple_app_id: str = "",
+    package_name: str = "",
+) -> tuple[str | None, str | None]:
+    target_store_app_id = _first_non_empty(ios_app_id, store_app_id, apple_app_id)
+    target_package_name = package_name.strip()
+    if platform == "ios":
+        return target_store_app_id, None
+    if platform == "android":
+        return None, target_package_name or None
     return None, None
 
 

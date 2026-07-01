@@ -53,6 +53,7 @@ app-{platform}-{slug(bundleIdentifier/packageName)}
 
 - iOS 调用 App Store Connect 时使用 App Store Connect App ID，也就是 Apple 的数字 App ID；它和路径里的 `{appId}` 不是同一个字段。
 - Android 调用 Google Play 时使用 `storePackageName`；如果没有单独配置，则使用上传 APK 解析出来的 `packageName`。Google service account JSON 里的 `project_id` 只表示 Google Cloud 项目，不指定具体 App。
+- 所有会连接真实商店的接口都支持显式覆盖商店目标：iOS 传 `iosAppId`（兼容 `storeAppId` / `appleAppId`），Android 传 `packageName`。传了就直接下发给 connector；不传才使用后台绑定值或包解析值。
 
 当前接口有两类行为：
 
@@ -111,11 +112,12 @@ GET /v1/store-management/developer-accounts/{accountId}/apps/{appId}/store-local
 
 - 通过账号 Connector 查询 App Store Connect 或 Google Play 当前 App 支持的语言。
 - `version` 可选；不传时读取商店侧默认/当前上下文。
+- iOS 可用 `iosAppId` / `storeAppId` / `appleAppId` 直传 Apple 数字 App ID；Android 可用 `packageName` 直传包名。
 
 完整 curl：
 
 ```bash
-curl "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/$APP_ID/store-locales?version=$VERSION" \
+curl "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/$APP_ID/store-locales?version=$VERSION&iosAppId=1234567890" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -142,11 +144,12 @@ GET /v1/store-management/developer-accounts/{accountId}/apps/{appId}/store-listi
 - 通过账号 Connector 查询商店侧已经存在的文案配置。
 - iOS 对应 App Store Connect metadata/localization。
 - Android 对应 Google Play listings。
+- iOS 可用 `iosAppId` / `storeAppId` / `appleAppId` 直传 Apple 数字 App ID；Android 可用 `packageName` 直传包名。
 
 完整 curl：
 
 ```bash
-curl "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/$APP_ID/store-listings?version=$VERSION" \
+curl "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/$APP_ID/store-listings?version=$VERSION&packageName=com.example.android" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -180,11 +183,12 @@ GET /v1/store-management/developer-accounts/{accountId}/apps/{appId}/store-image
 - 通过账号 Connector 查询商店侧已经存在的截图/商店图配置。
 - iOS 主要对应 iPhone/iPad screenshots。
 - Android 对应 phone/tablet screenshots 和 feature graphic。
+- iOS 可用 `iosAppId` / `storeAppId` / `appleAppId` 直传 Apple 数字 App ID；Android 可用 `packageName` 直传包名。
 
 完整 curl：
 
 ```bash
-curl "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/$APP_ID/store-images?version=$VERSION" \
+curl "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/$APP_ID/store-images?version=$VERSION&iosAppId=1234567890" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -222,13 +226,13 @@ GET /v1/store-management/developer-accounts/{accountId}/apps/{appId}/store-relea
 - 通过账号 Connector 查询 Google Play 当前 App 的 tracks、releases、versionCodes 和 release notes。
 - 这个接口用于第三方电脑先确认 Google Play 后台当前有哪些 release，再调用同步接口时传 `storeTrack` / `storeVersionCode`。
 - Android App 返回真实 release 列表；iOS App 当前返回空列表。
-- `{appId}` 仍然是 testflying 内部 App ID。中心后台会优先使用 App 绑定的 `storePackageName` 请求 Google Play；没有单独配置时使用包里解析出的 `packageName`。
+- `{appId}` 仍然是 testflying 内部 App ID。可用 `packageName` 直传真实 Google Play 包名；不传时中心后台会优先使用 App 绑定的 `storePackageName` 请求 Google Play，没有单独配置时使用包里解析出的 `packageName`。
 - `version` 可选，只作为查询上下文透传给 connector；Google Play 的实际目标 release 以返回里的 `track` 和 `versionCodes` 为准。
 
 完整 curl：
 
 ```bash
-curl "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/$APP_ID/store-releases?version=$VERSION" \
+curl "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/$APP_ID/store-releases?version=$VERSION&packageName=com.example.android" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -544,6 +548,8 @@ Content-Type: application/json
 | `version` | 是 | 商店版本号。同步版本说明时必须和商店侧版本一致 |
 | `locales` | 是 | 需要同步的语言列表，不能为空 |
 | `scopes` | 否 | 默认 `["metadata", "release_notes", "store_images"]` |
+| `iosAppId` / `storeAppId` / `appleAppId` | 否 | iOS 真实 App Store Connect 数字 App ID；传了就直接下发给 connector |
+| `packageName` | 否 | Android 真实 Google Play package name；传了就直接下发给 connector |
 | `storeTrack` | 否 | Android / Google Play 版本说明目标轨道，例如 `internal`、`alpha`、`beta`、`production`；不传时自动查 Google Play 最新 release |
 | `storeVersionCode` / `versionCode` | 否 | Android / Google Play 版本说明目标 `versionCode`；不传时自动查 Google Play 最新 release |
 | `actor` | 否 | 操作来源，默认 `api` |
@@ -565,6 +571,8 @@ curl -X POST "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/
     "version": "1.0.0",
     "locales": ["en-US", "zh-Hant"],
     "scopes": ["metadata", "release_notes", "store_images"],
+    "iosAppId": "1234567890",
+    "packageName": "com.example.android",
     "storeTrack": "production",
     "storeVersionCode": "1000000",
     "actor": "third-party-computer",
@@ -625,6 +633,7 @@ Content-Type: application/json
 | --- | --- | --- |
 | `locales` | 是 | 需要同步的语言列表，不能为空 |
 | `scopes` | 否 | 默认 `["marketing_text", "store_images"]` |
+| `iosAppId` / `storeAppId` / `appleAppId` | 否 | iOS 真实 App Store Connect 数字 App ID；传了就直接下发给 connector |
 | `actor` | 否 | 操作来源，默认 `api` |
 | `idempotencyKey` | 否 | 幂等键，建议第三方电脑必传 |
 
@@ -643,6 +652,7 @@ curl -X POST "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/
   -d '{
     "locales": ["en-US", "zh-Hant"],
     "scopes": ["marketing_text", "store_images"],
+    "iosAppId": "1234567890",
     "actor": "third-party-computer",
     "idempotencyKey": "campaign-a-page-sync"
   }'
@@ -684,11 +694,12 @@ GET /v1/store-management/developer-accounts/{accountId}/apps/{appId}/product-pag
 - 查询 App Store Connect 当前 App 的产品页面优化实验列表。
 - 当前只支持 iOS App。
 - 只读取商店状态，不创建中心后台同步记录，不修改商店内容。
+- 可用 `iosAppId` / `storeAppId` / `appleAppId` 直传 Apple 数字 App ID；不传时使用后台绑定值。
 
 完整 curl：
 
 ```bash
-curl "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/$APP_ID/product-page-optimizations" \
+curl "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/$APP_ID/product-page-optimizations?iosAppId=1234567890" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -743,6 +754,7 @@ Content-Type: application/json
 | `trafficProportion` | 否 | 流量比例，`1-100`，默认 `50` |
 | `locales` | 否 | 实验涉及语言 |
 | `treatments` | 否 | 变体列表 |
+| `iosAppId` / `storeAppId` / `appleAppId` | 否 | iOS 真实 App Store Connect 数字 App ID；传了就直接下发给 connector |
 | `idempotencyKey` | 否 | 幂等键 |
 
 完整 curl：
@@ -755,6 +767,7 @@ curl -X POST "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/
     "name": "Summer Landing Test",
     "trafficProportion": 50,
     "locales": ["en-US", "zh-Hant"],
+    "iosAppId": "1234567890",
     "idempotencyKey": "ppo-summer-landing-20260629",
     "treatments": [
       {

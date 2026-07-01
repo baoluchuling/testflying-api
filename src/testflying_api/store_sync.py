@@ -118,16 +118,19 @@ class StoreConnectorClient:
         account_id: str,
         app: App,
         version: str,
+        store_app_id: str | None = None,
+        package_name: str | None = None,
     ) -> list[str]:
         if connector.base_url.startswith("mock://"):
             return _mock_supported_locales(app.platform)
+        target = _app_payload(app, store_app_id=store_app_id, package_name=package_name)
         query = urlencode(
             {
                 "developerAccountId": account_id,
                 "platform": app.platform,
                 "version": version,
-                "storeAppId": app.store_app_id or "",
-                "packageName": app.store_package_name or app.bundle_identifier,
+                "storeAppId": target.get("storeAppId") or "",
+                "packageName": target.get("packageName") or "",
             }
         )
         path = f"/v1/apps/{app.id}/supported-locales?{query}"
@@ -145,16 +148,19 @@ class StoreConnectorClient:
         account_id: str,
         app: App,
         version: str = "",
+        store_app_id: str | None = None,
+        package_name: str | None = None,
     ) -> dict[str, object]:
         if connector.base_url.startswith("mock://"):
             return _mock_store_listings(app)
+        target = _app_payload(app, store_app_id=store_app_id, package_name=package_name)
         query = urlencode(
             {
                 "developerAccountId": account_id,
                 "platform": app.platform,
                 "version": version,
-                "storeAppId": app.store_app_id or "",
-                "packageName": app.store_package_name or app.bundle_identifier,
+                "storeAppId": target.get("storeAppId") or "",
+                "packageName": target.get("packageName") or "",
             }
         )
         path = f"/v1/apps/{app.id}/store-listings?{query}"
@@ -171,16 +177,19 @@ class StoreConnectorClient:
         account_id: str,
         app: App,
         version: str = "",
+        store_app_id: str | None = None,
+        package_name: str | None = None,
     ) -> dict[str, object]:
         if connector.base_url.startswith("mock://"):
             return _mock_store_images(app)
+        target = _app_payload(app, store_app_id=store_app_id, package_name=package_name)
         query = urlencode(
             {
                 "developerAccountId": account_id,
                 "platform": app.platform,
                 "version": version,
-                "storeAppId": app.store_app_id or "",
-                "packageName": app.store_package_name or app.bundle_identifier,
+                "storeAppId": target.get("storeAppId") or "",
+                "packageName": target.get("packageName") or "",
             }
         )
         path = f"/v1/apps/{app.id}/store-images?{query}"
@@ -197,16 +206,19 @@ class StoreConnectorClient:
         account_id: str,
         app: App,
         version: str = "",
+        store_app_id: str | None = None,
+        package_name: str | None = None,
     ) -> dict[str, object]:
         if connector.base_url.startswith("mock://"):
             return _mock_store_releases(app)
+        target = _app_payload(app, store_app_id=store_app_id, package_name=package_name)
         query = urlencode(
             {
                 "developerAccountId": account_id,
                 "platform": app.platform,
                 "version": version,
-                "storeAppId": app.store_app_id or "",
-                "packageName": app.store_package_name or app.bundle_identifier,
+                "storeAppId": target.get("storeAppId") or "",
+                "packageName": target.get("packageName") or "",
             }
         )
         path = f"/v1/apps/{app.id}/store-releases?{query}"
@@ -250,14 +262,16 @@ class StoreConnectorClient:
         *,
         account_id: str,
         app: App,
+        store_app_id: str | None = None,
     ) -> dict[str, object]:
         if connector.base_url.startswith("mock://"):
             return _mock_product_page_optimizations(app)
+        target = _app_payload(app, store_app_id=store_app_id)
         query = urlencode(
             {
                 "developerAccountId": account_id,
                 "platform": app.platform,
-                "storeAppId": app.store_app_id or "",
+                "storeAppId": target.get("storeAppId") or "",
             }
         )
         path = f"/v1/apps/{app.id}/product-page-optimizations?{query}"
@@ -277,6 +291,7 @@ class StoreConnectorClient:
         traffic_proportion: int,
         locales: list[str],
         treatments: list[dict[str, object]],
+        store_app_id: str | None = None,
     ) -> dict[str, object]:
         payload: dict[str, object] = {
             "developerAccountId": account_id,
@@ -285,7 +300,7 @@ class StoreConnectorClient:
             "trafficProportion": traffic_proportion,
             "locales": locales,
             "treatments": treatments,
-            "app": _connector_app_payload(app),
+            "app": _app_payload(app, store_app_id=store_app_id),
         }
         if connector.base_url.startswith("mock://"):
             return _mock_create_product_page_optimization(app, payload)

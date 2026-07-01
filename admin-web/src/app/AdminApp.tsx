@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { bootstrapAdmin, type BootstrapResponse } from './apiClient';
 import { routeKeyFromPath, routeTitles, type AdminRouteKey } from './routes';
+import { StoreReviewsPage } from '../pages/StoreReviewsPage';
 
 const fallbackNav = [
   { key: 'dashboard', label: '总览', path: '/admin-next' },
@@ -109,17 +110,23 @@ export function AdminApp() {
           </section>
         ) : null}
 
-        <section className="panel">
-          <div className="panel-head">
-            <strong>新后台重构中</strong>
-            <span>无刷新路由已启用</span>
-          </div>
-          <p className="muted">
-            当前页面已经在 React Admin App 内切换，不会重新加载浏览器文档。功能迁移完成前，可以通过右上角进入旧版后台继续操作。
-          </p>
-        </section>
+        {activeRoute === 'store-reviews' ? <StoreReviewsPage /> : <LegacyBackedRoute />}
       </main>
     </div>
+  );
+}
+
+function LegacyBackedRoute() {
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <strong>新后台重构中</strong>
+        <span>无刷新路由已启用</span>
+      </div>
+      <p className="muted">
+        当前页面已经在 React Admin App 内切换，不会重新加载浏览器文档。功能迁移完成前，可以通过右上角进入旧版后台继续操作。
+      </p>
+    </section>
   );
 }
 

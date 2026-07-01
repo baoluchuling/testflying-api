@@ -204,3 +204,207 @@ select {
   color: #991b1b;
   background: #fef2f2;
 }
+
+.notice.ok {
+  border-color: #bbf7d0;
+  color: #166534;
+  background: #f0fdf4;
+}
+
+.button.primary {
+  border-color: #171717;
+  color: white;
+  background: #171717;
+}
+
+.reviews-workspace {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr) 360px;
+  gap: 18px;
+  align-items: start;
+}
+
+.panel-head.compact {
+  margin-bottom: 14px;
+  font-size: 20px;
+}
+
+.review-apps-list,
+.review-list,
+.issue-list {
+  display: grid;
+  gap: 10px;
+}
+
+.review-app-row {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  padding: 12px;
+  color: #171717;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.review-app-row:hover,
+.review-app-row.active {
+  border-color: #d1d5db;
+  background: #f4f4f5;
+}
+
+.app-avatar {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  border-radius: 12px;
+  color: white;
+  font-weight: 820;
+}
+
+.review-app-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.review-app-copy small,
+.review-app-row em,
+.review-page-toolbar span,
+.review-card footer,
+.boundary-list {
+  color: #73757d;
+  font-style: normal;
+  font-weight: 650;
+}
+
+.review-page-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 16px;
+}
+
+.review-page-toolbar strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 24px;
+}
+
+.review-actions,
+.review-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.review-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.review-metric {
+  display: grid;
+  gap: 4px;
+  border: 1px solid #e0e2e7;
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.review-metric strong {
+  font-size: 24px;
+}
+
+.review-metric span {
+  color: #73757d;
+  font-weight: 700;
+}
+
+.filter-pill {
+  min-height: 34px;
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  padding: 0 12px;
+  color: #55565b;
+  background: white;
+  font-weight: 740;
+  cursor: pointer;
+}
+
+.filter-pill.active {
+  color: #171717;
+  background: #e9eaee;
+}
+
+.review-filter-row {
+  margin-bottom: 14px;
+}
+
+.review-card,
+.issue-card,
+.empty-state {
+  border: 1px solid #e0e2e7;
+  border-radius: 12px;
+  padding: 14px 16px;
+  background: white;
+}
+
+.review-card header,
+.review-card footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.review-card p {
+  margin: 10px 0;
+  color: #35363b;
+  line-height: 1.6;
+}
+
+.review-card footer {
+  flex-wrap: wrap;
+  font-size: 14px;
+}
+
+.empty-state {
+  color: #73757d;
+  font-weight: 700;
+}
+
+.analysis-summary {
+  margin: 0 0 14px;
+  color: #35363b;
+  line-height: 1.6;
+  font-weight: 680;
+}
+
+.issue-card {
+  display: grid;
+  gap: 6px;
+}
+
+.issue-card span {
+  color: #55565b;
+  line-height: 1.5;
+}
+
+.issue-card em {
+  color: #73757d;
+  font-style: normal;
+  font-weight: 760;
+}
+
+.boundary-list {
+  margin: 18px 0 0;
+  padding-left: 18px;
+  line-height: 1.7;
+}

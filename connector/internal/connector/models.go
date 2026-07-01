@@ -118,6 +118,38 @@ type StoreReleasesResponse struct {
 	Releases []StoreRelease `json:"releases"`
 }
 
+type StoreReviewsQuery struct {
+	PageSize            int
+	PageToken           string
+	StartIndex          string
+	TranslationLanguage string
+	Sort                string
+}
+
+type StoreReview struct {
+	ID               string         `json:"id"`
+	Platform         string         `json:"platform"`
+	Rating           int            `json:"rating,omitempty"`
+	Title            string         `json:"title,omitempty"`
+	Body             string         `json:"body,omitempty"`
+	AuthorName       string         `json:"authorName,omitempty"`
+	ReviewerNickname string         `json:"reviewerNickname,omitempty"`
+	Locale           string         `json:"locale,omitempty"`
+	Territory        string         `json:"territory,omitempty"`
+	AppVersion       string         `json:"appVersion,omitempty"`
+	AppVersionCode   string         `json:"appVersionCode,omitempty"`
+	CreatedAt        string         `json:"createdAt,omitempty"`
+	UpdatedAt        string         `json:"updatedAt,omitempty"`
+	OriginalText     string         `json:"originalText,omitempty"`
+	Raw              map[string]any `json:"raw,omitempty"`
+}
+
+type StoreReviewsResponse struct {
+	Reviews       []StoreReview  `json:"reviews"`
+	NextPageToken string         `json:"nextPageToken,omitempty"`
+	RawPageInfo   map[string]any `json:"rawPageInfo,omitempty"`
+}
+
 type StoreReleaseTarget struct {
 	Track       string `json:"track,omitempty"`
 	VersionCode string `json:"versionCode,omitempty"`

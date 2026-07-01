@@ -37,6 +37,7 @@ type StoreGateway interface {
 	StoreListings(ctx context.Context, appID string, accountID string, platform string, version string, storeAppID string, packageName string) (StoreListingsResponse, error)
 	StoreImages(ctx context.Context, appID string, accountID string, platform string, version string, storeAppID string, packageName string) (StoreImagesResponse, error)
 	StoreReleases(ctx context.Context, appID string, accountID string, platform string, version string, storeAppID string, packageName string) (StoreReleasesResponse, error)
+	StoreReviews(ctx context.Context, appID string, accountID string, platform string, storeAppID string, packageName string, query StoreReviewsQuery) (StoreReviewsResponse, error)
 	ListProductPageOptimizations(ctx context.Context, appID string, accountID string, platform string, storeAppID string) (ProductPageOptimizationsResponse, error)
 	CreateProductPageOptimization(ctx context.Context, appID string, payload ProductPageOptimizationCreateRequest) (ProductPageOptimizationCreateResponse, error)
 	SyncRun(ctx context.Context, payload SyncRunRequest) (SyncRunResponse, error)
@@ -154,6 +155,45 @@ func (g MockStoreGateway) StoreReleases(_ context.Context, _ string, _ string, p
 				Name:         "3.2.0",
 				Status:       "draft",
 				VersionCodes: []string{"320"},
+			},
+		},
+	}, nil
+}
+
+func (g MockStoreGateway) StoreReviews(_ context.Context, appID string, _ string, platform string, _ string, _ string, _ StoreReviewsQuery) (StoreReviewsResponse, error) {
+	normalizedPlatform := normalizePlatform(platform)
+	if normalizedPlatform == "" {
+		normalizedPlatform = "ios"
+	}
+	return StoreReviewsResponse{
+		Reviews: []StoreReview{
+			{
+				ID:               "review-" + defaultString(appID, "mock") + "-1",
+				Platform:         normalizedPlatform,
+				Rating:           5,
+				Title:            "Mock review",
+				Body:             "The app works well for internal testing.",
+				AuthorName:       "mock-user",
+				ReviewerNickname: "mock-user",
+				Locale:           "en-US",
+				Territory:        "US",
+				AppVersion:       "1.0.0",
+				CreatedAt:        "2026-06-24T10:00:00Z",
+				UpdatedAt:        "2026-06-24T10:00:00Z",
+			},
+			{
+				ID:               "review-" + defaultString(appID, "mock") + "-2",
+				Platform:         normalizedPlatform,
+				Rating:           3,
+				Title:            "Mock review old",
+				Body:             "Needs more checks.",
+				AuthorName:       "mock-user-2",
+				ReviewerNickname: "mock-user-2",
+				Locale:           "zh-Hans",
+				Territory:        "CN",
+				AppVersion:       "1.0.0",
+				CreatedAt:        "2026-06-23T10:00:00Z",
+				UpdatedAt:        "2026-06-23T10:00:00Z",
 			},
 		},
 	}, nil
@@ -329,6 +369,17 @@ func (g *LiveStoreGateway) StoreReleases(ctx context.Context, _ string, _ string
 		return g.googleStoreReleases(ctx, packageName)
 	default:
 		return StoreReleasesResponse{Releases: []StoreRelease{}}, nil
+	}
+}
+
+func (g *LiveStoreGateway) StoreReviews(ctx context.Context, _ string, _ string, platform string, storeAppID string, packageName string, query StoreReviewsQuery) (StoreReviewsResponse, error) {
+	switch normalizePlatform(platform) {
+	case "ios":
+		return g.appleStoreReviews(ctx, storeAppID, query)
+	case "android":
+		return g.googleStoreReviews(ctx, packageName, query)
+	default:
+		return StoreReviewsResponse{Reviews: []StoreReview{}}, nil
 	}
 }
 
@@ -570,6 +621,55 @@ func (g *LiveStoreGateway) appleStoreImages(ctx context.Context, storeAppID stri
 		})
 	}
 	return StoreImagesResponse{Locales: locales}, nil
+}
+
+func (g *LiveStoreGateway) appleStoreReviews(ctx context.Context, storeAppID string, query StoreReviewsQuery) (StoreReviewsResponse, error) {
+	if strings.TrimSpace(storeAppID) == "" {
+		return StoreReviewsResponse{Reviews: []StoreReview{}}, nil
+	}
+	values := url.Values{}
+	values.Set("limit", strconv.Itoa(clampStoreReviewPageSize(query.PageSize, 200)))
+	if token := strings.TrimSpace(query.PageToken); token != "" {
+		values.Set("cursor", token)
+	}
+	values.Set("sort", defaultString(strings.TrimSpace(query.Sort), "-createdDate"))
+	var response struct {
+		Data []struct {
+			ID         string         `json:"id"`
+			Attributes map[string]any `json:"attributes"`
+		} `json:"data"`
+		Links struct {
+			Next string `json:"next"`
+		} `json:"links"`
+		Meta map[string]any `json:"meta"`
+	}
+	path := "/v1/apps/" + url.PathEscape(storeAppID) + "/customerReviews?" + values.Encode()
+	if _, err := g.appleRequest(ctx, http.MethodGet, path, nil, &response); err != nil {
+		return StoreReviewsResponse{}, err
+	}
+	reviews := make([]StoreReview, 0, len(response.Data))
+	for _, item := range response.Data {
+		reviews = append(reviews, StoreReview{
+			ID:               item.ID,
+			Platform:         "ios",
+			Rating:           intAttribute(item.Attributes, "rating"),
+			Title:            stringAttribute(item.Attributes, "title"),
+			Body:             stringAttribute(item.Attributes, "body"),
+			ReviewerNickname: stringAttribute(item.Attributes, "reviewerNickname"),
+			AuthorName:       stringAttribute(item.Attributes, "reviewerNickname"),
+			Locale:           stringAttribute(item.Attributes, "locale"),
+			Territory:        stringAttribute(item.Attributes, "territory"),
+			AppVersion:       defaultString(stringAttribute(item.Attributes, "appVersionString"), stringAttribute(item.Attributes, "appVersion")),
+			CreatedAt:        stringAttribute(item.Attributes, "createdDate"),
+			UpdatedAt:        stringAttribute(item.Attributes, "createdDate"),
+			Raw:              item.Attributes,
+		})
+	}
+	return StoreReviewsResponse{
+		Reviews:       reviews,
+		NextPageToken: appleNextPageToken(response.Links.Next),
+		RawPageInfo:   response.Meta,
+	}, nil
 }
 
 func (g *LiveStoreGateway) appleImagesForVersionLocalization(ctx context.Context, localizationID string) (map[string][]StoreImageRef, error) {
@@ -1669,6 +1769,80 @@ func (g *LiveStoreGateway) googleStoreReleases(ctx context.Context, packageName 
 	return StoreReleasesResponse{Releases: releases}, nil
 }
 
+type googleReviewTimestamp struct {
+	Seconds string `json:"seconds"`
+	Nanos   int    `json:"nanos"`
+}
+
+type googleUserComment struct {
+	Text             string                `json:"text"`
+	LastModified     googleReviewTimestamp `json:"lastModified"`
+	StarRating       int                   `json:"starRating"`
+	ReviewerLanguage string                `json:"reviewerLanguage"`
+	Device           string                `json:"device"`
+	AppVersionCode   int64                 `json:"appVersionCode"`
+	AppVersionName   string                `json:"appVersionName"`
+	OriginalText     string                `json:"originalText"`
+}
+
+func (g *LiveStoreGateway) googleStoreReviews(ctx context.Context, packageName string, query StoreReviewsQuery) (StoreReviewsResponse, error) {
+	if strings.TrimSpace(packageName) == "" {
+		return StoreReviewsResponse{Reviews: []StoreReview{}}, nil
+	}
+	values := url.Values{}
+	values.Set("maxResults", strconv.Itoa(clampStoreReviewPageSize(query.PageSize, 100)))
+	if token := strings.TrimSpace(query.PageToken); token != "" {
+		values.Set("token", token)
+	}
+	if startIndex := strings.TrimSpace(query.StartIndex); startIndex != "" {
+		values.Set("startIndex", startIndex)
+	}
+	if language := strings.TrimSpace(query.TranslationLanguage); language != "" {
+		values.Set("translationLanguage", language)
+	}
+	var response struct {
+		Reviews []struct {
+			ReviewID   string `json:"reviewId"`
+			AuthorName string `json:"authorName"`
+			Comments   []struct {
+				UserComment *googleUserComment `json:"userComment"`
+			} `json:"comments"`
+		} `json:"reviews"`
+		TokenPagination struct {
+			NextPageToken string `json:"nextPageToken"`
+		} `json:"tokenPagination"`
+	}
+	path := "/androidpublisher/v3/applications/" + url.PathEscape(packageName) + "/reviews?" + values.Encode()
+	if err := g.googleRequest(ctx, http.MethodGet, path, nil, &response); err != nil {
+		return StoreReviewsResponse{}, err
+	}
+	reviews := make([]StoreReview, 0, len(response.Reviews))
+	for _, item := range response.Reviews {
+		comment := latestGoogleUserComment(item.Comments)
+		if comment == nil {
+			continue
+		}
+		updatedAt := googleReviewTime(comment.LastModified)
+		reviews = append(reviews, StoreReview{
+			ID:             item.ReviewID,
+			Platform:       "android",
+			Rating:         comment.StarRating,
+			Body:           comment.Text,
+			AuthorName:     item.AuthorName,
+			Locale:         comment.ReviewerLanguage,
+			AppVersion:     comment.AppVersionName,
+			AppVersionCode: strconv.FormatInt(comment.AppVersionCode, 10),
+			CreatedAt:      updatedAt,
+			UpdatedAt:      updatedAt,
+			OriginalText:   comment.OriginalText,
+		})
+	}
+	return StoreReviewsResponse{
+		Reviews:       reviews,
+		NextPageToken: response.TokenPagination.NextPageToken,
+	}, nil
+}
+
 func (g *LiveStoreGateway) googleTracks(ctx context.Context, packageName string, editID string) ([]googleTrack, error) {
 	var response struct {
 		Tracks []googleTrack `json:"tracks"`
@@ -2296,6 +2470,51 @@ func googleImageSlot(imageType string) string {
 	default:
 		return imageType
 	}
+}
+
+func clampStoreReviewPageSize(value int, maxValue int) int {
+	if value <= 0 {
+		return 50
+	}
+	if value > maxValue {
+		return maxValue
+	}
+	return value
+}
+
+func appleNextPageToken(rawNext string) string {
+	next := strings.TrimSpace(rawNext)
+	if next == "" {
+		return ""
+	}
+	parsed, err := url.Parse(next)
+	if err != nil {
+		return next
+	}
+	if cursor := parsed.Query().Get("cursor"); cursor != "" {
+		return cursor
+	}
+	return next
+}
+
+func latestGoogleUserComment(comments []struct {
+	UserComment *googleUserComment `json:"userComment"`
+}) *googleUserComment {
+	var selected *googleUserComment
+	for index := range comments {
+		if comments[index].UserComment != nil {
+			selected = comments[index].UserComment
+		}
+	}
+	return selected
+}
+
+func googleReviewTime(value googleReviewTimestamp) string {
+	seconds, err := strconv.ParseInt(strings.TrimSpace(value.Seconds), 10, 64)
+	if err != nil || seconds <= 0 {
+		return ""
+	}
+	return time.Unix(seconds, int64(value.Nanos)).UTC().Format(time.RFC3339Nano)
 }
 
 func storeImageSources(slot StoreImageSlot) []StoreImageAsset {

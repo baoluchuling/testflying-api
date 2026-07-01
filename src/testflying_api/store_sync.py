@@ -216,6 +216,34 @@ class StoreConnectorClient:
             else _get_json(connector, path)
         )
 
+    def store_reviews(
+        self,
+        connector: StoreConnector,
+        *,
+        account_id: str,
+        app: App,
+        store_app_id: str | None = None,
+        package_name: str | None = None,
+        store_query: dict[str, str] | None = None,
+    ) -> dict[str, object]:
+        if connector.base_url.startswith("mock://"):
+            return _mock_store_reviews(app)
+        target = _app_payload(app, store_app_id=store_app_id, package_name=package_name)
+        query_values = {
+            "developerAccountId": account_id,
+            "platform": app.platform,
+            "storeAppId": target.get("storeAppId") or "",
+            "packageName": target.get("packageName") or "",
+            **dict(store_query or {}),
+        }
+        query = urlencode(query_values)
+        path = f"/v1/apps/{app.id}/store-reviews?{query}"
+        return (
+            _active_request_json(connector, "GET", path)
+            if _is_active_connector(connector)
+            else _get_json(connector, path)
+        )
+
     def product_page_optimizations(
         self,
         connector: StoreConnector,
@@ -2349,6 +2377,42 @@ def _mock_store_releases(app: App) -> dict[str, object]:
                 "releaseNotes": [],
             },
         ]
+    }
+
+
+def _mock_store_reviews(app: App) -> dict[str, object]:
+    return {
+        "reviews": [
+            {
+                "id": f"review-{app.id}-1",
+                "platform": app.platform,
+                "rating": 5,
+                "title": "Mock review",
+                "body": "The app works well for internal testing.",
+                "authorName": "mock-user",
+                "reviewerNickname": "mock-user",
+                "locale": "en-US",
+                "territory": "US",
+                "appVersion": "1.0.0",
+                "createdAt": "2026-06-24T10:00:00Z",
+                "updatedAt": "2026-06-24T10:00:00Z",
+            },
+            {
+                "id": f"review-{app.id}-2",
+                "platform": app.platform,
+                "rating": 3,
+                "title": "Mock review old",
+                "body": "Needs more checks.",
+                "authorName": "mock-user-2",
+                "reviewerNickname": "mock-user-2",
+                "locale": "zh-Hans",
+                "territory": "CN",
+                "appVersion": "1.0.0",
+                "createdAt": "2026-06-23T10:00:00Z",
+                "updatedAt": "2026-06-23T10:00:00Z",
+            },
+        ],
+        "nextPageToken": "",
     }
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as dt
 import json
 import re
 import secrets
@@ -9,6 +10,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Annotated
 from uuid import uuid4
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, ValidationError
@@ -244,6 +246,15 @@ class StoreReleasesResponse(CamelModel):
     platform: str
     version: str = ""
     releases: list[dict[str, object]]
+
+
+class StoreReviewsResponse(CamelModel):
+    account_id: str = Field(alias="accountId")
+    app_id: str = Field(alias="appId")
+    platform: str
+    reviews: list[dict[str, object]]
+    next_page_token: str = Field(default="", alias="nextPageToken")
+    filters: dict[str, object] = Field(default_factory=dict)
 
 
 class ProductPageOptimizationTreatmentInput(CamelModel):
@@ -591,6 +602,80 @@ def list_store_releases(
         platform=app.platform,
         version=version.strip(),
         releases=releases if isinstance(releases, list) else [],
+    )
+
+
+@router.get(
+    "/developer-accounts/{account_id}/apps/{app_id}/store-reviews",
+    response_model=StoreReviewsResponse,
+)
+def list_store_reviews(
+    account_id: str,
+    app_id: str,
+    request: Request,
+    session: SessionDep,
+    ios_app_id: str = Query(default="", alias="iosAppId"),
+    store_app_id: str = Query(default="", alias="storeAppId"),
+    apple_app_id: str = Query(default="", alias="appleAppId"),
+    package_name: str = Query(default="", alias="packageName"),
+    date_value: str = Query(default="", alias="date"),
+    start_date: str = Query(default="", alias="startDate"),
+    end_date: str = Query(default="", alias="endDate"),
+    timezone: str = Query(default="Asia/Shanghai"),
+    locale: str = Query(default=""),
+    territory: str = Query(default=""),
+    rating: int | None = Query(default=None, ge=1, le=5),
+    page_size: int = Query(default=50, ge=1, le=200, alias="pageSize"),
+    page_token: str = Query(default="", alias="pageToken"),
+    start_index: str = Query(default="", alias="startIndex"),
+    translation_language: str = Query(default="", alias="translationLanguage"),
+    sort: str = Query(default=""),
+) -> StoreReviewsResponse:
+    _require_static_token(request)
+    app = _scoped_app_or_error(session, account_id=account_id, app_id=app_id)
+    connector = _account_connector_or_error(session, account_id)
+    target_store_app_id = _first_non_empty(ios_app_id, store_app_id, apple_app_id)
+    target_package_name = package_name.strip()
+    try:
+        raw_response = StoreConnectorClient().store_reviews(
+            connector,
+            account_id=account_id,
+            app=app,
+            store_app_id=target_store_app_id if app.platform == "ios" else None,
+            package_name=target_package_name if app.platform == "android" else None,
+            store_query=_store_reviews_connector_query(
+                page_size=_store_review_page_size_for_platform(app.platform, page_size),
+                page_token=page_token,
+                start_index=start_index,
+                translation_language=translation_language,
+                sort=sort,
+            ),
+        )
+    except ConnectorCallError as error:
+        raise _connector_api_error(error) from error
+    raw_reviews = raw_response.get("reviews")
+    reviews = raw_reviews if isinstance(raw_reviews, list) else []
+    filters = _store_review_filters(
+        date_value=date_value,
+        start_date=start_date,
+        end_date=end_date,
+        timezone_name=timezone,
+        locale=locale,
+        territory=territory,
+        rating=rating,
+    )
+    filtered_reviews = [
+        review
+        for review in reviews
+        if isinstance(review, dict) and _store_review_matches(review, filters)
+    ]
+    return StoreReviewsResponse(
+        accountId=account_id,
+        appId=app.id,
+        platform=app.platform,
+        reviews=filtered_reviews,
+        nextPageToken=str(raw_response.get("nextPageToken") or ""),
+        filters=_store_review_filter_response(filters),
     )
 
 
@@ -1170,6 +1255,166 @@ def _direct_sync_store_target(
     if platform == "android":
         return None, package_name or None
     return None, None
+
+
+def _first_non_empty(*values: str) -> str | None:
+    for value in values:
+        normalized = str(value or "").strip()
+        if normalized:
+            return normalized
+    return None
+
+
+def _store_reviews_connector_query(
+    *,
+    page_size: int,
+    page_token: str,
+    start_index: str,
+    translation_language: str,
+    sort: str,
+) -> dict[str, str]:
+    query = {"pageSize": str(page_size)}
+    if page_token.strip():
+        query["pageToken"] = page_token.strip()
+    if start_index.strip():
+        query["startIndex"] = start_index.strip()
+    if translation_language.strip():
+        query["translationLanguage"] = translation_language.strip()
+    if sort.strip():
+        query["sort"] = sort.strip()
+    return query
+
+
+def _store_review_page_size_for_platform(platform: str, page_size: int) -> int:
+    if platform == "android":
+        return min(page_size, 100)
+    return page_size
+
+
+def _store_review_filters(
+    *,
+    date_value: str,
+    start_date: str,
+    end_date: str,
+    timezone_name: str,
+    locale: str,
+    territory: str,
+    rating: int | None,
+) -> dict[str, object]:
+    normalized_date = date_value.strip()
+    normalized_start = start_date.strip()
+    normalized_end = end_date.strip()
+    if normalized_date and (normalized_start or normalized_end):
+        raise ApiError(
+            "invalid_review_date_filter",
+            "date 不能和 startDate/endDate 同时使用",
+            status_code=422,
+        )
+    zone_name = timezone_name.strip() or "Asia/Shanghai"
+    try:
+        timezone_info = ZoneInfo(zone_name)
+    except ZoneInfoNotFoundError as error:
+        raise ApiError(
+            "invalid_timezone",
+            "timezone 必须是有效的 IANA 时区名称，例如 Asia/Shanghai",
+            status_code=422,
+        ) from error
+    start_at: dt.datetime | None = None
+    end_at: dt.datetime | None = None
+    if normalized_date:
+        selected = _parse_review_date(normalized_date, field_name="date")
+        start_at = dt.datetime.combine(selected, dt.time.min, timezone_info)
+        end_at = dt.datetime.combine(selected, dt.time.max, timezone_info)
+    else:
+        if normalized_start:
+            selected_start = _parse_review_date(normalized_start, field_name="startDate")
+            start_at = dt.datetime.combine(selected_start, dt.time.min, timezone_info)
+        if normalized_end:
+            selected_end = _parse_review_date(normalized_end, field_name="endDate")
+            end_at = dt.datetime.combine(selected_end, dt.time.max, timezone_info)
+    if start_at is not None and end_at is not None and start_at > end_at:
+        raise ApiError(
+            "invalid_review_date_filter",
+            "startDate 不能晚于 endDate",
+            status_code=422,
+        )
+    return {
+        "startAt": start_at,
+        "endAt": end_at,
+        "timezone": zone_name,
+        "locale": locale.strip(),
+        "territory": territory.strip(),
+        "rating": rating,
+    }
+
+
+def _parse_review_date(value: str, *, field_name: str) -> dt.date:
+    try:
+        return dt.date.fromisoformat(value)
+    except ValueError as error:
+        raise ApiError(
+            "invalid_review_date_filter",
+            f"{field_name} 必须使用 YYYY-MM-DD 格式",
+            status_code=422,
+        ) from error
+
+
+def _store_review_matches(review: dict[str, object], filters: dict[str, object]) -> bool:
+    rating = filters.get("rating")
+    if rating is not None and _int_value(review.get("rating")) != int(rating):
+        return False
+    locale = str(filters.get("locale") or "").strip()
+    if locale and str(review.get("locale") or "").strip().lower() != locale.lower():
+        return False
+    territory = str(filters.get("territory") or "").strip()
+    if territory and str(review.get("territory") or "").strip().lower() != territory.lower():
+        return False
+    start_at = filters.get("startAt")
+    end_at = filters.get("endAt")
+    if start_at is not None or end_at is not None:
+        timestamp = _review_timestamp(review)
+        if timestamp is None:
+            return False
+        if start_at is not None and timestamp < start_at:
+            return False
+        if end_at is not None and timestamp > end_at:
+            return False
+    return True
+
+
+def _review_timestamp(review: dict[str, object]) -> dt.datetime | None:
+    raw_value = str(review.get("createdAt") or review.get("updatedAt") or "").strip()
+    if not raw_value:
+        return None
+    if raw_value.endswith("Z"):
+        raw_value = raw_value[:-1] + "+00:00"
+    try:
+        parsed = dt.datetime.fromisoformat(raw_value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=dt.UTC)
+    return parsed.astimezone(dt.UTC)
+
+
+def _int_value(value: object) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _store_review_filter_response(filters: dict[str, object]) -> dict[str, object]:
+    start_at = filters.get("startAt")
+    end_at = filters.get("endAt")
+    return {
+        "startAt": start_at.isoformat() if isinstance(start_at, dt.datetime) else "",
+        "endAt": end_at.isoformat() if isinstance(end_at, dt.datetime) else "",
+        "timezone": filters.get("timezone") or "",
+        "locale": filters.get("locale") or "",
+        "territory": filters.get("territory") or "",
+        "rating": filters.get("rating"),
+    }
 
 
 def _reset_direct_sync_guards_for_tests() -> None:

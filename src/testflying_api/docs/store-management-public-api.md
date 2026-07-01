@@ -20,6 +20,7 @@
 | `/v1/store-management/developer-accounts/{accountId}/apps/{appId}/store-listings` | GET | 是 | 读取商店文案 |
 | `/v1/store-management/developer-accounts/{accountId}/apps/{appId}/store-images` | GET | 是 | 读取商店截图 |
 | `/v1/store-management/developer-accounts/{accountId}/apps/{appId}/store-releases` | GET | 是 | 读取 Google Play release |
+| `/v1/store-management/developer-accounts/{accountId}/apps/{appId}/store-reviews` | GET | 是 | 读取商店评论 |
 | `/v1/store-management/developer-accounts/{accountId}/apps/{appId}/metadata-content-sets` | POST | 否 | 保存默认商店页草稿 |
 | `/v1/store-management/developer-accounts/{accountId}/apps/{appId}/store-versions/{version}/draft` | POST | 否 | 保存版本草稿 |
 | `/v1/store-management/developer-accounts/{accountId}/apps/{appId}/marketing-pages` | POST | 否 | 创建自定义产品页面草稿 |
@@ -174,7 +175,61 @@ curl "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/$APP_ID/
 }
 ```
 
-## 5. 保存默认商店页草稿
+## 5. 读取商店评论
+
+```http
+GET /v1/store-management/developer-accounts/{accountId}/apps/{appId}/store-reviews
+```
+
+用于读取 App Store Connect 或 Google Play 评论。connector 只负责调用商店评论接口并返回结果，日期、评分、语言、地区等筛选由中心后台处理。
+
+参数：
+
+| 参数 | 位置 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `accountId` | path | 是 | 开发者账号 ID |
+| `appId` | path | 是 | testflying 内部 App ID |
+| `iosAppId` | query | 否 | iOS 直传 App Store Connect 数字 App ID |
+| `packageName` | query | 否 | Android 直传 Google Play package name |
+| `date` | query | 否 | 指定日期，格式 `YYYY-MM-DD`，不能和 `startDate/endDate` 同时使用 |
+| `startDate` | query | 否 | 起始日期，格式 `YYYY-MM-DD` |
+| `endDate` | query | 否 | 结束日期，格式 `YYYY-MM-DD` |
+| `timezone` | query | 否 | 日期过滤时区，默认 `Asia/Shanghai` |
+| `locale` | query | 否 | 中心后台按评论语言过滤 |
+| `territory` | query | 否 | 中心后台按评论地区过滤 |
+| `rating` | query | 否 | 中心后台按评分过滤，范围 `1-5` |
+| `pageSize` | query | 否 | 单页数量，默认 `50`；iOS 最大 `200`，Android 最大 `100` |
+| `pageToken` | query | 否 | 商店分页 token |
+| `startIndex` | query | 否 | Google Play 原生分页起始位置 |
+| `translationLanguage` | query | 否 | Google Play 原生翻译语言参数 |
+
+```bash
+curl "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/$APP_ID/store-reviews?date=2026-06-24&rating=5&pageSize=50" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+```json
+{
+  "accountId": "738W4ARM22",
+  "appId": "app-ios-com-app-qw-readink",
+  "platform": "ios",
+  "reviews": [
+    {
+      "id": "123456",
+      "platform": "ios",
+      "rating": 5,
+      "body": "Works well.",
+      "locale": "en-US",
+      "territory": "US",
+      "appVersion": "1.0.0",
+      "createdAt": "2026-06-24T10:00:00Z"
+    }
+  ],
+  "nextPageToken": ""
+}
+```
+
+## 6. 保存默认商店页草稿
 
 ```http
 POST /v1/store-management/developer-accounts/{accountId}/apps/{appId}/metadata-content-sets
@@ -215,7 +270,7 @@ curl -X POST "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/
 }
 ```
 
-## 6. 保存版本草稿
+## 7. 保存版本草稿
 
 ```http
 POST /v1/store-management/developer-accounts/{accountId}/apps/{appId}/store-versions/{version}/draft
@@ -252,7 +307,7 @@ curl -X POST "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/
 }
 ```
 
-## 7. 创建自定义产品页面草稿
+## 8. 创建自定义产品页面草稿
 
 ```http
 POST /v1/store-management/developer-accounts/{accountId}/apps/{appId}/marketing-pages
@@ -293,7 +348,7 @@ curl -X POST "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/
 }
 ```
 
-## 8. 同步默认商店页
+## 9. 同步默认商店页
 
 ```http
 POST /v1/store-management/developer-accounts/{accountId}/apps/{appId}/sync-runs
@@ -337,7 +392,7 @@ curl -X POST "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/
 }
 ```
 
-## 9. 同步自定义产品页面
+## 10. 同步自定义产品页面
 
 ```http
 POST /v1/store-management/developer-accounts/{accountId}/apps/{appId}/marketing-pages/{pageId}/sync-runs
@@ -376,7 +431,7 @@ curl -X POST "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/
 }
 ```
 
-## 10. 查询产品页面优化
+## 11. 查询产品页面优化
 
 ```http
 GET /v1/store-management/developer-accounts/{accountId}/apps/{appId}/product-page-optimizations
@@ -404,7 +459,7 @@ curl "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/$APP_ID/
 }
 ```
 
-## 11. 创建产品页面优化
+## 12. 创建产品页面优化
 
 ```http
 POST /v1/store-management/developer-accounts/{accountId}/apps/{appId}/product-page-optimizations

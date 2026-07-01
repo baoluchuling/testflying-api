@@ -445,6 +445,32 @@ func TestConnectorListsStoreImages(t *testing.T) {
 	}
 }
 
+func TestConnectorListsStoreReviews(t *testing.T) {
+	server := testServer(t, testSettings())
+
+	response := performJSON(
+		server,
+		http.MethodGet,
+		"/v1/apps/app-aurora-ios/store-reviews?developerAccountId=account-apple-enterprise&platform=ios&storeAppId=1234567890&pageSize=20",
+		testHeaders(),
+		nil,
+	)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	var result StoreReviewsResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Reviews) != 2 {
+		t.Fatalf("reviews = %d, want 2", len(result.Reviews))
+	}
+	if result.Reviews[0].ID != "review-app-aurora-ios-1" || result.Reviews[0].Rating != 5 {
+		t.Fatalf("first review = %#v", result.Reviews[0])
+	}
+}
+
 func TestConnectorListsProductPageOptimizations(t *testing.T) {
 	server := testServer(t, testSettings())
 

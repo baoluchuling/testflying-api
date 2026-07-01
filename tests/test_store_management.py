@@ -563,6 +563,51 @@ def test_store_management_lists_current_store_images(
     assert first_image["height"] == 2796
 
 
+def test_store_management_lists_store_reviews_and_filters_in_center(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+
+    response = client.get(
+        (
+            "/v1/store-management/developer-accounts/account-apple-enterprise"
+            "/apps/app-aurora-ios/store-reviews"
+            "?date=2026-06-24&timezone=UTC&rating=5&locale=en-US&pageSize=20"
+        ),
+        headers={"Authorization": "Bearer dev-token"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["accountId"] == "account-apple-enterprise"
+    assert body["appId"] == "app-aurora-ios"
+    assert body["platform"] == "ios"
+    assert body["filters"]["timezone"] == "UTC"
+    assert body["filters"]["rating"] == 5
+    assert [item["id"] for item in body["reviews"]] == ["review-app-aurora-ios-1"]
+    assert body["reviews"][0]["body"] == "The app works well for internal testing."
+
+
+def test_store_management_store_reviews_rejects_conflicting_date_filters(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+
+    response = client.get(
+        (
+            "/v1/store-management/developer-accounts/account-apple-enterprise"
+            "/apps/app-aurora-ios/store-reviews"
+            "?date=2026-06-24&startDate=2026-06-23"
+        ),
+        headers={"Authorization": "Bearer dev-token"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "invalid_review_date_filter"
+
+
 def test_store_management_lists_google_play_store_releases(
     client: TestClient,
     db_session: Session,

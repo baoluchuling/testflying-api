@@ -51,6 +51,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.withToken(w, r, s.handleStoreImages)
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/apps/") && strings.HasSuffix(r.URL.Path, "/store-releases"):
 		s.withToken(w, r, s.handleStoreReleases)
+	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/apps/") && strings.HasSuffix(r.URL.Path, "/store-reviews"):
+		s.withToken(w, r, s.handleStoreReviews)
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/apps/") && strings.HasSuffix(r.URL.Path, "/product-page-optimizations"):
 		s.withToken(w, r, s.handleListProductPageOptimizations)
 	case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/v1/apps/") && strings.HasSuffix(r.URL.Path, "/product-page-optimizations"):
@@ -206,6 +208,32 @@ func (s *Server) handleStoreReleases(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, response)
 }
 
+func (s *Server) handleStoreReviews(w http.ResponseWriter, r *http.Request) {
+	accountID := r.URL.Query().Get("developerAccountId")
+	if !s.validateAccount(w, accountID) {
+		return
+	}
+	platform := r.URL.Query().Get("platform")
+	if !s.enforceRateLimit(w, platform) {
+		return
+	}
+	appID := appIDFromStoreResourcePath(r.URL.Path, "/store-reviews")
+	response, err := s.store.StoreReviews(
+		r.Context(),
+		appID,
+		accountID,
+		platform,
+		r.URL.Query().Get("storeAppId"),
+		r.URL.Query().Get("packageName"),
+		storeReviewsQueryFromRequest(r),
+	)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, friendlyStoreError(err))
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
 func (s *Server) handleSyncRun(w http.ResponseWriter, r *http.Request) {
 	var payload SyncRunRequest
 	if !decodeJSON(w, r, &payload) {
@@ -332,4 +360,15 @@ func appIDFromStoreResourcePath(path string, suffix string) string {
 	trimmed := strings.TrimPrefix(path, "/v1/apps/")
 	trimmed = strings.TrimSuffix(trimmed, suffix)
 	return strings.Trim(trimmed, "/")
+}
+
+func storeReviewsQueryFromRequest(r *http.Request) StoreReviewsQuery {
+	pageSize, _ := strconv.Atoi(r.URL.Query().Get("pageSize"))
+	return StoreReviewsQuery{
+		PageSize:            pageSize,
+		PageToken:           r.URL.Query().Get("pageToken"),
+		StartIndex:          r.URL.Query().Get("startIndex"),
+		TranslationLanguage: r.URL.Query().Get("translationLanguage"),
+		Sort:                r.URL.Query().Get("sort"),
+	}
 }

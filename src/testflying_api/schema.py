@@ -486,6 +486,99 @@ class StoreSyncRun(Base):
     )
 
 
+class StoreReview(Base):
+    __tablename__ = "store_reviews"
+    __table_args__ = (
+        UniqueConstraint(
+            "developer_account_id",
+            "app_id",
+            "platform",
+            "store_review_id",
+            name="uq_store_reviews_scope",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    developer_account_id: Mapped[str] = mapped_column(
+        ForeignKey("developer_accounts.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    app_id: Mapped[str] = mapped_column(ForeignKey("apps.id", ondelete="CASCADE"), nullable=False)
+    platform: Mapped[str] = mapped_column(String(20), nullable=False)
+    store_review_id: Mapped[str] = mapped_column(String(180), nullable=False)
+    rating: Mapped[int | None] = mapped_column(Integer)
+    title: Mapped[str] = mapped_column(String(240), nullable=False, default="")
+    body: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    author_name: Mapped[str] = mapped_column(String(180), nullable=False, default="")
+    locale: Mapped[str] = mapped_column(String(40), nullable=False, default="")
+    territory: Mapped[str] = mapped_column(String(40), nullable=False, default="")
+    app_version: Mapped[str] = mapped_column(String(80), nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    fetched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+    )
+    raw_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+
+
+class StoreReviewFetchRun(Base):
+    __tablename__ = "store_review_fetch_runs"
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    developer_account_id: Mapped[str] = mapped_column(
+        ForeignKey("developer_accounts.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    app_id: Mapped[str] = mapped_column(ForeignKey("apps.id", ondelete="CASCADE"), nullable=False)
+    connector_id: Mapped[str | None] = mapped_column(
+        ForeignKey("store_connectors.id", ondelete="SET NULL"),
+    )
+    platform: Mapped[str] = mapped_column(String(20), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), nullable=False)
+    page_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    fetched_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    inserted_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    duplicate_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    stopped_reason: Mapped[str] = mapped_column(String(80), nullable=False, default="")
+    filters_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_code: Mapped[str | None] = mapped_column(String(80))
+    error_summary: Mapped[str | None] = mapped_column(String(280))
+
+
+class StoreReviewAnalysisRun(Base):
+    __tablename__ = "store_review_analysis_runs"
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    developer_account_id: Mapped[str] = mapped_column(
+        ForeignKey("developer_accounts.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    app_id: Mapped[str] = mapped_column(ForeignKey("apps.id", ondelete="CASCADE"), nullable=False)
+    platform: Mapped[str] = mapped_column(String(20), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), nullable=False)
+    review_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    low_rating_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    issue_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    analysis_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_code: Mapped[str | None] = mapped_column(String(80))
+    error_summary: Mapped[str | None] = mapped_column(String(280))
+
+
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 

@@ -29,6 +29,10 @@ class Settings:
     translation_openai_api_key: str | None
     translation_openai_base_url: str
     translation_openai_model: str
+    review_analysis_provider: str
+    review_analysis_openai_api_key: str | None
+    review_analysis_openai_base_url: str
+    review_analysis_openai_model: str
 
     @classmethod
     def from_environment(cls) -> Settings:
@@ -69,6 +73,22 @@ class Settings:
             translation_openai_model=os.getenv(
                 "TESTFLYING_TRANSLATION_OPENAI_MODEL",
                 "gpt-4o-mini",
+            ),
+            review_analysis_provider=os.getenv(
+                "TESTFLYING_REVIEW_ANALYSIS_PROVIDER",
+                os.getenv("TESTFLYING_TRANSLATION_PROVIDER", "disabled"),
+            ),
+            review_analysis_openai_api_key=_normalize_optional(
+                os.getenv("TESTFLYING_REVIEW_ANALYSIS_OPENAI_API_KEY")
+                or os.getenv("TESTFLYING_TRANSLATION_OPENAI_API_KEY"),
+            ),
+            review_analysis_openai_base_url=os.getenv(
+                "TESTFLYING_REVIEW_ANALYSIS_OPENAI_BASE_URL",
+                os.getenv("TESTFLYING_TRANSLATION_OPENAI_BASE_URL", "https://api.openai.com/v1"),
+            ),
+            review_analysis_openai_model=os.getenv(
+                "TESTFLYING_REVIEW_ANALYSIS_OPENAI_MODEL",
+                os.getenv("TESTFLYING_TRANSLATION_OPENAI_MODEL", "gpt-4o-mini"),
             ),
         )
 

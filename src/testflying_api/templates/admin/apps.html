@@ -95,7 +95,10 @@
             </span>
             <span>
               {% if app.developer_account %}
-                <a class="button" href="/admin/developer-accounts/{{ app.developer_account.id }}/apps/{{ app.id }}/store">进入商店管理</a>
+                <div class="row-actions">
+                  <a class="button" href="/admin/developer-accounts/{{ app.developer_account.id }}/apps/{{ app.id }}/store">进入商店管理</a>
+                  <a class="button ghost" href="/admin/store-reviews?accountId={{ app.developer_account.id }}&appId={{ app.id }}">评论分析</a>
+                </div>
               {% else %}
                 <a class="button" href="/admin/developer-accounts">先绑定账号</a>
               {% endif %}

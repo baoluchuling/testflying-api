@@ -60,6 +60,10 @@ def test_settings(tmp_path: Path) -> Settings:
         translation_openai_api_key=None,
         translation_openai_base_url="https://api.openai.com/v1",
         translation_openai_model="gpt-4o-mini",
+        review_analysis_provider="disabled",
+        review_analysis_openai_api_key=None,
+        review_analysis_openai_base_url="https://api.openai.com/v1",
+        review_analysis_openai_model="gpt-4o-mini",
     )
 
 

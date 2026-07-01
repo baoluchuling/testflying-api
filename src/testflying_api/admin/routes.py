@@ -59,6 +59,11 @@ from testflying_api.schema import (
     StoreMarketingPageLocale,
 )
 from testflying_api.store_image_requirements import validate_store_image
+from testflying_api.store_reviews import (
+    analyze_store_reviews,
+    fetch_store_reviews_incremental,
+    store_reviews_context,
+)
 from testflying_api.store_sync import (
     CURRENT_METADATA_VERSION,
     DEFAULT_CONTENT_SET_ID,
@@ -211,6 +216,103 @@ def apps_page(request: Request, session: SessionDep, _: AdminDep) -> HTMLRespons
         request,
         "admin/apps.html",
         _context(request, active="apps", apps=list_apps(session)),
+    )
+
+
+@router.get("/store-reviews", response_class=HTMLResponse)
+def store_reviews_page(
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+    accountId: str = "",
+    appId: str = "",
+    rating: int | None = None,
+) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request,
+        "admin/store_reviews.html",
+        _context(
+            request,
+            active="store-reviews",
+            **store_reviews_context(
+                session,
+                account_id=accountId,
+                app_id=appId,
+                rating=rating,
+            ),
+        ),
+    )
+
+
+@router.post("/store-reviews/fetch", response_class=HTMLResponse)
+def fetch_store_reviews_page(
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+    account_id: Annotated[str, Form(alias="accountId")],
+    app_id: Annotated[str, Form(alias="appId")],
+) -> HTMLResponse:
+    notice: dict[str, str]
+    try:
+        result = fetch_store_reviews_incremental(session, account_id=account_id, app_id=app_id)
+        session.commit()
+        notice = {
+            "state": "success",
+            "title": "最新评论已拉取",
+            "body": (
+                f"本次读取 {result.fetched_count} 条，新增 {result.inserted_count} 条，"
+                f"停止原因：{_review_fetch_reason_label(result.stopped_reason)}。"
+            ),
+        }
+    except ApiError as error:
+        session.rollback()
+        notice = {"state": "error", "title": "拉取失败", "body": error.message}
+    return templates.TemplateResponse(
+        request,
+        "admin/store_reviews.html",
+        _context(
+            request,
+            active="store-reviews",
+            review_notice=notice,
+            **store_reviews_context(session, account_id=account_id, app_id=app_id),
+        ),
+    )
+
+
+@router.post("/store-reviews/analyze", response_class=HTMLResponse)
+def analyze_store_reviews_page(
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+    account_id: Annotated[str, Form(alias="accountId")],
+    app_id: Annotated[str, Form(alias="appId")],
+) -> HTMLResponse:
+    notice: dict[str, str]
+    try:
+        run = analyze_store_reviews(
+            session,
+            request.app.state.settings,
+            account_id=account_id,
+            app_id=app_id,
+        )
+        session.commit()
+        notice = {
+            "state": "success",
+            "title": "评论分析完成",
+            "body": f"已分析 {run.review_count} 条评论，识别 {run.issue_count} 个关注点。",
+        }
+    except ApiError as error:
+        session.rollback()
+        notice = {"state": "error", "title": "分析失败", "body": error.message}
+    return templates.TemplateResponse(
+        request,
+        "admin/store_reviews.html",
+        _context(
+            request,
+            active="store-reviews",
+            review_notice=notice,
+            **store_reviews_context(session, account_id=account_id, app_id=app_id),
+        ),
     )
 
 
@@ -3233,6 +3335,7 @@ def _context(request: Request, *, active: str, **values: object) -> dict[str, ob
             ("dashboard", "/admin", "总览"),
             ("uploads", "/admin/uploads", "上传"),
             ("apps", "/admin/apps", "商店管理"),
+            ("store-reviews", "/admin/store-reviews", "商店评论"),
             ("api-docs", "/admin/api-docs", "接口文档"),
             ("builds", "/admin/builds", "构建"),
             ("devices", "/admin/devices", "设备"),
@@ -3268,6 +3371,18 @@ def _store_identifier_label(app: App | None) -> str:
     if app.platform == "android":
         return app.store_package_name or app.bundle_identifier
     return app.store_app_id or "需手动填写 App Store Connect App ID"
+
+
+def _review_fetch_reason_label(reason: str) -> str:
+    labels = {
+        "initial_page_only": "初始只拉取第一页",
+        "existing_review_same_created_date": "已遇到库内同创建日评论",
+        "no_more_pages": "商店没有更多评论",
+        "empty_page": "商店返回空页",
+        "max_pages": "达到最大分页数",
+        "failed": "请求失败",
+    }
+    return labels.get(reason, reason or "未知")
 
 
 def _preflight_copy(preflight: object | None, *, platform: str = "") -> dict[str, str]:

@@ -30,6 +30,9 @@ def test_catalog_schema_contains_no_user_state_tables() -> None:
         "store_marketing_page_locales",
         "store_preflight_checks",
         "store_sync_runs",
+        "store_reviews",
+        "store_review_fetch_runs",
+        "store_review_analysis_runs",
         "audit_logs",
     }.issubset(table_names)
     assert "install_tasks" not in table_names
@@ -101,6 +104,31 @@ def test_store_sync_runs_store_scope_and_payload_snapshots() -> None:
 
     assert "sync_scopes_json" in columns
     assert "payload_snapshot_json" in columns
+
+
+def test_store_reviews_are_unique_per_store_review_scope() -> None:
+    engine = create_engine_for_url("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+
+    constraints = inspect(engine).get_unique_constraints("store_reviews")
+    fetch_columns = {
+        column["name"] for column in inspect(engine).get_columns("store_review_fetch_runs")
+    }
+    analysis_columns = {
+        column["name"] for column in inspect(engine).get_columns("store_review_analysis_runs")
+    }
+
+    assert any(
+        constraint["column_names"] == [
+            "developer_account_id",
+            "app_id",
+            "platform",
+            "store_review_id",
+        ]
+        for constraint in constraints
+    )
+    assert {"inserted_count", "duplicate_count", "stopped_reason"}.issubset(fetch_columns)
+    assert {"review_count", "issue_count", "analysis_json"}.issubset(analysis_columns)
 
 
 def test_store_marketing_pages_are_unique_per_app_scope() -> None:

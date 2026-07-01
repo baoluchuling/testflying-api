@@ -18,17 +18,17 @@ export const routeTitles: Record<AdminRouteKey, { eyebrow: string; title: string
   uploads: {
     eyebrow: 'Internal Distribution',
     title: '上传构建',
-    summary: '上传页会迁移为不中断的前端上传流程。'
+    summary: '上传 IPA / APK，解析包信息并生成安装地址。'
   },
   apps: {
     eyebrow: 'Store Management',
     title: '商店管理',
-    summary: '商店应用列表和商店同步会在评论页后迁移。'
+    summary: '从应用进入商店内容、评论和账号连接。'
   },
   'store-reviews': {
     eyebrow: 'Store Reviews',
     title: '商店评论',
-    summary: '评论分析页将首先迁移为无刷新交互。'
+    summary: '增量拉取最近评论，并通过 LLM 归纳需要关注的问题。'
   },
   'api-docs': {
     eyebrow: 'Developer API',

@@ -148,6 +148,38 @@ export type StoreAppsState = {
   accountSummary: StoreAppsAccountSummary;
 };
 
+export type UploadAccountOption = {
+  id: string;
+  teamName: string;
+  status: string;
+  platform: string | null;
+};
+
+export type UploadState = {
+  accounts: UploadAccountOption[];
+};
+
+export type UploadResult = {
+  appId: string;
+  appName: string;
+  bundleIdentifier: string;
+  platform: string;
+  environment: string;
+  version: string;
+  buildNumber: string;
+  developerAccount: string;
+  storeIdentifier: string;
+  installUrl: string;
+  manifestUrl: string | null;
+  downloadUrl: string | null;
+};
+
+export type AdminUploadResponse = {
+  message: string;
+  result: UploadResult;
+  state: UploadState;
+};
+
 export class AdminApiError extends Error {
   code: string;
   detail: unknown;
@@ -210,6 +242,10 @@ export function loadStoreReviews(pathAndQuery: string): Promise<StoreReviewsStat
   return getJson<StoreReviewsState>(`/admin/api/store-reviews${pathAndQuery}`);
 }
 
+export function loadUploadState(): Promise<UploadState> {
+  return getJson<UploadState>('/admin/api/uploads');
+}
+
 export function fetchStoreReviews(accountId: string, appId: string) {
   return postJson<StoreReviewActionResponse>('/admin/api/store-reviews/fetch', {
     accountId,
@@ -222,4 +258,48 @@ export function analyzeStoreReviews(accountId: string, appId: string) {
     accountId,
     appId
   });
+}
+
+export function uploadPackage(
+  formData: FormData,
+  onProgress: (percent: number) => void
+): Promise<AdminUploadResponse> {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open('POST', '/admin/api/uploads');
+    request.setRequestHeader('Accept', 'application/json');
+    request.upload.addEventListener('progress', (event) => {
+      if (event.lengthComputable && event.total > 0) {
+        onProgress(Math.min(99, Math.round((event.loaded / event.total) * 100)));
+      }
+    });
+    request.addEventListener('load', () => {
+      const payload = parseJson(request.responseText);
+      if (request.status < 200 || request.status >= 300) {
+        const error = payload?.error;
+        reject(
+          new AdminApiError(
+            error?.message || `请求失败：HTTP ${request.status}`,
+            error?.code || 'http_error',
+            error?.detail || null
+          )
+        );
+        return;
+      }
+      onProgress(100);
+      resolve(payload as AdminUploadResponse);
+    });
+    request.addEventListener('error', () => {
+      reject(new AdminApiError('上传失败，请检查网络后重试', 'upload_network_error'));
+    });
+    request.send(formData);
+  });
+}
+
+function parseJson(value: string): any {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
 }

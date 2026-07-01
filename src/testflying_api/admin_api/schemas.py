@@ -172,3 +172,35 @@ class StoreAppsState(AdminApiModel):
     filter: str
     stats: StoreAppsStats
     account_summary: StoreAppsAccountSummary
+
+
+class UploadAccountOption(AdminApiModel):
+    id: str
+    team_name: str
+    status: str
+    platform: str | None = None
+
+
+class UploadState(AdminApiModel):
+    accounts: list[UploadAccountOption]
+
+
+class UploadResult(AdminApiModel):
+    app_id: str
+    app_name: str
+    bundle_identifier: str
+    platform: str
+    environment: str
+    version: str
+    build_number: str
+    developer_account: str
+    store_identifier: str
+    install_url: str
+    manifest_url: str | None = None
+    download_url: str | None = None
+
+
+class AdminUploadResponse(AdminApiModel):
+    message: str
+    result: UploadResult
+    state: UploadState

@@ -602,3 +602,162 @@ select {
   display: flex;
   gap: 10px;
 }
+
+.upload-page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 420px;
+  gap: 18px;
+  align-items: start;
+  max-width: 1440px;
+}
+
+.upload-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.upload-panel label {
+  display: grid;
+  gap: 8px;
+  color: #55565b;
+  font-weight: 760;
+}
+
+.upload-panel input,
+.upload-panel select,
+.upload-panel textarea {
+  width: 100%;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  padding: 12px 14px;
+  color: #171717;
+  background: white;
+  font-weight: 700;
+}
+
+.upload-panel textarea {
+  resize: vertical;
+}
+
+.upload-drop-zone {
+  min-height: 142px;
+  place-items: center;
+  border: 1px dashed #c8ccd4;
+  border-radius: 14px;
+  padding: 24px;
+  background: #fafafa;
+  text-align: center;
+  cursor: pointer;
+}
+
+.upload-drop-zone input {
+  max-width: 360px;
+  padding: 10px;
+}
+
+.upload-drop-zone span {
+  color: #171717;
+  font-size: 22px;
+  font-weight: 820;
+}
+
+.upload-drop-zone strong {
+  color: #73757d;
+  font-size: 15px;
+}
+
+.form-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.form-grid.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.upload-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.upload-progress {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e9eaee;
+}
+
+.upload-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #171717;
+  transition: width 160ms ease;
+}
+
+.upload-side {
+  display: grid;
+  gap: 18px;
+}
+
+.upload-result-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.detail-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.detail-list > div {
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  border-top: 1px solid #e0e2e7;
+  padding-top: 10px;
+}
+
+.detail-list dt {
+  color: #73757d;
+  font-weight: 720;
+}
+
+.detail-list dd {
+  min-width: 0;
+  margin: 0;
+  color: #171717;
+  overflow-wrap: anywhere;
+  font-weight: 760;
+}
+
+.install-links {
+  display: grid;
+  gap: 10px;
+}
+
+.copyable {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid #e0e2e7;
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.copyable span {
+  color: #73757d;
+  font-weight: 780;
+}
+
+.copyable code {
+  min-width: 0;
+  overflow: hidden;
+  color: #35363b;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

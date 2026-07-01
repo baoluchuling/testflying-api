@@ -3,16 +3,17 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
 from sqlalchemy.orm import Session
 
 from testflying_api.admin.security import require_admin
-from testflying_api.admin.view_models import list_accounts, list_apps
+from testflying_api.admin.view_models import list_accounts, list_apps, upload_context
 from testflying_api.admin_api.errors import AdminApiError
 from testflying_api.admin_api.schemas import (
     AdminBootstrapResponse,
     AdminHealthState,
     AdminNavItem,
+    AdminUploadResponse,
     ReviewAnalysisIssue,
     ReviewAnalysisRunItem,
     ReviewAppItem,
@@ -28,6 +29,9 @@ from testflying_api.admin_api.schemas import (
     StoreReviewAnalysisResponse,
     StoreReviewFetchResponse,
     StoreReviewsState,
+    UploadAccountOption,
+    UploadResult,
+    UploadState,
 )
 from testflying_api.database import get_db_session
 from testflying_api.errors import ApiError
@@ -43,6 +47,7 @@ from testflying_api.store_reviews import (
     fetch_store_reviews_incremental,
     store_reviews_context,
 )
+from testflying_api.upload_service import create_package_upload
 
 router = APIRouter(prefix="/admin/api", tags=["admin-api"])
 AdminDep = Annotated[None, Depends(require_admin)]
@@ -80,6 +85,105 @@ def store_apps_state(
     appId: Annotated[str, Query()] = "",
 ) -> StoreAppsState:
     return _store_apps_state(session, active_filter=filter, app_id=appId)
+
+
+@router.get(
+    "/uploads",
+    response_model=UploadState,
+    response_model_by_alias=True,
+)
+def upload_state(
+    session: SessionDep,
+    _: AdminDep,
+) -> UploadState:
+    return _upload_state(session)
+
+
+@router.post(
+    "/uploads",
+    response_model=AdminUploadResponse,
+    response_model_by_alias=True,
+)
+async def upload_package(
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+    file: Annotated[UploadFile, File()],
+    platform: Annotated[str, Form()],
+    environment: Annotated[str, Form()],
+    changelog: Annotated[str, Form()] = "",
+    app_name: Annotated[str | None, Form(alias="appName")] = None,
+    developer_account_id: Annotated[str | None, Form(alias="developerAccountId")] = None,
+    store_app_id: Annotated[str | None, Form(alias="storeAppId")] = None,
+    store_package_name: Annotated[str | None, Form(alias="storePackageName")] = None,
+) -> AdminUploadResponse:
+    try:
+        upload = create_package_upload(
+            session=session,
+            storage=request.app.state.artifact_storage,
+            content=await file.read(),
+            file_name=file.filename or "",
+            content_type=file.content_type or "",
+            platform=platform,
+            environment=environment,
+            changelog=changelog,
+            app_name=app_name,
+            developer_account_id=developer_account_id,
+            store_app_id=store_app_id,
+            store_package_name=store_package_name,
+        )
+    except ApiError as error:
+        session.rollback()
+        raise _admin_api_error(error) from error
+
+    return AdminUploadResponse(
+        message="上传成功，包信息已自动解析",
+        result=_upload_result(session, upload.app.id),
+        state=_upload_state(session),
+    )
+
+
+def _upload_state(session: Session) -> UploadState:
+    context = upload_context(session)
+    accounts = context.get("accounts", [])
+    return UploadState(
+        accounts=[
+            UploadAccountOption(
+                id=account.id,
+                team_name=account.team_name,
+                status=account.status,
+                platform=None,
+            )
+            for account in accounts
+            if isinstance(account, DeveloperAccount)
+        ]
+    )
+
+
+def _upload_result(session: Session, app_id: str) -> UploadResult:
+    app = session.get(App, app_id)
+    if app is None:
+        raise AdminApiError("upload_app_not_found", "上传结果中的 App 不存在", status_code=500)
+    latest_build = max(app.builds, key=lambda build: build.uploaded_at, default=None)
+    if latest_build is None:
+        raise AdminApiError("upload_build_not_found", "上传结果中的构建不存在", status_code=500)
+    install_info = latest_build.artifact
+    return UploadResult(
+        app_id=app.id,
+        app_name=app.name,
+        bundle_identifier=app.bundle_identifier,
+        platform=latest_build.platform,
+        environment=latest_build.environment,
+        version=latest_build.version,
+        build_number=latest_build.build_number,
+        developer_account=(
+            app.developer_account.team_name if app.developer_account else "未绑定账号"
+        ),
+        store_identifier=_store_identifier(app) or "未填写",
+        install_url=install_info.install_url if install_info else "",
+        manifest_url=install_info.manifest_url if install_info else None,
+        download_url=install_info.download_url if install_info else None,
+    )
 
 
 @router.get(

@@ -159,6 +159,7 @@
         syncMetadataEditor();
         syncAppLogPage();
         window.scrollTo({ top: 0, behavior: 'auto' });
+        syncApiDocsPage();
       }
 
       function setAdminNavigationBusy(path, busy) {
@@ -1715,6 +1716,31 @@
         }
       }
 
+      function setApiDocsActiveLink(targetId) {
+        document.querySelectorAll('[data-api-docs-scroll-target]').forEach((link) => {
+          link.classList.toggle('is-active', link.dataset.apiDocsScrollTarget === targetId);
+        });
+      }
+
+      function scrollApiDocsTarget(targetId, pushHash = true) {
+        const target = document.getElementById(targetId);
+        if (!target) return false;
+        target.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' });
+        target.focus({ preventScroll: true });
+        setApiDocsActiveLink(targetId);
+        if (pushHash) {
+          history.replaceState(history.state, '', `#${targetId}`);
+        }
+        return true;
+      }
+
+      function syncApiDocsPage() {
+        if (!document.querySelector('[data-api-docs-page]')) return;
+        const targetId = decodeURIComponent(window.location.hash.replace(/^#/, ''));
+        if (!targetId) return;
+        requestAnimationFrame(() => scrollApiDocsTarget(targetId, false));
+      }
+
       function initAppLogPage() {
         const initial = document.querySelector('[data-app-log-initial]');
         let payload = {};
@@ -2539,6 +2565,15 @@
       });
 
       document.addEventListener('click', async (event) => {
+        const apiDocsLink = event.target.closest('[data-api-docs-scroll-target]');
+        if (apiDocsLink) {
+          const targetId = apiDocsLink.dataset.apiDocsScrollTarget;
+          if (targetId && scrollApiDocsTarget(targetId)) {
+            event.preventDefault();
+          }
+          return;
+        }
+
         const button = event.target.closest('[data-health-check]');
         if (!button) return;
         const previous = button.textContent;
@@ -2642,6 +2677,7 @@
       syncAccountViews();
       syncMetadataEditor();
       syncAppLogPage();
+      syncApiDocsPage();
     </script>
   </body>
 </html>

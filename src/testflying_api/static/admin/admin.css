@@ -10047,6 +10047,11 @@ select:focus {
   background: #f6f8fb;
 }
 
+.api-index-link.is-active {
+  background: #eef4ff;
+  color: #1b5fd6;
+}
+
 .api-docs-content {
   display: grid;
   gap: 18px;
@@ -10056,6 +10061,10 @@ select:focus {
 .api-endpoint-card {
   scroll-margin-top: 18px;
   padding: 24px;
+}
+
+.api-endpoint-card:focus {
+  outline: none;
 }
 
 .api-endpoint-head {

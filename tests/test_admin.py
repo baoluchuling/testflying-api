@@ -97,6 +97,9 @@ def test_admin_api_docs_page_renders_public_store_api(client: TestClient) -> Non
     assert "第三方电脑通过中心后台调用商店连接能力" in response.text
     assert "下载 Markdown" in response.text
     assert "data-api-docs-page" in response.text
+    assert 'data-api-docs-scroll-target="endpoint-1"' in response.text
+    assert 'id="endpoint-1" tabindex="-1"' in response.text
+    assert "syncApiDocsPage" in response.text
     assert "读取 Google Play Release" in response.text
     assert (
         "/v1/store-management/developer-accounts/{accountId}/apps/{appId}/sync-runs"

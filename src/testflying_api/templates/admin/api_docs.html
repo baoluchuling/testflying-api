@@ -41,7 +41,11 @@
       </div>
       <nav>
         {% for endpoint in api_endpoints %}
-          <a class="api-index-link" href="#{{ endpoint.anchor }}">
+          <a
+            class="api-index-link"
+            href="#{{ endpoint.anchor }}"
+            data-api-docs-scroll-target="{{ endpoint.anchor }}"
+          >
             <span class="api-method api-method-{{ endpoint.method|lower }}">{{ endpoint.method }}</span>
             <span>{{ endpoint.title }}</span>
           </a>
@@ -51,7 +55,7 @@
 
     <section class="api-docs-content" aria-label="接口详情">
       {% for endpoint in api_endpoints %}
-        <article class="api-endpoint-card panel" id="{{ endpoint.anchor }}">
+        <article class="api-endpoint-card panel" id="{{ endpoint.anchor }}" tabindex="-1">
           <header class="api-endpoint-head">
             <div>
               <div class="api-endpoint-title-row">

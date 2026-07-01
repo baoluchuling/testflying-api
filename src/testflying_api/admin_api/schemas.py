@@ -272,3 +272,126 @@ class AppLogsState(AdminApiModel):
     logs: list[AppLogEntryItem]
     errors: list[AppLogClientErrorItem]
     levels: list[str]
+
+
+class DashboardStatItem(AdminApiModel):
+    label: str
+    value: str
+    tone: str
+
+
+class BuildAppSummary(AdminApiModel):
+    id: str
+    name: str
+    bundle_identifier: str
+    platform: str
+    icon_color: str
+    icon_text: str
+
+
+class BuildArtifactItem(AdminApiModel):
+    file_name: str
+    size_label: str
+    install_url: str
+    download_url: str
+    manifest_url: str | None = None
+
+
+class BuildItem(AdminApiModel):
+    id: str
+    app: BuildAppSummary
+    version: str
+    build_number: str
+    platform: str
+    platform_label: str
+    environment: str
+    environment_label: str
+    status: str
+    note: str
+    min_os_version: str
+    uploaded_at: str
+    uploaded_at_label: str
+    expires_at: str | None
+    expires_at_label: str
+    artifact: BuildArtifactItem | None
+
+
+class NotificationItem(AdminApiModel):
+    id: str
+    type: str
+    section: str
+    icon_key: str
+    title: str
+    subtitle: str
+    tag: str
+    tag_color: str
+    created_at: str
+    created_at_label: str
+
+
+class DashboardState(AdminApiModel):
+    stats: list[DashboardStatItem]
+    recent_builds: list[BuildItem]
+    recent_notifications: list[NotificationItem]
+
+
+class BuildsState(AdminApiModel):
+    builds: list[BuildItem]
+    total: int
+
+
+class DeviceItem(AdminApiModel):
+    id: str
+    name: str
+    owner: str
+    platform: str
+    platform_label: str
+    status: str
+    status_color: str
+    detail: str
+    udid: str
+    os_version: str
+    certificate_status: str
+    registered_at: str
+    registered_at_label: str
+
+
+class DevicesState(AdminApiModel):
+    devices: list[DeviceItem]
+    total: int
+
+
+class NotificationTypeCount(AdminApiModel):
+    type: str
+    label: str
+    count: int
+
+
+class NotificationsState(AdminApiModel):
+    notifications: list[NotificationItem]
+    type_counts: list[NotificationTypeCount]
+    active_type: str
+    total: int
+
+
+class ApiDocParamItem(AdminApiModel):
+    name: str
+    location: str
+    required: str
+    description: str
+
+
+class ApiDocEndpointItem(AdminApiModel):
+    anchor: str
+    title: str
+    method: str
+    path: str
+    summary: str
+    params: list[ApiDocParamItem]
+    curl: str
+    response: str
+
+
+class ApiDocsState(AdminApiModel):
+    endpoints: list[ApiDocEndpointItem]
+    download_url: str

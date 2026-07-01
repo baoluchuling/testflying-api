@@ -248,6 +248,129 @@ export type AppLogsState = {
   levels: string[];
 };
 
+export type DashboardStat = {
+  label: string;
+  value: string;
+  tone: string;
+};
+
+export type BuildAppSummary = {
+  id: string;
+  name: string;
+  bundleIdentifier: string;
+  platform: string;
+  iconColor: string;
+  iconText: string;
+};
+
+export type BuildArtifact = {
+  fileName: string;
+  sizeLabel: string;
+  installUrl: string;
+  downloadUrl: string;
+  manifestUrl: string | null;
+};
+
+export type BuildItem = {
+  id: string;
+  app: BuildAppSummary;
+  version: string;
+  buildNumber: string;
+  platform: string;
+  platformLabel: string;
+  environment: string;
+  environmentLabel: string;
+  status: string;
+  note: string;
+  minOsVersion: string;
+  uploadedAt: string;
+  uploadedAtLabel: string;
+  expiresAt: string | null;
+  expiresAtLabel: string;
+  artifact: BuildArtifact | null;
+};
+
+export type NotificationItem = {
+  id: string;
+  type: string;
+  section: string;
+  iconKey: string;
+  title: string;
+  subtitle: string;
+  tag: string;
+  tagColor: string;
+  createdAt: string;
+  createdAtLabel: string;
+};
+
+export type DashboardState = {
+  stats: DashboardStat[];
+  recentBuilds: BuildItem[];
+  recentNotifications: NotificationItem[];
+};
+
+export type BuildsState = {
+  builds: BuildItem[];
+  total: number;
+};
+
+export type DeviceItem = {
+  id: string;
+  name: string;
+  owner: string;
+  platform: string;
+  platformLabel: string;
+  status: string;
+  statusColor: string;
+  detail: string;
+  udid: string;
+  osVersion: string;
+  certificateStatus: string;
+  registeredAt: string;
+  registeredAtLabel: string;
+};
+
+export type DevicesState = {
+  devices: DeviceItem[];
+  total: number;
+};
+
+export type NotificationTypeCount = {
+  type: string;
+  label: string;
+  count: number;
+};
+
+export type NotificationsState = {
+  notifications: NotificationItem[];
+  typeCounts: NotificationTypeCount[];
+  activeType: string;
+  total: number;
+};
+
+export type ApiDocParam = {
+  name: string;
+  location: string;
+  required: string;
+  description: string;
+};
+
+export type ApiDocEndpoint = {
+  anchor: string;
+  title: string;
+  method: string;
+  path: string;
+  summary: string;
+  params: ApiDocParam[];
+  curl: string;
+  response: string;
+};
+
+export type ApiDocsState = {
+  endpoints: ApiDocEndpoint[];
+  downloadUrl: string;
+};
+
 export class AdminApiError extends Error {
   code: string;
   detail: unknown;
@@ -302,6 +425,10 @@ export function bootstrapAdmin(): Promise<BootstrapResponse> {
   return getJson<BootstrapResponse>('/admin/api/bootstrap');
 }
 
+export function loadDashboardState(): Promise<DashboardState> {
+  return getJson<DashboardState>('/admin/api/dashboard');
+}
+
 export function loadStoreApps(pathAndQuery: string): Promise<StoreAppsState> {
   return getJson<StoreAppsState>(`/admin/api/store-apps${pathAndQuery}`);
 }
@@ -312,6 +439,22 @@ export function loadStoreReviews(pathAndQuery: string): Promise<StoreReviewsStat
 
 export function loadUploadState(): Promise<UploadState> {
   return getJson<UploadState>('/admin/api/uploads');
+}
+
+export function loadBuildsState(): Promise<BuildsState> {
+  return getJson<BuildsState>('/admin/api/builds');
+}
+
+export function loadDevicesState(): Promise<DevicesState> {
+  return getJson<DevicesState>('/admin/api/devices');
+}
+
+export function loadNotificationsState(pathAndQuery: string): Promise<NotificationsState> {
+  return getJson<NotificationsState>(`/admin/api/notifications${pathAndQuery}`);
+}
+
+export function loadApiDocsState(): Promise<ApiDocsState> {
+  return getJson<ApiDocsState>('/admin/api/api-docs');
 }
 
 export function loadAppLogs(): Promise<AppLogsState> {

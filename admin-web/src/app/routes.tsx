@@ -13,7 +13,7 @@ export const routeTitles: Record<AdminRouteKey, { eyebrow: string; title: string
   dashboard: {
     eyebrow: 'Internal Distribution',
     title: '总览',
-    summary: '后台概览会在后续迁移，当前可从旧版后台查看。'
+    summary: '查看应用、构建、设备和账号提醒的当前状态。'
   },
   uploads: {
     eyebrow: 'Internal Distribution',
@@ -33,17 +33,17 @@ export const routeTitles: Record<AdminRouteKey, { eyebrow: string; title: string
   'api-docs': {
     eyebrow: 'Developer API',
     title: '接口文档',
-    summary: '对外接口文档会迁移为可定位的前端文档页。'
+    summary: '查看商店管理对外接口、参数和调用示例。'
   },
   builds: {
     eyebrow: 'Internal Distribution',
     title: '构建',
-    summary: '构建列表会在普通页面迁移阶段接入。'
+    summary: '查看所有上传构建和可复制的安装地址。'
   },
   devices: {
     eyebrow: 'Internal Distribution',
     title: '设备',
-    summary: '设备列表会在普通页面迁移阶段接入。'
+    summary: '查看已登记设备、平台、系统和签名状态。'
   },
   'app-logs': {
     eyebrow: 'App Log Console',
@@ -53,7 +53,7 @@ export const routeTitles: Record<AdminRouteKey, { eyebrow: string; title: string
   notifications: {
     eyebrow: 'Internal Distribution',
     title: '通知',
-    summary: '通知列表会在普通页面迁移阶段接入。'
+    summary: '按类型筛选构建、账号和设备相关通知。'
   }
 };
 

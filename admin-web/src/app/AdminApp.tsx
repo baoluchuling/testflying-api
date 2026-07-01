@@ -5,6 +5,11 @@ import { StoreAppsPage } from '../pages/StoreAppsPage';
 import { StoreReviewsPage } from '../pages/StoreReviewsPage';
 import { UploadPage } from '../pages/UploadPage';
 import { AppLogsPage } from '../pages/AppLogsPage';
+import { DashboardPage } from '../pages/DashboardPage';
+import { BuildsPage } from '../pages/BuildsPage';
+import { DevicesPage } from '../pages/DevicesPage';
+import { NotificationsPage } from '../pages/NotificationsPage';
+import { ApiDocsPage } from '../pages/ApiDocsPage';
 
 const fallbackNav = [
   { key: 'dashboard', label: '总览', path: '/admin-next' },
@@ -101,9 +106,6 @@ export function AdminApp() {
             <h1>{title.title}</h1>
             <p>{title.summary}</p>
           </div>
-          <a className="button" href={legacyHref(activeRoute)}>
-            打开旧版后台
-          </a>
         </section>
 
         {error ? (
@@ -113,36 +115,16 @@ export function AdminApp() {
           </section>
         ) : null}
 
+        {activeRoute === 'dashboard' ? <DashboardPage /> : null}
         {activeRoute === 'uploads' ? <UploadPage /> : null}
         {activeRoute === 'apps' ? <StoreAppsPage /> : null}
         {activeRoute === 'store-reviews' ? <StoreReviewsPage /> : null}
+        {activeRoute === 'api-docs' ? <ApiDocsPage /> : null}
+        {activeRoute === 'builds' ? <BuildsPage /> : null}
+        {activeRoute === 'devices' ? <DevicesPage /> : null}
         {activeRoute === 'app-logs' ? <AppLogsPage /> : null}
-        {activeRoute !== 'uploads' &&
-        activeRoute !== 'apps' &&
-        activeRoute !== 'store-reviews' &&
-        activeRoute !== 'app-logs' ? (
-          <LegacyBackedRoute />
-        ) : null}
+        {activeRoute === 'notifications' ? <NotificationsPage /> : null}
       </main>
     </div>
   );
-}
-
-function LegacyBackedRoute() {
-  return (
-    <section className="panel">
-      <div className="panel-head">
-        <strong>新后台重构中</strong>
-        <span>无刷新路由已启用</span>
-      </div>
-      <p className="muted">
-        当前页面已经在 React Admin App 内切换，不会重新加载浏览器文档。功能迁移完成前，可以通过右上角进入旧版后台继续操作。
-      </p>
-    </section>
-  );
-}
-
-function legacyHref(route: AdminRouteKey): string {
-  if (route === 'dashboard') return '/admin';
-  return `/admin/${route}`;
 }

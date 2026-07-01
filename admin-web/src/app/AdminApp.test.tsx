@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AdminApp } from './AdminApp';
-import type { StoreReviewsState } from './apiClient';
+import type { BuildsState, DashboardState, StoreReviewsState } from './apiClient';
 
 const bootstrapPayload = {
   appName: 'testflying',
@@ -28,8 +28,14 @@ describe('AdminApp', () => {
       if (url === '/admin/api/bootstrap') {
         return jsonResponse(bootstrapPayload);
       }
+      if (url === '/admin/api/dashboard') {
+        return jsonResponse(dashboardState);
+      }
       if (url.startsWith('/admin/api/store-reviews')) {
         return jsonResponse(emptyReviewsState);
+      }
+      if (url === '/admin/api/builds') {
+        return jsonResponse(buildsState);
       }
       return Promise.reject(new Error(`unexpected fetch ${url}`));
     });
@@ -55,7 +61,28 @@ describe('AdminApp', () => {
     expect(location.pathname).toBe('/admin-next/store-reviews');
     expect(screen.getByRole('heading', { name: '商店评论' })).toBeTruthy();
   });
+
+  it('renders ordinary pages inside the React shell', async () => {
+    const user = userEvent.setup();
+
+    render(<AdminApp />);
+    await screen.findByText('最近构建');
+    await user.click(screen.getByRole('button', { name: '构建' }));
+
+    expect(location.pathname).toBe('/admin-next/builds');
+    expect(await screen.findByText('构建列表')).toBeTruthy();
+    expect(screen.queryByText('新后台重构中')).toBeNull();
+  });
 });
+
+const dashboardState: DashboardState = {
+  stats: [
+    { label: '应用', value: '1', tone: 'neutral' },
+    { label: '构建', value: '1', tone: 'neutral' }
+  ],
+  recentBuilds: [],
+  recentNotifications: []
+};
 
 const emptyReviewsState: StoreReviewsState = {
   apps: [],
@@ -68,6 +95,37 @@ const emptyReviewsState: StoreReviewsState = {
   latestAnalysis: null,
   analysisIssues: [],
   analysisBoundaries: []
+};
+
+const buildsState: BuildsState = {
+  total: 1,
+  builds: [
+    {
+      id: 'build-1',
+      app: {
+        id: 'app-1',
+        name: 'lookrva',
+        bundleIdentifier: 'com.example.lookrva',
+        platform: 'ios',
+        iconColor: '#171717',
+        iconText: 'LO'
+      },
+      version: '1.0',
+      buildNumber: '1',
+      platform: 'ios',
+      platformLabel: 'iOS',
+      environment: 'development',
+      environmentLabel: '开发环境',
+      status: 'available',
+      note: '',
+      minOsVersion: 'iOS 16.0',
+      uploadedAt: '2026-06-29T00:00:00',
+      uploadedAtLabel: '2026-06-29 00:00',
+      expiresAt: null,
+      expiresAtLabel: '-',
+      artifact: null
+    }
+  ]
 };
 
 function jsonResponse(payload: unknown): Promise<Response> {

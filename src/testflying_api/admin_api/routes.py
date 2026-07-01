@@ -1,20 +1,48 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime
+from importlib import resources
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
 from sqlalchemy.orm import Session
 
 from testflying_api.admin.security import require_admin
-from testflying_api.admin.view_models import list_accounts, list_apps, upload_context
+from testflying_api.admin.view_models import (
+    dashboard_context,
+    environment_label,
+    format_datetime,
+    format_size,
+    list_accounts,
+    list_apps,
+    list_builds,
+    list_devices,
+    list_notifications,
+    platform_label,
+    upload_context,
+)
 from testflying_api.admin_api.errors import AdminApiError
 from testflying_api.admin_api.schemas import (
     AdminBootstrapResponse,
     AdminHealthState,
     AdminNavItem,
     AdminUploadResponse,
+    ApiDocEndpointItem,
+    ApiDocParamItem,
+    ApiDocsState,
     AppLogsState,
+    BuildAppSummary,
+    BuildArtifactItem,
+    BuildItem,
+    BuildsState,
+    DashboardState,
+    DashboardStatItem,
+    DeviceItem,
+    DevicesState,
+    NotificationItem,
+    NotificationsState,
+    NotificationTypeCount,
     ReviewAnalysisIssue,
     ReviewAnalysisRunItem,
     ReviewAppItem,
@@ -39,7 +67,10 @@ from testflying_api.database import get_db_session
 from testflying_api.errors import ApiError
 from testflying_api.schema import (
     App,
+    Build,
     DeveloperAccount,
+    Device,
+    Notification,
     StoreReview,
     StoreReviewAnalysisRun,
     StoreReviewFetchRun,
@@ -54,6 +85,7 @@ from testflying_api.upload_service import create_package_upload
 router = APIRouter(prefix="/admin/api", tags=["admin-api"])
 AdminDep = Annotated[None, Depends(require_admin)]
 SessionDep = Annotated[Session, Depends(get_db_session)]
+PUBLIC_API_DOC_PATH = "docs/store-management-public-api.md"
 
 
 @router.get("/bootstrap", response_model=AdminBootstrapResponse, response_model_by_alias=True)
@@ -72,6 +104,93 @@ def admin_bootstrap(_: AdminDep) -> AdminBootstrapResponse:
             AdminNavItem(key="notifications", label="通知", path="/admin-next/notifications"),
         ],
         health=AdminHealthState(state="idle", label="未检查"),
+    )
+
+
+@router.get(
+    "/dashboard",
+    response_model=DashboardState,
+    response_model_by_alias=True,
+)
+def dashboard_state(
+    session: SessionDep,
+    _: AdminDep,
+) -> DashboardState:
+    context = dashboard_context(session)
+    return DashboardState(
+        stats=[
+            DashboardStatItem(label=stat.label, value=stat.value, tone=stat.tone)
+            for stat in context["stats"]
+        ],
+        recent_builds=[_build_item(build) for build in context["recent_builds"]],
+        recent_notifications=[
+            _notification_item(notification)
+            for notification in context["recent_notifications"]
+        ],
+    )
+
+
+@router.get(
+    "/builds",
+    response_model=BuildsState,
+    response_model_by_alias=True,
+)
+def builds_state(
+    session: SessionDep,
+    _: AdminDep,
+) -> BuildsState:
+    builds = list_builds(session)
+    return BuildsState(builds=[_build_item(build) for build in builds], total=len(builds))
+
+
+@router.get(
+    "/devices",
+    response_model=DevicesState,
+    response_model_by_alias=True,
+)
+def devices_state(
+    session: SessionDep,
+    _: AdminDep,
+) -> DevicesState:
+    devices = list_devices(session)
+    return DevicesState(devices=[_device_item(device) for device in devices], total=len(devices))
+
+
+@router.get(
+    "/notifications",
+    response_model=NotificationsState,
+    response_model_by_alias=True,
+)
+def notifications_state(
+    session: SessionDep,
+    _: AdminDep,
+    type: Annotated[str, Query()] = "all",
+) -> NotificationsState:
+    notifications = list_notifications(session)
+    normalized_type = type if type in _notification_types(notifications) else "all"
+    filtered = [
+        notification
+        for notification in notifications
+        if normalized_type == "all" or notification.type == normalized_type
+    ]
+    return NotificationsState(
+        notifications=[_notification_item(notification) for notification in filtered],
+        type_counts=_notification_type_counts(notifications),
+        active_type=normalized_type,
+        total=len(filtered),
+    )
+
+
+@router.get(
+    "/api-docs",
+    response_model=ApiDocsState,
+    response_model_by_alias=True,
+)
+def api_docs_state(_: AdminDep) -> ApiDocsState:
+    markdown = _public_api_markdown()
+    return ApiDocsState(
+        endpoints=_parse_public_api_endpoints(markdown),
+        download_url="/admin/api-docs/store-management.md",
     )
 
 
@@ -226,6 +345,170 @@ def _app_logs_state(request: Request, *, cursor: int = 0, limit: int = 500) -> A
         errors=snapshot.errors,
         levels=list(LEVELS),
     )
+
+
+def _build_item(build: Build) -> BuildItem:
+    artifact = build.artifact
+    app = build.app
+    if app is None:
+        raise AdminApiError("build_app_not_found", "构建关联的应用不存在", status_code=500)
+    return BuildItem(
+        id=build.id,
+        app=BuildAppSummary(
+            id=app.id,
+            name=app.name,
+            bundle_identifier=app.bundle_identifier,
+            platform=app.platform,
+            icon_color=app.icon_color,
+            icon_text=app.name[:2].upper(),
+        ),
+        version=build.version,
+        build_number=build.build_number,
+        platform=build.platform,
+        platform_label=platform_label(build.platform),
+        environment=build.environment,
+        environment_label=environment_label(build.environment),
+        status=build.status,
+        note=build.note or "",
+        min_os_version=build.min_os_version or "",
+        uploaded_at=_iso_datetime(build.uploaded_at),
+        uploaded_at_label=format_datetime(build.uploaded_at),
+        expires_at=_optional_iso_datetime(build.expires_at),
+        expires_at_label=format_datetime(build.expires_at),
+        artifact=(
+            BuildArtifactItem(
+                file_name=artifact.file_name,
+                size_label=format_size(artifact.size_bytes),
+                install_url=artifact.install_url,
+                download_url=artifact.download_url,
+                manifest_url=artifact.manifest_url,
+            )
+            if artifact
+            else None
+        ),
+    )
+
+
+def _device_item(device: Device) -> DeviceItem:
+    return DeviceItem(
+        id=device.id,
+        name=device.name,
+        owner=device.owner,
+        platform=device.platform,
+        platform_label=platform_label(device.platform),
+        status=device.status,
+        status_color=device.status_color,
+        detail=device.detail,
+        udid=device.udid,
+        os_version=device.os_version,
+        certificate_status=device.certificate_status,
+        registered_at=_iso_datetime(device.registered_at),
+        registered_at_label=format_datetime(device.registered_at),
+    )
+
+
+def _notification_item(notification: Notification) -> NotificationItem:
+    return NotificationItem(
+        id=notification.id,
+        type=notification.type,
+        section=notification.section,
+        icon_key=notification.icon_key,
+        title=notification.title,
+        subtitle=notification.subtitle,
+        tag=notification.tag,
+        tag_color=notification.tag_color,
+        created_at=_iso_datetime(notification.created_at),
+        created_at_label=format_datetime(notification.created_at),
+    )
+
+
+def _notification_types(notifications: list[Notification]) -> set[str]:
+    return {notification.type for notification in notifications} | {"all"}
+
+
+def _notification_type_counts(notifications: list[Notification]) -> list[NotificationTypeCount]:
+    labels = {"all": "全部", "build": "构建", "account": "账号", "device": "设备"}
+    counts = {"all": len(notifications)}
+    for notification in notifications:
+        counts[notification.type] = counts.get(notification.type, 0) + 1
+    return [
+        NotificationTypeCount(
+            type=type_key,
+            label=labels.get(type_key, type_key),
+            count=counts[type_key],
+        )
+        for type_key in ["all", *sorted(key for key in counts if key != "all")]
+    ]
+
+
+def _public_api_markdown() -> str:
+    return (
+        resources.files("testflying_api")
+        .joinpath(PUBLIC_API_DOC_PATH)
+        .read_text(encoding="utf-8")
+    )
+
+
+def _parse_public_api_endpoints(markdown: str) -> list[ApiDocEndpointItem]:
+    headings = list(re.finditer(r"^##\s+\d+\.\s+(.+)$", markdown, flags=re.MULTILINE))
+    endpoints: list[ApiDocEndpointItem] = []
+    for index, heading in enumerate(headings, start=1):
+        section_end = headings[index].start() if index < len(headings) else len(markdown)
+        section = markdown[heading.start() : section_end]
+        request_line = _first_markdown_code_block(section, "http").splitlines()[0].strip()
+        method, path = (request_line.split(" ", 1) + [""])[:2]
+        endpoints.append(
+            ApiDocEndpointItem(
+                anchor=f"endpoint-{index}",
+                title=heading.group(1).strip(),
+                method=method,
+                path=path.strip(),
+                summary=_public_api_section_summary(section),
+                params=_parse_public_api_params(section),
+                curl=_first_markdown_code_block(section, "bash").strip(),
+                response=_first_markdown_code_block(section, "json").strip(),
+            )
+        )
+    return endpoints
+
+
+def _public_api_section_summary(section: str) -> str:
+    without_code = re.sub(r"```.*?```", "", section, flags=re.DOTALL)
+    for line in without_code.splitlines()[1:]:
+        value = line.strip()
+        if not value or value == "参数：" or value.startswith("|"):
+            continue
+        return value
+    return ""
+
+
+def _parse_public_api_params(section: str) -> list[ApiDocParamItem]:
+    match = re.search(r"参数：\n\n((?:\|.*\|\n?)+)", section)
+    if not match:
+        return []
+    params: list[ApiDocParamItem] = []
+    for line in match.group(1).splitlines():
+        cells = [_strip_markdown_cell(cell) for cell in line.strip().strip("|").split("|")]
+        if len(cells) < 4 or cells[0] in {"参数", "---"} or set(cells[0]) == {"-"}:
+            continue
+        params.append(
+            ApiDocParamItem(
+                name=cells[0],
+                location=cells[1],
+                required=cells[2],
+                description=cells[3],
+            )
+        )
+    return params
+
+
+def _first_markdown_code_block(section: str, language: str) -> str:
+    match = re.search(rf"```{re.escape(language)}\n(.*?)\n```", section, flags=re.DOTALL)
+    return match.group(1).strip() if match else ""
+
+
+def _strip_markdown_cell(value: str) -> str:
+    return value.strip().strip("`").replace("**", "")
 
 
 @router.get(

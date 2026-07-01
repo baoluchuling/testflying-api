@@ -99,6 +99,55 @@ export type StoreReviewActionResponse = {
   } | null;
 };
 
+export type StoreAppBuild = {
+  version: string;
+  buildNumber: string;
+  environment: string;
+  uploadedAt: string;
+};
+
+export type StoreAppItem = {
+  id: string;
+  name: string;
+  bundleIdentifier: string;
+  platform: string;
+  developerAccountId: string | null;
+  developerAccountName: string;
+  iconColor: string;
+  iconText: string;
+  storeIdentifier: string;
+  status: string;
+  statusLabel: string;
+  latestBuild: StoreAppBuild | null;
+  selected: boolean;
+  storeManagementPath: string;
+  reviewsPath: string;
+};
+
+export type StoreAppsStats = {
+  total: number;
+  ios: number;
+  android: number;
+  ready: number;
+  needs: number;
+};
+
+export type StoreAppsAccountSummary = {
+  totalAccounts: number;
+  boundApps: number;
+  connectorOk: number;
+  connectorNeeds: number;
+  renewalReminders: number;
+};
+
+export type StoreAppsState = {
+  apps: StoreAppItem[];
+  selectedApp: StoreAppItem | null;
+  filter: string;
+  stats: StoreAppsStats;
+  accountSummary: StoreAppsAccountSummary;
+};
+
 export class AdminApiError extends Error {
   code: string;
   detail: unknown;
@@ -151,6 +200,10 @@ export async function postJson<T>(path: string, body: unknown): Promise<T> {
 
 export function bootstrapAdmin(): Promise<BootstrapResponse> {
   return getJson<BootstrapResponse>('/admin/api/bootstrap');
+}
+
+export function loadStoreApps(pathAndQuery: string): Promise<StoreAppsState> {
+  return getJson<StoreAppsState>(`/admin/api/store-apps${pathAndQuery}`);
 }
 
 export function loadStoreReviews(pathAndQuery: string): Promise<StoreReviewsState> {

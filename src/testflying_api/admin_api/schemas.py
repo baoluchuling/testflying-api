@@ -123,3 +123,52 @@ class StoreReviewAnalysisResponse(AdminApiModel):
     result: ReviewAnalysisRunItem | None
     state: StoreReviewsState
     error: dict[str, Any] | None = None
+
+
+class StoreAppBuildItem(AdminApiModel):
+    version: str
+    build_number: str
+    environment: str
+    uploaded_at: str
+
+
+class StoreAppItem(AdminApiModel):
+    id: str
+    name: str
+    bundle_identifier: str
+    platform: str
+    developer_account_id: str | None
+    developer_account_name: str
+    icon_color: str
+    icon_text: str
+    store_identifier: str
+    status: str
+    status_label: str
+    latest_build: StoreAppBuildItem | None
+    selected: bool
+    store_management_path: str
+    reviews_path: str
+
+
+class StoreAppsStats(AdminApiModel):
+    total: int
+    ios: int
+    android: int
+    ready: int
+    needs: int
+
+
+class StoreAppsAccountSummary(AdminApiModel):
+    total_accounts: int
+    bound_apps: int
+    connector_ok: int
+    connector_needs: int
+    renewal_reminders: int
+
+
+class StoreAppsState(AdminApiModel):
+    apps: list[StoreAppItem]
+    selected_app: StoreAppItem | None
+    filter: str
+    stats: StoreAppsStats
+    account_summary: StoreAppsAccountSummary

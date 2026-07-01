@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from testflying_api.admin.security import require_admin
+from testflying_api.admin.view_models import list_accounts, list_apps
 from testflying_api.admin_api.errors import AdminApiError
 from testflying_api.admin_api.schemas import (
     AdminBootstrapResponse,
@@ -19,6 +20,11 @@ from testflying_api.admin_api.schemas import (
     ReviewItem,
     ReviewScopeRequest,
     ReviewStats,
+    StoreAppBuildItem,
+    StoreAppItem,
+    StoreAppsAccountSummary,
+    StoreAppsState,
+    StoreAppsStats,
     StoreReviewAnalysisResponse,
     StoreReviewFetchResponse,
     StoreReviewsState,
@@ -60,6 +66,20 @@ def admin_bootstrap(_: AdminDep) -> AdminBootstrapResponse:
         ],
         health=AdminHealthState(state="idle", label="未检查"),
     )
+
+
+@router.get(
+    "/store-apps",
+    response_model=StoreAppsState,
+    response_model_by_alias=True,
+)
+def store_apps_state(
+    session: SessionDep,
+    _: AdminDep,
+    filter: Annotated[str, Query()] = "all",
+    appId: Annotated[str, Query()] = "",
+) -> StoreAppsState:
+    return _store_apps_state(session, active_filter=filter, app_id=appId)
 
 
 @router.get(
@@ -154,6 +174,137 @@ def analyze_reviews(
                 "message": error.message,
             },
         )
+
+
+def _store_apps_state(
+    session: Session,
+    *,
+    active_filter: str,
+    app_id: str,
+) -> StoreAppsState:
+    all_apps = list_apps(session)
+    normalized_filter = (
+        active_filter if active_filter in {"all", "ios", "android", "needs", "ok"} else "all"
+    )
+    app_items = [_store_app_item(app, selected_app_id=app_id) for app in all_apps]
+    filtered_apps = [
+        item for item in app_items if _store_app_matches_filter(item, normalized_filter)
+    ]
+    selected_app = next((item for item in filtered_apps if item.id == app_id), None)
+    if selected_app is None:
+        selected_app = filtered_apps[0] if filtered_apps else None
+    if selected_app is not None:
+        filtered_apps = [
+            item.model_copy(update={"selected": item.id == selected_app.id})
+            for item in filtered_apps
+        ]
+        selected_app = next((item for item in filtered_apps if item.selected), selected_app)
+    return StoreAppsState(
+        apps=filtered_apps,
+        selected_app=selected_app,
+        filter=normalized_filter,
+        stats=StoreAppsStats(
+            total=len(app_items),
+            ios=sum(1 for item in app_items if item.platform == "ios"),
+            android=sum(1 for item in app_items if item.platform == "android"),
+            ready=sum(1 for item in app_items if item.status == "ready"),
+            needs=sum(1 for item in app_items if item.status != "ready"),
+        ),
+        account_summary=_store_apps_account_summary(session, app_items),
+    )
+
+
+def _store_app_item(app: App, *, selected_app_id: str) -> StoreAppItem:
+    latest_build = max(app.builds, key=lambda build: build.uploaded_at, default=None)
+    account = app.developer_account
+    store_identifier = _store_identifier(app)
+    status = _store_app_status(app, store_identifier)
+    return StoreAppItem(
+        id=app.id,
+        name=app.name,
+        bundle_identifier=app.bundle_identifier,
+        platform=app.platform,
+        developer_account_id=account.id if account else None,
+        developer_account_name=account.team_name if account else "",
+        icon_color=app.icon_color,
+        icon_text=app.name[:2].upper(),
+        store_identifier=store_identifier,
+        status=status,
+        status_label=_store_app_status_label(status),
+        latest_build=(
+            StoreAppBuildItem(
+                version=latest_build.version,
+                build_number=latest_build.build_number,
+                environment=latest_build.environment,
+                uploaded_at=_iso_datetime(latest_build.uploaded_at),
+            )
+            if latest_build
+            else None
+        ),
+        selected=app.id == selected_app_id,
+        store_management_path=(
+            f"/admin/developer-accounts/{account.id}/apps/{app.id}/store" if account else ""
+        ),
+        reviews_path=(
+            f"/admin-next/store-reviews?accountId={account.id}&appId={app.id}" if account else ""
+        ),
+    )
+
+
+def _store_app_matches_filter(app: StoreAppItem, active_filter: str) -> bool:
+    if active_filter == "all":
+        return True
+    if active_filter in {"ios", "android"}:
+        return app.platform == active_filter
+    if active_filter == "ok":
+        return app.status == "ready"
+    if active_filter == "needs":
+        return app.status != "ready"
+    return True
+
+
+def _store_apps_account_summary(
+    session: Session,
+    app_items: list[StoreAppItem],
+) -> StoreAppsAccountSummary:
+    accounts = list_accounts(session)
+    return StoreAppsAccountSummary(
+        total_accounts=len(accounts),
+        bound_apps=sum(1 for item in app_items if item.developer_account_id),
+        connector_ok=sum(
+            1 for item in accounts if getattr(item.get("connector"), "status", "") == "ok"
+        ),
+        connector_needs=sum(
+            1 for item in accounts if getattr(item.get("connector"), "status", "") != "ok"
+        ),
+        renewal_reminders=sum(
+            1 for item in accounts if getattr(item.get("account"), "status", "") != "ok"
+        ),
+    )
+
+
+def _store_identifier(app: App) -> str:
+    if app.platform == "ios":
+        return app.store_app_id or ""
+    if app.platform == "android":
+        return app.store_package_name or app.bundle_identifier
+    return app.store_app_id or app.store_package_name or ""
+
+
+def _store_app_status(app: App, store_identifier: str) -> str:
+    if app.developer_account is None:
+        return "needs_account"
+    if not store_identifier:
+        return "needs_identifier"
+    return "ready"
+
+
+def _store_app_status_label(status: str) -> str:
+    if status == "ready":
+        return "可同步"
+    if status == "needs_identifier":
+        return "待填写商店标识"
+    return "未绑定账号"
 
 
 def _store_reviews_state(

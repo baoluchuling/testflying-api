@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { bootstrapAdmin, type BootstrapResponse } from './apiClient';
 import { routeKeyFromPath, routeTitles, type AdminRouteKey } from './routes';
+import { StoreAppsPage } from '../pages/StoreAppsPage';
 import { StoreReviewsPage } from '../pages/StoreReviewsPage';
 
 const fallbackNav = [
@@ -110,7 +111,9 @@ export function AdminApp() {
           </section>
         ) : null}
 
-        {activeRoute === 'store-reviews' ? <StoreReviewsPage /> : <LegacyBackedRoute />}
+        {activeRoute === 'apps' ? <StoreAppsPage /> : null}
+        {activeRoute === 'store-reviews' ? <StoreReviewsPage /> : null}
+        {activeRoute !== 'apps' && activeRoute !== 'store-reviews' ? <LegacyBackedRoute /> : null}
       </main>
     </div>
   );

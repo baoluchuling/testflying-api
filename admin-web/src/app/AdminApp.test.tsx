@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AdminApp } from './AdminApp';
+import type { StoreReviewsState } from './apiClient';
 
 const bootstrapPayload = {
   appName: 'testflying',
@@ -22,12 +23,16 @@ const bootstrapPayload = {
 describe('AdminApp', () => {
   beforeEach(() => {
     history.replaceState(null, '', '/admin-next');
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify(bootstrapPayload), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
-      })
-    );
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url === '/admin/api/bootstrap') {
+        return jsonResponse(bootstrapPayload);
+      }
+      if (url.startsWith('/admin/api/store-reviews')) {
+        return jsonResponse(emptyReviewsState);
+      }
+      return Promise.reject(new Error(`unexpected fetch ${url}`));
+    });
   });
 
   afterEach(() => {
@@ -51,3 +56,25 @@ describe('AdminApp', () => {
     expect(screen.getByRole('heading', { name: '商店评论' })).toBeTruthy();
   });
 });
+
+const emptyReviewsState: StoreReviewsState = {
+  apps: [],
+  selectedAccountId: null,
+  selectedAppId: null,
+  rating: null,
+  stats: { total: 0, low: 0, ios: 0, android: 0 },
+  reviews: [],
+  latestFetch: null,
+  latestAnalysis: null,
+  analysisIssues: [],
+  analysisBoundaries: []
+};
+
+function jsonResponse(payload: unknown): Promise<Response> {
+  return Promise.resolve(
+    new Response(JSON.stringify(payload), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    })
+  );
+}

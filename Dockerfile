@@ -1,3 +1,13 @@
+FROM node:24-slim AS admin_web_builder
+
+WORKDIR /admin-web
+
+COPY admin-web/package*.json ./
+RUN npm ci
+
+COPY admin-web ./
+RUN npm run build
+
 FROM python:3.11-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -9,6 +19,7 @@ RUN pip install --no-cache-dir build
 
 COPY pyproject.toml README.md ./
 COPY src ./src
+COPY --from=admin_web_builder /src/testflying_api/static/admin-app ./src/testflying_api/static/admin-app
 
 RUN python -m build --wheel --outdir /dist
 

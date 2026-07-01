@@ -37,6 +37,8 @@ testflying_api = [
   "templates/admin/*.html",
   "docs/*.md",
   "static/admin/*.css",
+  "static/admin-app/*.html",
+  "static/admin-app/assets/*",
 ]
 
 [tool.pytest.ini_options]

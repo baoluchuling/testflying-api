@@ -66,7 +66,10 @@ def create_app(
 
     app.add_exception_handler(ApiError, api_error_handler)
 
+    from testflying_api import admin_spa
     from testflying_api.admin import routes as admin_routes
+    from testflying_api.admin_api import routes as admin_api_routes
+    from testflying_api.admin_api.errors import AdminApiError, admin_api_error_handler
     from testflying_api.routes import (
         accounts,
         app_logs,
@@ -79,9 +82,13 @@ def create_app(
         workspace,
     )
 
+    app.add_exception_handler(AdminApiError, admin_api_error_handler)
+
     app.include_router(health.router)
     app.include_router(app_logs.router)
     app.include_router(connector_agent.router)
+    app.include_router(admin_api_routes.router)
+    app.include_router(admin_spa.router)
     app.include_router(admin_routes.router)
     app.include_router(workspace.router)
     app.include_router(uploads.router)

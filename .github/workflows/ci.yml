@@ -29,24 +29,36 @@ jobs:
           go-version: "1.20.x"
           cache-dependency-path: connector/go.mod
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: admin-web/package-lock.json
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev]"
+          npm --prefix admin-web ci
 
       - name: Lint
-        run: ruff check src tests alembic
+        run: |
+          ruff check src tests alembic
+          npm --prefix admin-web run lint
 
       - name: Test
         run: |
           pytest -q
           (cd connector && go test ./...)
+          npm --prefix admin-web test -- --run
 
       - name: Compile
         run: |
           python -m compileall -q src tests
           (cd connector && go build ./cmd/testflying-connector)
           (cd connector && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o /tmp/testflying-connector.exe ./cmd/testflying-connector)
+          npm --prefix admin-web run build
 
       - name: Validate Docker Compose files
         run: |
@@ -72,6 +84,18 @@ jobs:
         with:
           go-version: "1.20.x"
           cache-dependency-path: connector/go.mod
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: admin-web/package-lock.json
+
+      - name: Build Admin App
+        run: |
+          npm --prefix admin-web ci
+          npm --prefix admin-web run build
 
       - name: Build Python wheels
         run: |

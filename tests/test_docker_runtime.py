@@ -12,3 +12,16 @@ def test_server_image_runs_migrations_before_api_start() -> None:
     assert "TESTFLYING_AUTO_MIGRATE" in start_script
     assert "alembic upgrade head" in start_script
     assert "exec uvicorn testflying_api.main:app" in start_script
+
+
+def test_server_image_builds_admin_web_before_python_wheel() -> None:
+    dockerfile = Path("Dockerfile").read_text()
+
+    assert "FROM node:24-slim AS admin_web_builder" in dockerfile
+    assert "COPY admin-web/package*.json ./" in dockerfile
+    assert "RUN npm ci" in dockerfile
+    assert "RUN npm run build" in dockerfile
+    assert (
+        "COPY --from=admin_web_builder /src/testflying_api/static/admin-app "
+        "./src/testflying_api/static/admin-app"
+    ) in dockerfile

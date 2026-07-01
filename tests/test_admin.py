@@ -171,6 +171,14 @@ def test_admin_connector_deploy_commands_are_readable(client: TestClient) -> Non
     assert "color: inherit" in response.text
 
 
+def test_admin_api_docs_uses_full_main_width(client: TestClient) -> None:
+    response = client.get("/static/admin/admin.css")
+
+    assert response.status_code == 200
+    assert ".api-docs-main {\n  max-width: none;\n}" in response.text
+    assert ".api-docs-main {\n  max-width: 1480px;\n}" not in response.text
+
+
 def test_admin_store_metadata_focus_layout_css_contract(client: TestClient) -> None:
     response = client.get("/static/admin/admin.css")
 

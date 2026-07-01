@@ -761,3 +761,259 @@ select {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.app-logs-page {
+  display: grid;
+  gap: 18px;
+  max-width: 1440px;
+}
+
+.app-log-top-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 440px;
+  gap: 18px;
+  align-items: stretch;
+}
+
+.app-log-top-grid.connected {
+  grid-template-columns: minmax(0, 1fr) 520px;
+}
+
+.app-log-connect,
+.app-log-devices,
+.app-log-stream {
+  max-width: none;
+}
+
+.app-log-connect.connected {
+  padding: 18px 22px;
+}
+
+.app-log-connect-content {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 18px;
+  align-items: center;
+}
+
+.app-log-connect.connected .app-log-connect-content {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.app-log-qr {
+  width: 150px;
+  height: 150px;
+  border: 1px solid #d7d9de;
+  border-radius: 12px;
+  padding: 12px;
+  background: white;
+}
+
+.app-log-connect-copy {
+  display: grid;
+  gap: 10px;
+}
+
+.app-log-connect-copy strong {
+  font-size: 24px;
+}
+
+.app-log-connect-copy code {
+  overflow-wrap: anywhere;
+  color: #55565b;
+  font-weight: 700;
+}
+
+.inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.device-list {
+  display: grid;
+  gap: 10px;
+}
+
+.device-row {
+  position: relative;
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  border: 1px solid #e4e4e7;
+  border-radius: 12px;
+  padding: 14px 16px;
+  color: #171717;
+  background: white;
+  text-align: left;
+  cursor: pointer;
+}
+
+.device-row.active {
+  border-color: #171717;
+  background: #f4f4f5;
+}
+
+.device-row span {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.device-row small {
+  overflow: hidden;
+  color: #73757d;
+  font-size: 14px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-row em {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: #166534;
+  background: #dcfce7;
+  font-style: normal;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.app-log-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.app-log-toolbar input {
+  width: 260px;
+  min-height: 40px;
+  border: 1px solid #d1d5db;
+  border-radius: 9px;
+  padding: 0 12px;
+  background: white;
+  font-weight: 650;
+}
+
+.app-log-level-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #d1d5db;
+  border-radius: 9px;
+  padding: 4px;
+  background: white;
+}
+
+.app-log-level-filter label {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 4px;
+  border-radius: 7px;
+  padding: 0 8px;
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.app-log-level-filter input {
+  margin: 0;
+}
+
+.app-log-errors {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.notice.compact {
+  margin: 0;
+  padding: 10px 12px;
+}
+
+.log-console {
+  display: grid;
+  gap: 2px;
+  min-height: calc(100vh - 390px);
+  max-height: calc(100vh - 260px);
+  overflow: auto;
+  border-radius: 12px;
+  padding: 16px 18px;
+  color: #f4f4f5;
+  background: #111113;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.log-row {
+  display: grid;
+  grid-template-columns: 92px 58px minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+  padding: 2px 0;
+}
+
+.log-time,
+.log-level,
+.log-history {
+  color: #a1a1aa;
+  font-weight: 800;
+}
+
+.log-level {
+  color: #f4f4f5;
+}
+
+.log-body {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+
+.log-body strong,
+.log-meta,
+.log-fields span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.log-meta {
+  color: #d4d4d8;
+}
+
+.log-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  color: #e4e4e7;
+}
+
+.log-row mark {
+  border-radius: 4px;
+  padding: 0 2px;
+  color: #111113;
+  background: #facc15;
+}
+
+.level-警告 .log-level {
+  color: #facc15;
+}
+
+.level-错误 .log-level,
+.level-致命 .log-level {
+  color: #f87171;
+}
+
+.level-调试 .log-level,
+.level-跟踪 .log-level {
+  color: #93c5fd;
+}
+
+.log-empty {
+  color: #a1a1aa;
+  font-weight: 750;
+}

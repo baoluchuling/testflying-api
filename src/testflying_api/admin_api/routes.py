@@ -14,6 +14,7 @@ from testflying_api.admin_api.schemas import (
     AdminHealthState,
     AdminNavItem,
     AdminUploadResponse,
+    AppLogsState,
     ReviewAnalysisIssue,
     ReviewAnalysisRunItem,
     ReviewAppItem,
@@ -33,6 +34,7 @@ from testflying_api.admin_api.schemas import (
     UploadResult,
     UploadState,
 )
+from testflying_api.app_logs import LEVELS, build_app_log_connect_context
 from testflying_api.database import get_db_session
 from testflying_api.errors import ApiError
 from testflying_api.schema import (
@@ -97,6 +99,34 @@ def upload_state(
     _: AdminDep,
 ) -> UploadState:
     return _upload_state(session)
+
+
+@router.get(
+    "/app-logs",
+    response_model=AppLogsState,
+    response_model_by_alias=True,
+)
+def app_logs_state(
+    request: Request,
+    _: AdminDep,
+    cursor: Annotated[int, Query()] = 0,
+    limit: Annotated[int, Query()] = 500,
+) -> AppLogsState:
+    return _app_logs_state(request, cursor=cursor, limit=limit)
+
+
+@router.get(
+    "/app-logs/events",
+    response_model=AppLogsState,
+    response_model_by_alias=True,
+)
+def app_logs_events(
+    request: Request,
+    _: AdminDep,
+    cursor: Annotated[int, Query()] = 0,
+    limit: Annotated[int, Query()] = 500,
+) -> AppLogsState:
+    return _app_logs_state(request, cursor=cursor, limit=limit)
 
 
 @router.post(
@@ -183,6 +213,18 @@ def _upload_result(session: Session, app_id: str) -> UploadResult:
         install_url=install_info.install_url if install_info else "",
         manifest_url=install_info.manifest_url if install_info else None,
         download_url=install_info.download_url if install_info else None,
+    )
+
+
+def _app_logs_state(request: Request, *, cursor: int = 0, limit: int = 500) -> AppLogsState:
+    snapshot = request.app.state.app_log_hub.snapshot(cursor=cursor, limit=limit)
+    return AppLogsState(
+        connect=build_app_log_connect_context(request),
+        cursor=snapshot.cursor,
+        devices=snapshot.devices,
+        logs=snapshot.logs,
+        errors=snapshot.errors,
+        levels=list(LEVELS),
     )
 
 

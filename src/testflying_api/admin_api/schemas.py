@@ -204,3 +204,71 @@ class AdminUploadResponse(AdminApiModel):
     message: str
     result: UploadResult
     state: UploadState
+
+
+class AppLogConnectInfo(AdminApiModel):
+    host: str
+    port: str
+    name: str
+    app_scheme: str
+    app_name: str
+    connect_url: str
+    connect_page_url: str
+    scheme_url: str
+    websocket_url: str
+
+
+class AppLogDeviceItem(AdminApiModel):
+    token: str
+    device_id: str
+    device: str
+    platform: str
+    connected: bool
+    known_token: bool
+    connected_at: str
+    last_seen_at: str
+    connection_count: int
+    error_count: int
+    log_count: int
+
+
+class AppLogFieldItem(AdminApiModel):
+    key: str
+    value: str
+
+
+class AppLogEntryItem(AdminApiModel):
+    sequence: int
+    token: str
+    device_id: str
+    device: str
+    platform: str
+    received_at: str
+    sent_at: str
+    history: bool
+    raw: str
+    timestamp: str
+    level: str
+    tag: str
+    event: str
+    message: str
+    fields: list[AppLogFieldItem]
+
+
+class AppLogClientErrorItem(AdminApiModel):
+    sequence: int
+    token: str
+    device_id: str
+    device: str
+    received_at: str
+    sent_at: str
+    message: str
+
+
+class AppLogsState(AdminApiModel):
+    connect: AppLogConnectInfo
+    cursor: int
+    devices: list[AppLogDeviceItem]
+    logs: list[AppLogEntryItem]
+    errors: list[AppLogClientErrorItem]
+    levels: list[str]

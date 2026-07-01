@@ -180,6 +180,74 @@ export type AdminUploadResponse = {
   state: UploadState;
 };
 
+export type AppLogConnectInfo = {
+  host: string;
+  port: string;
+  name: string;
+  appScheme: string;
+  appName: string;
+  connectUrl: string;
+  connectPageUrl: string;
+  schemeUrl: string;
+  websocketUrl: string;
+};
+
+export type AppLogDevice = {
+  token: string;
+  deviceId: string;
+  device: string;
+  platform: string;
+  connected: boolean;
+  knownToken: boolean;
+  connectedAt: string;
+  lastSeenAt: string;
+  connectionCount: number;
+  errorCount: number;
+  logCount: number;
+};
+
+export type AppLogField = {
+  key: string;
+  value: string;
+};
+
+export type AppLogEntry = {
+  sequence: number;
+  token: string;
+  deviceId: string;
+  device: string;
+  platform: string;
+  receivedAt: string;
+  sentAt: string;
+  history: boolean;
+  raw: string;
+  timestamp: string;
+  level: string;
+  tag: string;
+  event: string;
+  message: string;
+  fields: AppLogField[];
+};
+
+export type AppLogClientError = {
+  sequence: number;
+  token: string;
+  deviceId: string;
+  device: string;
+  receivedAt: string;
+  sentAt: string;
+  message: string;
+};
+
+export type AppLogsState = {
+  connect: AppLogConnectInfo;
+  cursor: number;
+  devices: AppLogDevice[];
+  logs: AppLogEntry[];
+  errors: AppLogClientError[];
+  levels: string[];
+};
+
 export class AdminApiError extends Error {
   code: string;
   detail: unknown;
@@ -244,6 +312,14 @@ export function loadStoreReviews(pathAndQuery: string): Promise<StoreReviewsStat
 
 export function loadUploadState(): Promise<UploadState> {
   return getJson<UploadState>('/admin/api/uploads');
+}
+
+export function loadAppLogs(): Promise<AppLogsState> {
+  return getJson<AppLogsState>('/admin/api/app-logs');
+}
+
+export function loadAppLogEvents(cursor: number): Promise<AppLogsState> {
+  return getJson<AppLogsState>(`/admin/api/app-logs/events?cursor=${cursor}`);
 }
 
 export function fetchStoreReviews(accountId: string, appId: string) {

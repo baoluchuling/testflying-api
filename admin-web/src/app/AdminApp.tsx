@@ -4,6 +4,7 @@ import { routeKeyFromPath, routeTitles, type AdminRouteKey } from './routes';
 import { StoreAppsPage } from '../pages/StoreAppsPage';
 import { StoreReviewsPage } from '../pages/StoreReviewsPage';
 import { UploadPage } from '../pages/UploadPage';
+import { AppLogsPage } from '../pages/AppLogsPage';
 
 const fallbackNav = [
   { key: 'dashboard', label: '总览', path: '/admin-next' },
@@ -115,7 +116,11 @@ export function AdminApp() {
         {activeRoute === 'uploads' ? <UploadPage /> : null}
         {activeRoute === 'apps' ? <StoreAppsPage /> : null}
         {activeRoute === 'store-reviews' ? <StoreReviewsPage /> : null}
-        {activeRoute !== 'uploads' && activeRoute !== 'apps' && activeRoute !== 'store-reviews' ? (
+        {activeRoute === 'app-logs' ? <AppLogsPage /> : null}
+        {activeRoute !== 'uploads' &&
+        activeRoute !== 'apps' &&
+        activeRoute !== 'store-reviews' &&
+        activeRoute !== 'app-logs' ? (
           <LegacyBackedRoute />
         ) : null}
       </main>

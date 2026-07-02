@@ -1,15 +1,27 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from importlib import resources
+from pathlib import Path
 from typing import Annotated, Any
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from testflying_api.admin.security import require_admin
+from testflying_api.admin.services import (
+    bind_app_to_account,
+    parse_admin_datetime,
+    save_developer_account,
+    unbind_app_from_account,
+    update_bound_app_store_settings,
+)
 from testflying_api.admin.view_models import (
+    account_detail_context,
+    account_status_label,
     dashboard_context,
     environment_label,
     format_datetime,
@@ -19,11 +31,18 @@ from testflying_api.admin.view_models import (
     list_builds,
     list_devices,
     list_notifications,
+    marketing_page_context,
     platform_label,
+    store_marketing_context,
+    store_metadata_context,
     upload_context,
 )
 from testflying_api.admin_api.errors import AdminApiError
 from testflying_api.admin_api.schemas import (
+    AccountAppBindRequest,
+    AccountAppItem,
+    AccountAppSettingsRequest,
+    AccountDetailActionResponse,
     AdminBootstrapResponse,
     AdminHealthState,
     AdminNavItem,
@@ -36,10 +55,26 @@ from testflying_api.admin_api.schemas import (
     BuildArtifactItem,
     BuildItem,
     BuildsState,
+    ConnectorActionResponse,
+    ConnectorSaveRequest,
+    ConnectorState,
     DashboardState,
     DashboardStatItem,
+    DeveloperAccountDetailState,
+    DeveloperAccountForm,
+    DeveloperAccountSaveResponse,
+    DeveloperAccountsState,
+    DeveloperAccountsStats,
+    DeveloperAccountSummary,
     DeviceItem,
     DevicesState,
+    MarketingPageActionResponse,
+    MarketingPageCreateRequest,
+    MarketingPageDetailState,
+    MarketingPageLocaleContent,
+    MarketingPageLocaleInput,
+    MarketingPageSaveRequest,
+    MarketingPageSyncRequest,
     NotificationItem,
     NotificationsState,
     NotificationTypeCount,
@@ -55,9 +90,19 @@ from testflying_api.admin_api.schemas import (
     StoreAppsAccountSummary,
     StoreAppsState,
     StoreAppsStats,
+    StoreImageDeleteRequest,
+    StoreLocaleContent,
+    StoreLocaleContentInput,
+    StoreMarketingPageSummary,
     StoreReviewAnalysisResponse,
     StoreReviewFetchResponse,
     StoreReviewsState,
+    StoreWorkspaceActionResponse,
+    StoreWorkspaceSaveRequest,
+    StoreWorkspaceState,
+    StoreWorkspaceSyncRequest,
+    SyncRunSummary,
+    UnassignedAppItem,
     UploadAccountOption,
     UploadResult,
     UploadState,
@@ -71,21 +116,49 @@ from testflying_api.schema import (
     DeveloperAccount,
     Device,
     Notification,
+    StoreAppMetadataDraft,
+    StoreMarketingPageLocale,
     StoreReview,
     StoreReviewAnalysisRun,
     StoreReviewFetchRun,
 )
+from testflying_api.store_image_requirements import validate_store_image
 from testflying_api.store_reviews import (
     analyze_store_reviews,
     fetch_store_reviews_incremental,
     store_reviews_context,
+)
+from testflying_api.store_sync import (
+    CURRENT_METADATA_VERSION,
+    DEFAULT_CONTENT_SET_ID,
+    DEFAULT_CONTENT_SET_NAME,
+    DEFAULT_LOCALE,
+    UPDATE_APP_METADATA,
+    UPDATE_MARKETING_PAGE,
+    account_connector,
+    check_connector_health,
+    create_marketing_page,
+    delete_marketing_page,
+    duplicate_marketing_page,
+    get_or_refresh_preflight,
+    marketing_page_for_scope,
+    save_connector,
+    save_current_app_metadata_draft,
+    save_marketing_page,
+    save_release_note_draft,
+    scoped_app,
+    sync_current_app_metadata,
+    sync_marketing_page,
+    sync_release_notes,
 )
 from testflying_api.upload_service import create_package_upload
 
 router = APIRouter(prefix="/admin/api", tags=["admin-api"])
 AdminDep = Annotated[None, Depends(require_admin)]
 SessionDep = Annotated[Session, Depends(get_db_session)]
+STORE_IMAGE_SLOT_KEYS = {"feature_graphic_url", "phone_screenshots", "tablet_screenshots"}
 PUBLIC_API_DOC_PATH = "docs/store-management-public-api.md"
+CONNECTOR_AUTO_CHECK_TTL = timedelta(minutes=5)
 
 
 @router.get("/bootstrap", response_model=AdminBootstrapResponse, response_model_by_alias=True)
@@ -206,6 +279,967 @@ def store_apps_state(
     appId: Annotated[str, Query()] = "",
 ) -> StoreAppsState:
     return _store_apps_state(session, active_filter=filter, app_id=appId)
+
+
+@router.get(
+    "/developer-accounts",
+    response_model=DeveloperAccountsState,
+    response_model_by_alias=True,
+)
+def developer_accounts_state(
+    session: SessionDep,
+    _: AdminDep,
+) -> DeveloperAccountsState:
+    return _developer_accounts_state(session)
+
+
+@router.post(
+    "/developer-accounts",
+    response_model=DeveloperAccountSaveResponse,
+    response_model_by_alias=True,
+)
+def create_developer_account(
+    payload: DeveloperAccountForm,
+    session: SessionDep,
+    _: AdminDep,
+) -> DeveloperAccountSaveResponse:
+    try:
+        if not payload.account_id:
+            raise ApiError("invalid_account", "账号 ID 不能为空", status_code=422)
+        account = save_developer_account(
+            session,
+            account_id=payload.account_id,
+            team_name=payload.team_name,
+            expires_at=parse_admin_datetime(payload.expires_at),
+            status=payload.status,
+            renewal_action_label=payload.renewal_action_label,
+        )
+        session.commit()
+    except ApiError as error:
+        session.rollback()
+        raise _admin_api_error(error) from error
+    return DeveloperAccountSaveResponse(
+        message="开发者账号已保存",
+        account=_developer_account_summary(
+            {
+                "account": account,
+                "remaining_days": _remaining_days_from_account(session, account.id),
+                "apps": [app.name for app in account.apps],
+                "connector": account_connector(session, account.id),
+                "latest_sync": None,
+            }
+        ),
+        state=_developer_accounts_state(session),
+    )
+
+
+@router.get(
+    "/developer-accounts/{account_id}",
+    response_model=DeveloperAccountDetailState,
+    response_model_by_alias=True,
+)
+def developer_account_detail_state(
+    account_id: str,
+    session: SessionDep,
+    _: AdminDep,
+) -> DeveloperAccountDetailState:
+    _auto_check_connector(session, account_id)
+    return _developer_account_detail_state(session, account_id)
+
+
+@router.get(
+    "/developer-accounts/{account_id}/apps/{app_id}/workspace",
+    response_model=StoreWorkspaceState,
+    response_model_by_alias=True,
+)
+@router.get(
+    "/store-workspace/{account_id}/{app_id}",
+    response_model=StoreWorkspaceState,
+    response_model_by_alias=True,
+)
+def developer_account_app_workspace_state(
+    account_id: str,
+    app_id: str,
+    session: SessionDep,
+    _: AdminDep,
+    section: Annotated[str, Query()] = "store",
+    locale: Annotated[str, Query()] = "",
+) -> StoreWorkspaceState:
+    return _store_workspace_state(
+        session,
+        account_id=account_id,
+        app_id=app_id,
+        section=section,
+        locale=locale,
+    )
+
+
+@router.put(
+    "/developer-accounts/{account_id}/apps/{app_id}/workspace/metadata",
+    response_model=StoreWorkspaceActionResponse,
+    response_model_by_alias=True,
+)
+@router.put(
+    "/store-workspace/{account_id}/{app_id}/metadata",
+    response_model=StoreWorkspaceActionResponse,
+    response_model_by_alias=True,
+)
+def save_store_workspace_metadata(
+    account_id: str,
+    app_id: str,
+    payload: StoreWorkspaceSaveRequest,
+    session: SessionDep,
+    _: AdminDep,
+) -> StoreWorkspaceActionResponse:
+    try:
+        app = _scoped_app_or_error(session, account_id, app_id)
+        rows = _workspace_rows_from_payload(payload.locales, fallback_locale=payload.locale)
+        _preserve_readonly_keywords_for_rows(session, account_id=account_id, app=app, rows=rows)
+        _save_metadata_rows(session, account_id=account_id, app_id=app_id, rows=rows)
+        if payload.version:
+            _save_release_note_rows(
+                session,
+                account_id=account_id,
+                app_id=app_id,
+                version=payload.version,
+                rows=rows,
+            )
+        session.commit()
+    except ApiError as error:
+        session.rollback()
+        raise _admin_api_error(error) from error
+    return _store_workspace_action_response(
+        session,
+        account_id=account_id,
+        app_id=app_id,
+        section="store",
+        locale=payload.locale,
+        message=f"商店草稿已保存 {len(rows)} 个语言",
+    )
+
+
+@router.put(
+    "/developer-accounts/{account_id}/apps/{app_id}/workspace/release-notes",
+    response_model=StoreWorkspaceActionResponse,
+    response_model_by_alias=True,
+)
+@router.put(
+    "/store-workspace/{account_id}/{app_id}/release-notes",
+    response_model=StoreWorkspaceActionResponse,
+    response_model_by_alias=True,
+)
+def save_store_workspace_release_notes(
+    account_id: str,
+    app_id: str,
+    payload: StoreWorkspaceSaveRequest,
+    session: SessionDep,
+    _: AdminDep,
+) -> StoreWorkspaceActionResponse:
+    try:
+        if not payload.version:
+            raise ApiError("missing_version", "保存版本说明前需要目标商店版本", status_code=422)
+        _scoped_app_or_error(session, account_id, app_id)
+        rows = _workspace_rows_from_payload(payload.locales, fallback_locale=payload.locale)
+        _save_release_note_rows(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            version=payload.version,
+            rows=rows,
+        )
+        session.commit()
+    except ApiError as error:
+        session.rollback()
+        raise _admin_api_error(error) from error
+    return _store_workspace_action_response(
+        session,
+        account_id=account_id,
+        app_id=app_id,
+        section="release-notes",
+        locale=payload.locale,
+        message=f"版本说明草稿已保存 {len(rows)} 个语言",
+    )
+
+
+@router.post(
+    "/developer-accounts/{account_id}/apps/{app_id}/workspace/metadata/preflight",
+    response_model=StoreWorkspaceActionResponse,
+    response_model_by_alias=True,
+)
+@router.post(
+    "/store-workspace/{account_id}/{app_id}/metadata/preflight",
+    response_model=StoreWorkspaceActionResponse,
+    response_model_by_alias=True,
+)
+def check_store_workspace_preflight(
+    account_id: str,
+    app_id: str,
+    payload: StoreWorkspaceSyncRequest,
+    session: SessionDep,
+    _: AdminDep,
+) -> StoreWorkspaceActionResponse:
+    try:
+        if not payload.version:
+            raise ApiError("missing_version", "同步前需要目标商店版本", status_code=422)
+        _scoped_app_or_error(session, account_id, app_id)
+        locale = _source_locale_from_payload(payload.locales, payload.locale)
+        get_or_refresh_preflight(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            version=payload.version,
+            locale=locale,
+            operation=UPDATE_APP_METADATA,
+            force_refresh=True,
+        )
+        session.commit()
+    except ApiError as error:
+        session.rollback()
+        raise _admin_api_error(error) from error
+    return _store_workspace_action_response(
+        session,
+        account_id=account_id,
+        app_id=app_id,
+        section="store",
+        locale=locale,
+        message="同步前检查已完成",
+    )
+
+
+@router.post(
+    "/developer-accounts/{account_id}/apps/{app_id}/workspace/metadata/sync",
+    response_model=StoreWorkspaceActionResponse,
+    response_model_by_alias=True,
+)
+@router.post(
+    "/store-workspace/{account_id}/{app_id}/metadata/sync",
+    response_model=StoreWorkspaceActionResponse,
+    response_model_by_alias=True,
+)
+def sync_store_workspace_metadata(
+    account_id: str,
+    app_id: str,
+    payload: StoreWorkspaceSyncRequest,
+    session: SessionDep,
+    _: AdminDep,
+) -> StoreWorkspaceActionResponse:
+    try:
+        if not payload.version:
+            raise ApiError("missing_version", "同步到商店前需要目标商店版本", status_code=422)
+        sync_scopes = set(payload.sync_scopes)
+        if not sync_scopes:
+            raise ApiError("missing_sync_scope", "请至少勾选一个要同步的内容", status_code=422)
+        app = _scoped_app_or_error(session, account_id, app_id)
+        rows = _workspace_rows_from_payload(payload.locales, fallback_locale=payload.locale)
+        _preserve_readonly_keywords_for_rows(session, account_id=account_id, app=app, rows=rows)
+        sync_runs = []
+        include_store_images = "store_images" in sync_scopes
+        for row in rows:
+            if sync_scopes & {"metadata", "description", "promotional_text", "store_images"}:
+                selected_scopes = sorted(
+                    sync_scopes
+                    & {"metadata", "description", "promotional_text", "store_images"}
+                )
+                sync_runs.append(
+                    sync_current_app_metadata(
+                        session,
+                        account_id=account_id,
+                        app_id=app_id,
+                        version=payload.version,
+                        locale=row["locale"],
+                        keywords=row["keywords"],
+                        promotional_text=row["promotional_text"],
+                        description=row["description"],
+                        actor="admin",
+                        store_images=row["store_images"],
+                        include_store_images_in_payload=include_store_images,
+                        sync_scopes=selected_scopes,
+                    )
+                )
+            if "release_notes" in sync_scopes:
+                sync_runs.append(
+                    sync_release_notes(
+                        session,
+                        account_id=account_id,
+                        app_id=app_id,
+                        version=payload.version,
+                        locale=row["locale"],
+                        release_notes=row["release_notes"],
+                        actor="admin",
+                    )
+                )
+        session.commit()
+    except ApiError as error:
+        session.rollback()
+        raise _admin_api_error(error) from error
+    return _store_workspace_action_response(
+        session,
+        account_id=account_id,
+        app_id=app_id,
+        section="store",
+        locale=payload.locale,
+        message=f"已创建 {len(sync_runs)} 个同步任务",
+        sync_runs=sync_runs,
+    )
+
+
+@router.delete(
+    "/developer-accounts/{account_id}/apps/{app_id}/workspace/metadata/store-images",
+    response_model=StoreWorkspaceActionResponse,
+    response_model_by_alias=True,
+)
+@router.delete(
+    "/store-workspace/{account_id}/{app_id}/metadata/store-images",
+    response_model=StoreWorkspaceActionResponse,
+    response_model_by_alias=True,
+)
+def delete_store_workspace_image(
+    account_id: str,
+    app_id: str,
+    payload: StoreImageDeleteRequest,
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+) -> StoreWorkspaceActionResponse:
+    try:
+        app = _scoped_app_or_error(session, account_id, app_id)
+        _delete_store_image_from_current_draft(
+            session,
+            storage=request.app.state.artifact_storage,
+            account_id=account_id,
+            app=app,
+            locale=payload.locale,
+            slot_key=payload.slot_key,
+            storage_key=payload.storage_key,
+        )
+        session.commit()
+    except ApiError as error:
+        session.rollback()
+        raise _admin_api_error(error) from error
+    return _store_workspace_action_response(
+        session,
+        account_id=account_id,
+        app_id=app_id,
+        section="store",
+        locale=payload.locale,
+        message="已删除中心后台的商店图草稿",
+    )
+
+
+@router.post(
+    "/developer-accounts/{account_id}/apps/{app_id}/workspace/metadata/store-images",
+    response_model=StoreWorkspaceActionResponse,
+    response_model_by_alias=True,
+)
+@router.post(
+    "/store-workspace/{account_id}/{app_id}/metadata/store-images",
+    response_model=StoreWorkspaceActionResponse,
+    response_model_by_alias=True,
+)
+async def upload_store_workspace_images(
+    account_id: str,
+    app_id: str,
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+) -> StoreWorkspaceActionResponse:
+    try:
+        app = _scoped_app_or_error(session, account_id, app_id)
+        uploaded_assets = await _store_image_assets_from_form(
+            await request.form(),
+            storage=request.app.state.artifact_storage,
+            account_id=account_id,
+            app_id=app.id,
+            platform=app.platform,
+            version=CURRENT_METADATA_VERSION,
+            content_set_id=DEFAULT_CONTENT_SET_ID,
+        )
+        uploaded_count = _uploaded_asset_count(uploaded_assets)
+        if uploaded_count == 0:
+            raise ApiError("missing_store_image", "请选择要上传的商店图", status_code=422)
+        _append_metadata_store_image_assets(
+            session,
+            account_id=account_id,
+            app=app,
+            uploaded_assets=uploaded_assets,
+        )
+        session.commit()
+    except ApiError as error:
+        session.rollback()
+        raise _admin_api_error(error) from error
+    return _store_workspace_action_response(
+        session,
+        account_id=account_id,
+        app_id=app_id,
+        section="store",
+        locale=_first_uploaded_locale(uploaded_assets),
+        message=f"已上传 {uploaded_count} 张中心后台商店图草稿",
+    )
+
+
+@router.get(
+    "/developer-accounts/{account_id}/apps/{app_id}/workspace/marketing-pages/{page_id}",
+    response_model=MarketingPageDetailState,
+    response_model_by_alias=True,
+)
+@router.get(
+    "/store-workspace/{account_id}/{app_id}/marketing-pages/{page_id}",
+    response_model=MarketingPageDetailState,
+    response_model_by_alias=True,
+)
+def store_marketing_page_detail_state(
+    account_id: str,
+    app_id: str,
+    page_id: str,
+    session: SessionDep,
+    _: AdminDep,
+    locale: Annotated[str, Query()] = "",
+) -> MarketingPageDetailState:
+    return _marketing_page_detail_state(
+        session,
+        account_id=account_id,
+        app_id=app_id,
+        page_id=page_id,
+        locale=locale,
+    )
+
+
+@router.post(
+    "/developer-accounts/{account_id}/apps/{app_id}/workspace/marketing-pages",
+    response_model=MarketingPageActionResponse,
+    response_model_by_alias=True,
+)
+@router.post(
+    "/store-workspace/{account_id}/{app_id}/marketing-pages",
+    response_model=MarketingPageActionResponse,
+    response_model_by_alias=True,
+)
+def create_store_marketing_page_state(
+    account_id: str,
+    app_id: str,
+    payload: MarketingPageCreateRequest,
+    session: SessionDep,
+    _: AdminDep,
+) -> MarketingPageActionResponse:
+    try:
+        page = create_marketing_page(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            page_id=payload.page_id,
+            page_name=payload.page_name,
+            page_type=payload.page_type,
+            deep_link_url=payload.deep_link_url,
+            locale_rows=_marketing_rows_from_payload(payload.locales, payload.locale),
+        )
+        session.commit()
+    except ApiError as error:
+        session.rollback()
+        raise _admin_api_error(error) from error
+    return MarketingPageActionResponse(
+        message="营销页面已创建",
+        state=_marketing_page_detail_state(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            page_id=page.page_id,
+            locale=payload.locale,
+        ),
+        workspace=_store_workspace_state(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            section="marketing",
+            locale=payload.locale,
+        ),
+    )
+
+
+@router.put(
+    "/developer-accounts/{account_id}/apps/{app_id}/workspace/marketing-pages/{page_id}",
+    response_model=MarketingPageActionResponse,
+    response_model_by_alias=True,
+)
+@router.put(
+    "/store-workspace/{account_id}/{app_id}/marketing-pages/{page_id}",
+    response_model=MarketingPageActionResponse,
+    response_model_by_alias=True,
+)
+def save_store_marketing_page_state(
+    account_id: str,
+    app_id: str,
+    page_id: str,
+    payload: MarketingPageSaveRequest,
+    session: SessionDep,
+    _: AdminDep,
+) -> MarketingPageActionResponse:
+    try:
+        _save_marketing_page_from_payload(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            page_id=page_id,
+            payload=payload,
+        )
+        session.commit()
+    except ApiError as error:
+        session.rollback()
+        raise _admin_api_error(error) from error
+    return _marketing_page_action_response(
+        session,
+        account_id=account_id,
+        app_id=app_id,
+        page_id=page_id,
+        locale=payload.locale,
+        message="营销页面草稿已保存",
+    )
+
+
+@router.post(
+    "/developer-accounts/{account_id}/apps/{app_id}/workspace/marketing-pages/{page_id}/copy",
+    response_model=MarketingPageActionResponse,
+    response_model_by_alias=True,
+)
+@router.post(
+    "/store-workspace/{account_id}/{app_id}/marketing-pages/{page_id}/copy",
+    response_model=MarketingPageActionResponse,
+    response_model_by_alias=True,
+)
+def copy_store_marketing_page_state(
+    account_id: str,
+    app_id: str,
+    page_id: str,
+    session: SessionDep,
+    _: AdminDep,
+) -> MarketingPageActionResponse:
+    try:
+        page = duplicate_marketing_page(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            page_id=page_id,
+        )
+        session.commit()
+    except ApiError as error:
+        session.rollback()
+        raise _admin_api_error(error) from error
+    return _marketing_page_action_response(
+        session,
+        account_id=account_id,
+        app_id=app_id,
+        page_id=page.page_id,
+        locale=DEFAULT_LOCALE,
+        message="已复制营销页面",
+    )
+
+
+@router.delete(
+    "/developer-accounts/{account_id}/apps/{app_id}/workspace/marketing-pages/{page_id}",
+    response_model=MarketingPageActionResponse,
+    response_model_by_alias=True,
+)
+@router.delete(
+    "/store-workspace/{account_id}/{app_id}/marketing-pages/{page_id}",
+    response_model=MarketingPageActionResponse,
+    response_model_by_alias=True,
+)
+def delete_store_marketing_page_state(
+    account_id: str,
+    app_id: str,
+    page_id: str,
+    session: SessionDep,
+    _: AdminDep,
+) -> MarketingPageActionResponse:
+    try:
+        delete_marketing_page(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            page_id=page_id,
+        )
+        session.commit()
+    except ApiError as error:
+        session.rollback()
+        raise _admin_api_error(error) from error
+    return MarketingPageActionResponse(
+        message="已删除中心后台的营销页面",
+        state=None,
+        workspace=_store_workspace_state(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            section="marketing",
+            locale=DEFAULT_LOCALE,
+        ),
+    )
+
+
+@router.post(
+    "/developer-accounts/{account_id}/apps/{app_id}/workspace/marketing-pages/{page_id}/preflight",
+    response_model=MarketingPageActionResponse,
+    response_model_by_alias=True,
+)
+@router.post(
+    "/store-workspace/{account_id}/{app_id}/marketing-pages/{page_id}/preflight",
+    response_model=MarketingPageActionResponse,
+    response_model_by_alias=True,
+)
+def check_store_marketing_page_preflight_state(
+    account_id: str,
+    app_id: str,
+    page_id: str,
+    payload: MarketingPageSyncRequest,
+    session: SessionDep,
+    _: AdminDep,
+) -> MarketingPageActionResponse:
+    try:
+        page = _marketing_page_or_error(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            page_id=page_id,
+        )
+        locale = _source_locale_from_marketing_payload(payload.locales, payload.locale)
+        get_or_refresh_preflight(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            version=page.page_id,
+            locale=locale,
+            operation=UPDATE_MARKETING_PAGE,
+            force_refresh=True,
+        )
+        session.commit()
+    except ApiError as error:
+        session.rollback()
+        raise _admin_api_error(error) from error
+    return _marketing_page_action_response(
+        session,
+        account_id=account_id,
+        app_id=app_id,
+        page_id=page_id,
+        locale=locale,
+        message="已实时查询营销页面同步状态",
+    )
+
+
+@router.post(
+    "/developer-accounts/{account_id}/apps/{app_id}/workspace/marketing-pages/{page_id}/sync",
+    response_model=MarketingPageActionResponse,
+    response_model_by_alias=True,
+)
+@router.post(
+    "/store-workspace/{account_id}/{app_id}/marketing-pages/{page_id}/sync",
+    response_model=MarketingPageActionResponse,
+    response_model_by_alias=True,
+)
+def sync_store_marketing_page_state(
+    account_id: str,
+    app_id: str,
+    page_id: str,
+    payload: MarketingPageSyncRequest,
+    session: SessionDep,
+    _: AdminDep,
+) -> MarketingPageActionResponse:
+    try:
+        _save_marketing_page_from_payload(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            page_id=page_id,
+            payload=payload,
+        )
+        rows = _marketing_rows_from_payload(payload.locales, payload.locale)
+        sync_runs = [
+            sync_marketing_page(
+                session,
+                account_id=account_id,
+                app_id=app_id,
+                page_id=page_id,
+                locale=str(row["locale"]),
+                sync_scopes=payload.sync_scopes,
+                actor="admin",
+            )
+            for row in rows
+        ]
+        session.commit()
+    except ApiError as error:
+        session.rollback()
+        raise _admin_api_error(error) from error
+    return _marketing_page_action_response(
+        session,
+        account_id=account_id,
+        app_id=app_id,
+        page_id=page_id,
+        locale=payload.locale,
+        message=f"营销页面已同步 {len(sync_runs)} 个语言",
+        sync_runs=sync_runs,
+    )
+
+
+@router.delete(
+    "/developer-accounts/{account_id}/apps/{app_id}/workspace/marketing-pages/{page_id}/store-images",
+    response_model=MarketingPageActionResponse,
+    response_model_by_alias=True,
+)
+@router.delete(
+    "/store-workspace/{account_id}/{app_id}/marketing-pages/{page_id}/store-images",
+    response_model=MarketingPageActionResponse,
+    response_model_by_alias=True,
+)
+def delete_store_marketing_page_image_state(
+    account_id: str,
+    app_id: str,
+    page_id: str,
+    payload: StoreImageDeleteRequest,
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+) -> MarketingPageActionResponse:
+    try:
+        _delete_marketing_page_image_from_draft(
+            session,
+            storage=request.app.state.artifact_storage,
+            account_id=account_id,
+            app_id=app_id,
+            page_id=page_id,
+            locale=payload.locale,
+            slot_key=payload.slot_key,
+            storage_key=payload.storage_key,
+        )
+        session.commit()
+    except ApiError as error:
+        session.rollback()
+        raise _admin_api_error(error) from error
+    return _marketing_page_action_response(
+        session,
+        account_id=account_id,
+        app_id=app_id,
+        page_id=page_id,
+        locale=payload.locale,
+        message="已删除中心后台的营销页面截图",
+    )
+
+
+@router.post(
+    "/developer-accounts/{account_id}/apps/{app_id}/workspace/marketing-pages/{page_id}/store-images",
+    response_model=MarketingPageActionResponse,
+    response_model_by_alias=True,
+)
+@router.post(
+    "/store-workspace/{account_id}/{app_id}/marketing-pages/{page_id}/store-images",
+    response_model=MarketingPageActionResponse,
+    response_model_by_alias=True,
+)
+async def upload_store_marketing_page_images_state(
+    account_id: str,
+    app_id: str,
+    page_id: str,
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+) -> MarketingPageActionResponse:
+    try:
+        app = _scoped_app_or_error(session, account_id, app_id)
+        page = _marketing_page_or_error(
+            session,
+            account_id=account_id,
+            app_id=app.id,
+            page_id=page_id,
+        )
+        uploaded_assets = await _store_image_assets_from_form(
+            await request.form(),
+            storage=request.app.state.artifact_storage,
+            account_id=account_id,
+            app_id=app.id,
+            platform=app.platform,
+            version=CURRENT_METADATA_VERSION,
+            content_set_id=page_id,
+        )
+        uploaded_count = _uploaded_asset_count(uploaded_assets)
+        if uploaded_count == 0:
+            raise ApiError("missing_store_image", "请选择要上传的营销页面截图", status_code=422)
+        _append_marketing_page_store_image_assets(
+            session,
+            marketing_page_id=str(page.id),
+            uploaded_assets=uploaded_assets,
+        )
+        session.commit()
+    except ApiError as error:
+        session.rollback()
+        raise _admin_api_error(error) from error
+    return _marketing_page_action_response(
+        session,
+        account_id=account_id,
+        app_id=app_id,
+        page_id=page_id,
+        locale=_first_uploaded_locale(uploaded_assets),
+        message=f"已上传 {uploaded_count} 张营销页面截图草稿",
+    )
+
+
+@router.patch(
+    "/developer-accounts/{account_id}",
+    response_model=DeveloperAccountSaveResponse,
+    response_model_by_alias=True,
+)
+def update_developer_account(
+    account_id: str,
+    payload: DeveloperAccountForm,
+    session: SessionDep,
+    _: AdminDep,
+) -> DeveloperAccountSaveResponse:
+    if session.get(DeveloperAccount, account_id) is None:
+        raise AdminApiError("account_not_found", "开发者账号不存在", status_code=404)
+    try:
+        account = save_developer_account(
+            session,
+            account_id=account_id,
+            team_name=payload.team_name,
+            expires_at=parse_admin_datetime(payload.expires_at),
+            status=payload.status,
+            renewal_action_label=payload.renewal_action_label,
+        )
+        session.commit()
+    except ApiError as error:
+        session.rollback()
+        raise _admin_api_error(error) from error
+    return DeveloperAccountSaveResponse(
+        message="开发者账号已更新",
+        account=_account_summary_for_id(session, account.id),
+        state=_developer_accounts_state(session),
+    )
+
+
+@router.post(
+    "/developer-accounts/{account_id}/connector",
+    response_model=ConnectorActionResponse,
+    response_model_by_alias=True,
+)
+def save_account_connector(
+    account_id: str,
+    payload: ConnectorSaveRequest,
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+) -> ConnectorActionResponse:
+    try:
+        save_connector(
+            session,
+            account_id=account_id,
+            name=payload.name,
+            base_url=payload.base_url,
+            auth_token=payload.auth_token,
+            base_url_template=request.app.state.settings.connector_base_url_template,
+        )
+        session.commit()
+    except ApiError as error:
+        session.rollback()
+        raise _admin_api_error(error) from error
+    state = _developer_account_detail_state(session, account_id)
+    return ConnectorActionResponse(message="Connector 已保存", result=state.connector, state=state)
+
+
+@router.post(
+    "/developer-accounts/{account_id}/connector/check",
+    response_model=ConnectorActionResponse,
+    response_model_by_alias=True,
+)
+def check_account_connector(
+    account_id: str,
+    session: SessionDep,
+    _: AdminDep,
+) -> ConnectorActionResponse:
+    try:
+        result = check_connector_health(session, account_id=account_id)
+        session.commit()
+    except ApiError as error:
+        session.rollback()
+        raise _admin_api_error(error) from error
+    state = _developer_account_detail_state(session, account_id)
+    return ConnectorActionResponse(message=result.message, result=state.connector, state=state)
+
+
+@router.post(
+    "/developer-accounts/{account_id}/apps",
+    response_model=AccountDetailActionResponse,
+    response_model_by_alias=True,
+)
+def bind_account_app(
+    account_id: str,
+    payload: AccountAppBindRequest,
+    session: SessionDep,
+    _: AdminDep,
+) -> AccountDetailActionResponse:
+    try:
+        bind_app_to_account(
+            session,
+            account_id=account_id,
+            app_id=payload.app_id,
+            store_app_id=payload.store_app_id,
+            store_package_name=payload.store_package_name,
+        )
+        session.commit()
+    except ApiError as error:
+        session.rollback()
+        raise _admin_api_error(error) from error
+    return AccountDetailActionResponse(
+        message="App 已绑定到账号",
+        state=_developer_account_detail_state(session, account_id),
+    )
+
+
+@router.patch(
+    "/developer-accounts/{account_id}/apps/{app_id}/settings",
+    response_model=AccountDetailActionResponse,
+    response_model_by_alias=True,
+)
+def update_account_app_settings(
+    account_id: str,
+    app_id: str,
+    payload: AccountAppSettingsRequest,
+    session: SessionDep,
+    _: AdminDep,
+) -> AccountDetailActionResponse:
+    try:
+        update_bound_app_store_settings(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            store_app_id=payload.store_app_id,
+            store_package_name=payload.store_package_name,
+        )
+        session.commit()
+    except ApiError as error:
+        session.rollback()
+        raise _admin_api_error(error) from error
+    return AccountDetailActionResponse(
+        message="商店标识已保存",
+        state=_developer_account_detail_state(session, account_id),
+    )
+
+
+@router.delete(
+    "/developer-accounts/{account_id}/apps/{app_id}",
+    response_model=AccountDetailActionResponse,
+    response_model_by_alias=True,
+)
+def unbind_account_app(
+    account_id: str,
+    app_id: str,
+    session: SessionDep,
+    _: AdminDep,
+) -> AccountDetailActionResponse:
+    try:
+        unbind_app_from_account(session, account_id=account_id, app_id=app_id)
+        session.commit()
+    except ApiError as error:
+        session.rollback()
+        raise _admin_api_error(error) from error
+    return AccountDetailActionResponse(
+        message="App 已解绑",
+        state=_developer_account_detail_state(session, account_id),
+    )
 
 
 @router.get(
@@ -672,7 +1706,7 @@ def _store_app_item(app: App, *, selected_app_id: str) -> StoreAppItem:
         ),
         selected=app.id == selected_app_id,
         store_management_path=(
-            f"/admin/developer-accounts/{account.id}/apps/{app.id}/store" if account else ""
+            f"/admin-next/accounts/{account.id}/apps/{app.id}/store" if account else ""
         ),
         reviews_path=(
             f"/admin-next/store-reviews?accountId={account.id}&appId={app.id}" if account else ""
@@ -734,6 +1768,1056 @@ def _store_app_status_label(status: str) -> str:
     if status == "needs_identifier":
         return "待填写商店标识"
     return "未绑定账号"
+
+
+def _developer_accounts_state(session: Session) -> DeveloperAccountsState:
+    accounts = [_developer_account_summary(row) for row in list_accounts(session)]
+    return DeveloperAccountsState(
+        accounts=accounts,
+        stats=DeveloperAccountsStats(
+            total=len(accounts),
+            ok=sum(
+                1
+                for account in accounts
+                if account.status == "ok" and account.connector_status == "ok"
+            ),
+            needs=sum(
+                1
+                for account in accounts
+                if account.status != "ok" or account.connector_status != "ok"
+            ),
+            bound_apps=sum(len(account.app_names) for account in accounts),
+            connector_needs=sum(
+                1 for account in accounts if account.connector_status != "ok"
+            ),
+        ),
+    )
+
+
+def _developer_account_summary(row: dict[str, object]) -> DeveloperAccountSummary:
+    account = row.get("account")
+    if not isinstance(account, DeveloperAccount):
+        raise AdminApiError("invalid_account_row", "开发者账号数据格式异常", status_code=500)
+    apps = row.get("apps")
+    connector = row.get("connector")
+    latest_sync = row.get("latest_sync")
+    return DeveloperAccountSummary(
+        id=account.id,
+        team_name=account.team_name,
+        status=account.status,
+        status_label=account_status_label(account.status),
+        expires_at=_iso_datetime(account.expires_at),
+        expires_at_label=format_datetime(account.expires_at),
+        remaining_days=int(row.get("remaining_days") or 0),
+        app_names=[str(app_name) for app_name in apps] if isinstance(apps, list) else [],
+        connector_name=str(getattr(connector, "name", "") or "未配置"),
+        connector_status=str(getattr(connector, "status", "") or "missing"),
+        connector_status_label=_connector_status_label(
+            str(getattr(connector, "status", "") or "missing")
+        ),
+        latest_sync_status=str(getattr(latest_sync, "status", "") or "无"),
+        latest_sync_at_label=format_datetime(getattr(latest_sync, "started_at", None)),
+        detail_path=f"/admin-next/accounts/{account.id}",
+    )
+
+
+def _account_summary_for_id(session: Session, account_id: str) -> DeveloperAccountSummary:
+    for row in list_accounts(session):
+        account = row.get("account")
+        if isinstance(account, DeveloperAccount) and account.id == account_id:
+            return _developer_account_summary(row)
+    raise AdminApiError("account_not_found", "开发者账号不存在", status_code=404)
+
+
+def _auto_check_connector(session: Session, account_id: str) -> None:
+    connector = account_connector(session, account_id)
+    if connector and _recently_checked(getattr(connector, "last_checked_at", None)):
+        return
+    try:
+        check_connector_health(session, account_id=account_id)
+        session.commit()
+    except ApiError:
+        session.rollback()
+
+
+def _recently_checked(value: datetime | None) -> bool:
+    if value is None:
+        return False
+    checked_at = value if value.tzinfo else value.replace(tzinfo=UTC)
+    return datetime.now(UTC) - checked_at.astimezone(UTC) < CONNECTOR_AUTO_CHECK_TTL
+
+
+def _developer_account_detail_state(
+    session: Session,
+    account_id: str,
+) -> DeveloperAccountDetailState:
+    context = account_detail_context(session, account_id)
+    account = context.get("account")
+    if not isinstance(account, DeveloperAccount):
+        raise AdminApiError("account_not_found", "开发者账号不存在", status_code=404)
+
+    connector = context.get("connector")
+    sync_runs = [
+        run
+        for run in context.get("sync_runs", [])
+        if hasattr(run, "id") and hasattr(run, "started_at")
+    ]
+    account_summary = _developer_account_summary(
+        {
+            "account": account,
+            "remaining_days": context.get("remaining_days") or 0,
+            "apps": [
+                item["app"].name
+                for item in context.get("apps", [])
+                if isinstance(item, dict) and isinstance(item.get("app"), App)
+            ],
+            "connector": connector,
+            "latest_sync": sync_runs[0] if sync_runs else None,
+        }
+    )
+    return DeveloperAccountDetailState(
+        account=account_summary,
+        connector=_connector_state(connector),
+        account_store_platform=str(context.get("account_store_platform") or "mixed"),
+        apps=[
+            _account_app_item(item, account_id=account.id)
+            for item in context.get("apps", [])
+            if isinstance(item, dict)
+        ],
+        unassigned_apps=[
+            _unassigned_app_item(app)
+            for app in context.get("unassigned_apps", [])
+            if isinstance(app, App)
+        ],
+        sync_runs=[_sync_run_summary(run) for run in sync_runs[:8]],
+    )
+
+
+def _account_app_item(item: dict[str, object], *, account_id: str) -> AccountAppItem:
+    app = item.get("app")
+    latest_build = item.get("latest_build")
+    if not isinstance(app, App):
+        raise AdminApiError("invalid_account_app", "账号 App 数据格式异常", status_code=500)
+    return AccountAppItem(
+        id=app.id,
+        name=app.name,
+        bundle_identifier=app.bundle_identifier,
+        platform=app.platform,
+        platform_label=platform_label(app.platform),
+        icon_color=app.icon_color,
+        icon_text=app.name[:2].upper(),
+        store_app_id=app.store_app_id or "",
+        store_package_name=app.store_package_name or "",
+        latest_version_label=_latest_build_label(latest_build),
+        store_path=f"/admin-next/accounts/{account_id}/apps/{app.id}/store",
+        marketing_path=f"/admin-next/accounts/{account_id}/apps/{app.id}/marketing",
+        release_notes_path=f"/admin-next/accounts/{account_id}/apps/{app.id}/release-notes",
+        connection_path=f"/admin-next/accounts/{account_id}/apps/{app.id}/connection",
+    )
+
+
+def _unassigned_app_item(app: App) -> UnassignedAppItem:
+    return UnassignedAppItem(
+        id=app.id,
+        name=app.name,
+        bundle_identifier=app.bundle_identifier,
+        platform=app.platform,
+        platform_label=platform_label(app.platform),
+    )
+
+
+def _connector_state(connector: object | None) -> ConnectorState | None:
+    if connector is None:
+        return None
+    status = str(getattr(connector, "status", "") or "unknown")
+    return ConnectorState(
+        name=str(getattr(connector, "name", "") or ""),
+        base_url=str(getattr(connector, "base_url", "") or ""),
+        auth_token=str(getattr(connector, "auth_token", "") or ""),
+        status=status,
+        status_label=_connector_status_label(status),
+        checked_at_label=format_datetime(getattr(connector, "last_checked_at", None)),
+    )
+
+
+def _sync_run_summary(run: object) -> SyncRunSummary:
+    operation = str(getattr(run, "operation", "") or "")
+    status = str(getattr(run, "status", "") or "")
+    error_summary = str(getattr(run, "error_summary", "") or "")
+    version = str(getattr(run, "version", "") or "")
+    locale = str(getattr(run, "locale", "") or "")
+    summary = error_summary or " / ".join(item for item in [operation, version, locale] if item)
+    return SyncRunSummary(
+        id=str(getattr(run, "id", "") or ""),
+        operation=operation,
+        status=status,
+        started_at_label=format_datetime(getattr(run, "started_at", None)),
+        summary=summary or "已记录同步任务",
+    )
+
+
+def _connector_status_label(status: str) -> str:
+    return {
+        "ok": "正常",
+        "missing": "未配置",
+        "unknown": "未检查",
+        "error": "异常",
+    }.get(status, status or "未配置")
+
+
+def _remaining_days_from_account(session: Session, account_id: str) -> int:
+    for row in list_accounts(session):
+        account = row.get("account")
+        if isinstance(account, DeveloperAccount) and account.id == account_id:
+            return int(row.get("remaining_days") or 0)
+    return 0
+
+
+def _latest_build_label(latest_build: object | None) -> str:
+    if latest_build is None:
+        return "暂无构建"
+    version = str(getattr(latest_build, "version", "") or "")
+    build_number = str(getattr(latest_build, "build_number", "") or "")
+    if version and build_number:
+        return f"{version} ({build_number})"
+    return version or build_number or "暂无构建"
+
+
+def _store_workspace_state(
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    section: str,
+    locale: str,
+) -> StoreWorkspaceState:
+    normalized_section = (
+        section if section in {"store", "marketing", "release-notes", "connection"} else "store"
+    )
+    context = (
+        store_marketing_context(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            locale=locale or "en-US",
+        )
+        if normalized_section == "marketing"
+        else store_metadata_context(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            locale=locale or "en-US",
+        )
+    )
+    account = context.get("account")
+    app = context.get("app")
+    latest_build = context.get("latest_build")
+    if not isinstance(account, DeveloperAccount):
+        raise AdminApiError("account_not_found", "开发者账号不存在", status_code=404)
+    if not isinstance(app, App):
+        raise AdminApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
+
+    preflight = context.get("preflight")
+    return StoreWorkspaceState(
+        account=_account_summary_for_id(session, account.id),
+        app=_account_app_item({"app": app, "latest_build": latest_build}, account_id=account.id),
+        section=normalized_section,
+        version=str(context.get("version") or _latest_build_label(latest_build)),
+        locale=str(context.get("locale") or ""),
+        source_locale=str(context.get("source_locale") or ""),
+        supported_locales=[str(item) for item in context.get("supported_locales", [])],
+        localized_metadata=[
+            _store_locale_content(item)
+            for item in context.get("localized_metadata", [])
+            if isinstance(item, dict)
+        ],
+        connector=_connector_state(context.get("connector")),
+        preflight_status=_preflight_status(preflight),
+        preflight_label=_preflight_label(preflight),
+        sync_runs=[
+            _sync_run_summary(run)
+            for run in context.get("sync_runs", [])
+            if hasattr(run, "id") and hasattr(run, "started_at")
+        ],
+        marketing_pages=[
+            _store_marketing_page_summary(
+                item,
+                account_id=account.id,
+                app_id=app.id,
+            )
+            for item in context.get("marketing_pages", [])
+        ],
+    )
+
+
+def _store_locale_content(item: dict[str, object]) -> StoreLocaleContent:
+    store_images = item.get("store_images")
+    return StoreLocaleContent(
+        locale=str(item.get("locale") or ""),
+        is_source=bool(item.get("is_source")),
+        keywords=str(item.get("keywords") or ""),
+        promotional_text=str(item.get("promotional_text") or ""),
+        description=str(item.get("description") or ""),
+        release_notes=str(item.get("release_notes") or ""),
+        store_images=store_images if isinstance(store_images, dict) else {},
+    )
+
+
+def _workspace_rows_from_payload(
+    locales: list[StoreLocaleContentInput],
+    *,
+    fallback_locale: str,
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for item in locales:
+        locale = item.locale.strip()
+        if not locale:
+            continue
+        rows.append(
+            {
+                "locale": locale,
+                "keywords": "",
+                "promotional_text": item.promotional_text.strip(),
+                "description": item.description.strip(),
+                "release_notes": item.release_notes.strip(),
+                "store_images": _store_images_from_input(item.store_images),
+            }
+        )
+    if rows:
+        return rows
+    locale = fallback_locale.strip() or DEFAULT_LOCALE
+    return [
+        {
+            "locale": locale,
+            "keywords": "",
+            "promotional_text": "",
+            "description": "",
+            "release_notes": "",
+            "store_images": {},
+        }
+    ]
+
+
+def _source_locale_from_payload(
+    locales: list[StoreLocaleContentInput],
+    fallback_locale: str,
+) -> str:
+    if fallback_locale.strip():
+        return fallback_locale.strip()
+    if locales:
+        return locales[0].locale.strip() or DEFAULT_LOCALE
+    return DEFAULT_LOCALE
+
+
+def _store_images_from_input(value: object) -> dict[str, object]:
+    return dict(value) if isinstance(value, dict) else {}
+
+
+async def _store_image_assets_from_form(
+    form: object,
+    *,
+    storage: object,
+    account_id: str,
+    app_id: str,
+    platform: str,
+    version: str,
+    content_set_id: str,
+) -> dict[str, dict[str, list[dict[str, object]]]]:
+    assets_by_locale: dict[str, dict[str, list[dict[str, object]]]] = {}
+    if not hasattr(form, "multi_items"):
+        return assets_by_locale
+
+    for field_name, value in form.multi_items():
+        if not isinstance(field_name, str) or not field_name.startswith("storeImageFiles__"):
+            continue
+        parts = field_name.split("__", 2)
+        if len(parts) != 3:
+            continue
+        slot_key, locale = parts[1].strip(), parts[2].strip()
+        if slot_key not in STORE_IMAGE_SLOT_KEYS or not locale:
+            continue
+        filename = str(getattr(value, "filename", "") or "").strip()
+        if not filename or not hasattr(value, "read"):
+            continue
+        content = await value.read()
+        if not content:
+            continue
+        content_type = str(getattr(value, "content_type", "") or "application/octet-stream")
+        validation = validate_store_image(
+            platform=platform,
+            slot_key=slot_key,
+            filename=filename,
+            content_type=content_type,
+            content=content,
+        )
+        if not validation.valid:
+            raise ApiError(
+                "store_image_invalid",
+                f"{locale} {Path(filename).name}: {validation.message}",
+                status_code=422,
+            )
+        stored = storage.save(
+            _store_image_storage_folder(
+                account_id=account_id,
+                app_id=app_id,
+                version=version,
+                content_set_id=content_set_id,
+                locale=locale,
+                slot_key=slot_key,
+            ),
+            filename,
+            content,
+            content_type=content_type,
+        )
+        assets_by_locale.setdefault(locale, {}).setdefault(slot_key, []).append(
+            {
+                "fileName": Path(filename).name,
+                "contentType": content_type,
+                "sizeBytes": len(content),
+                "storageKey": stored.storage_key,
+                "downloadUrl": stored.download_url,
+                "width": validation.image.width if validation.image else None,
+                "height": validation.image.height if validation.image else None,
+                "format": validation.image.format if validation.image else None,
+                "validationMessage": validation.message,
+                "matchedLabel": validation.matched_label,
+            }
+        )
+    return assets_by_locale
+
+
+def _append_metadata_store_image_assets(
+    session: Session,
+    *,
+    account_id: str,
+    app: App,
+    uploaded_assets: dict[str, dict[str, list[dict[str, object]]]],
+) -> None:
+    for locale, slots in uploaded_assets.items():
+        draft = session.scalar(
+            select(StoreAppMetadataDraft).where(
+                StoreAppMetadataDraft.developer_account_id == account_id,
+                StoreAppMetadataDraft.app_id == app.id,
+                StoreAppMetadataDraft.platform == app.platform,
+                StoreAppMetadataDraft.version == CURRENT_METADATA_VERSION,
+                StoreAppMetadataDraft.locale == locale,
+                StoreAppMetadataDraft.content_set_id == DEFAULT_CONTENT_SET_ID,
+            )
+        )
+        if draft is None:
+            draft = StoreAppMetadataDraft(
+                id=f"metadata-{uuid4().hex[:12]}",
+                developer_account_id=account_id,
+                app_id=app.id,
+                platform=app.platform,
+                version=CURRENT_METADATA_VERSION,
+                locale=locale,
+                content_set_id=DEFAULT_CONTENT_SET_ID,
+                content_set_name=DEFAULT_CONTENT_SET_NAME,
+                store_images_json={},
+            )
+            session.add(draft)
+        draft.store_images_json = _merge_uploaded_store_image_assets(
+            draft.store_images_json,
+            slots,
+        )
+        draft.updated_at = datetime.now(UTC)
+
+
+def _append_marketing_page_store_image_assets(
+    session: Session,
+    *,
+    marketing_page_id: str,
+    uploaded_assets: dict[str, dict[str, list[dict[str, object]]]],
+) -> None:
+    for locale, slots in uploaded_assets.items():
+        row = session.scalar(
+            select(StoreMarketingPageLocale).where(
+                StoreMarketingPageLocale.marketing_page_id == marketing_page_id,
+                StoreMarketingPageLocale.locale == locale,
+            )
+        )
+        if row is None:
+            row = StoreMarketingPageLocale(
+                id=f"marketing-locale-{uuid4().hex[:12]}",
+                marketing_page_id=marketing_page_id,
+                locale=locale,
+                promotional_text="",
+                store_images_json={},
+            )
+            session.add(row)
+        row.store_images_json = _merge_uploaded_store_image_assets(row.store_images_json, slots)
+        row.updated_at = datetime.now(UTC)
+
+
+def _merge_uploaded_store_image_assets(
+    current_images: object,
+    uploaded_slots: dict[str, list[dict[str, object]]],
+) -> dict[str, object]:
+    images = dict(current_images) if isinstance(current_images, dict) else {}
+    for slot_key, assets in uploaded_slots.items():
+        if slot_key not in STORE_IMAGE_SLOT_KEYS:
+            continue
+        slot = dict(images.get(slot_key)) if isinstance(images.get(slot_key), dict) else {}
+        slot["assets"] = _dedupe_store_image_assets(
+            [*_asset_list(slot.get("assets")), *assets],
+        )
+        slot["urls"] = _string_list(slot.get("urls"))
+        images[slot_key] = slot
+    return images
+
+
+def _dedupe_store_image_assets(
+    assets: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    deduped: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for asset in assets:
+        storage_key = str(asset.get("storageKey") or "").strip()
+        marker = storage_key or f"{asset.get('fileName')}:{asset.get('downloadUrl')}"
+        if marker in seen:
+            continue
+        seen.add(marker)
+        deduped.append(asset)
+    return deduped
+
+
+def _string_list(value: object) -> list[str]:
+    if isinstance(value, list | tuple):
+        raw_values = [str(item or "") for item in value]
+    else:
+        raw_values = str(value or "").splitlines()
+    return [item.strip() for item in raw_values if item.strip()]
+
+
+def _asset_list(value: object) -> list[dict[str, object]]:
+    if not isinstance(value, list | tuple):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _uploaded_asset_count(
+    uploaded_assets: dict[str, dict[str, list[dict[str, object]]]],
+) -> int:
+    return sum(len(assets) for slots in uploaded_assets.values() for assets in slots.values())
+
+
+def _first_uploaded_locale(uploaded_assets: dict[str, object]) -> str:
+    return next(iter(uploaded_assets.keys()), DEFAULT_LOCALE)
+
+
+def _store_image_storage_folder(
+    *,
+    account_id: str,
+    app_id: str,
+    version: str,
+    content_set_id: str,
+    locale: str,
+    slot_key: str,
+) -> str:
+    return "/".join(
+        [
+            "store-assets",
+            _safe_storage_part(account_id),
+            _safe_storage_part(app_id),
+            _safe_storage_part(content_set_id),
+            _safe_storage_part(version),
+            _safe_storage_part(locale),
+            _safe_storage_part(slot_key),
+        ]
+    )
+
+
+def _safe_storage_part(value: str) -> str:
+    normalized = re.sub(r"[^A-Za-z0-9._-]+", "-", value.strip())
+    return normalized.strip("-") or "default"
+
+
+def _scoped_app_or_error(session: Session, account_id: str, app_id: str) -> App:
+    app = scoped_app(session, account_id, app_id)
+    if app is None:
+        raise ApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
+    return app
+
+
+def _preserve_readonly_keywords_for_rows(
+    session: Session,
+    *,
+    account_id: str,
+    app: App,
+    rows: list[dict[str, object]],
+) -> None:
+    keywords_by_locale = {
+        draft.locale: draft.keywords
+        for draft in session.scalars(
+            select(StoreAppMetadataDraft).where(
+                StoreAppMetadataDraft.developer_account_id == account_id,
+                StoreAppMetadataDraft.app_id == app.id,
+                StoreAppMetadataDraft.platform == app.platform,
+                StoreAppMetadataDraft.version == CURRENT_METADATA_VERSION,
+                StoreAppMetadataDraft.content_set_id == DEFAULT_CONTENT_SET_ID,
+            )
+        )
+    }
+    for row in rows:
+        locale = str(row.get("locale") or "").strip()
+        row["keywords"] = keywords_by_locale.get(locale, "")
+
+
+def _save_metadata_rows(
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    rows: list[dict[str, object]],
+) -> None:
+    for row in rows:
+        save_current_app_metadata_draft(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            locale=str(row["locale"]),
+            keywords=str(row["keywords"]),
+            promotional_text=str(row["promotional_text"]),
+            description=str(row["description"]),
+            store_images=_store_images_from_input(row.get("store_images")),
+        )
+
+
+def _save_release_note_rows(
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    version: str,
+    rows: list[dict[str, object]],
+) -> None:
+    for row in rows:
+        save_release_note_draft(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            version=version,
+            locale=str(row["locale"]),
+            release_notes=str(row.get("release_notes") or ""),
+        )
+
+
+def _store_workspace_action_response(
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    section: str,
+    locale: str,
+    message: str,
+    sync_runs: list[object] | None = None,
+) -> StoreWorkspaceActionResponse:
+    return StoreWorkspaceActionResponse(
+        message=message,
+        state=_store_workspace_state(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            section=section,
+            locale=locale,
+        ),
+        sync_runs=[_sync_run_summary(run) for run in sync_runs or []],
+    )
+
+
+def _marketing_page_detail_state(
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    page_id: str,
+    locale: str,
+) -> MarketingPageDetailState:
+    context = marketing_page_context(
+        session,
+        account_id=account_id,
+        app_id=app_id,
+        page_id=page_id,
+        locale=locale or DEFAULT_LOCALE,
+    )
+    account = context.get("account")
+    app = context.get("app")
+    page = context.get("page")
+    if not isinstance(account, DeveloperAccount):
+        raise AdminApiError("account_not_found", "开发者账号不存在", status_code=404)
+    if not isinstance(app, App):
+        raise AdminApiError("app_not_found", "当前开发者账号下没有这个 App", status_code=404)
+    if page is None or not hasattr(page, "page_id"):
+        raise AdminApiError("marketing_page_not_found", "营销页面不存在", status_code=404)
+
+    return MarketingPageDetailState(
+        account=_account_summary_for_id(session, account.id),
+        app=_account_app_item(
+            {
+                "app": app,
+                "latest_build": context.get("latest_build"),
+            },
+            account_id=account.id,
+        ),
+        page=_store_marketing_page_summary(
+            {
+                "page": page,
+                "type_label": _marketing_page_type_label(str(getattr(page, "page_type", ""))),
+                "status_label": _marketing_page_status_label(str(getattr(page, "status", ""))),
+                "apple_page_id_label": str(getattr(page, "apple_page_id", "") or "未同步后回填"),
+                "language_count": len(context.get("localized_marketing_page", [])),
+                "filled_text_count": sum(
+                    1
+                    for item in context.get("localized_marketing_page", [])
+                    if isinstance(item, dict) and str(item.get("promotional_text") or "").strip()
+                ),
+                "asset_count": sum(
+                    _store_image_asset_count(item.get("store_images"))
+                    for item in context.get("localized_marketing_page", [])
+                    if isinstance(item, dict)
+                ),
+            },
+            account_id=account.id,
+            app_id=app.id,
+        ),
+        locale=str(context.get("locale") or ""),
+        source_locale=str(context.get("source_locale") or ""),
+        supported_locales=[str(item) for item in context.get("supported_locales", [])],
+        localized_page=[
+            _marketing_locale_content(item)
+            for item in context.get("localized_marketing_page", [])
+            if isinstance(item, dict)
+        ],
+        connector=_connector_state(context.get("connector")),
+        preflight_status=_preflight_status(context.get("preflight")),
+        preflight_label=_preflight_label(context.get("preflight")),
+        sync_runs=[
+            _sync_run_summary(run)
+            for run in context.get("sync_runs", [])
+            if hasattr(run, "id") and hasattr(run, "started_at")
+        ],
+    )
+
+
+def _marketing_locale_content(item: dict[str, object]) -> MarketingPageLocaleContent:
+    store_images = item.get("store_images")
+    return MarketingPageLocaleContent(
+        locale=str(item.get("locale") or ""),
+        is_source=bool(item.get("is_source")),
+        promotional_text=str(item.get("promotional_text") or ""),
+        store_images=store_images if isinstance(store_images, dict) else {},
+    )
+
+
+def _marketing_rows_from_payload(
+    locales: list[MarketingPageLocaleInput],
+    fallback_locale: str,
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for item in locales:
+        locale = item.locale.strip()
+        if not locale:
+            continue
+        rows.append(
+            {
+                "locale": locale,
+                "promotional_text": item.promotional_text.strip(),
+                "store_images": _store_images_from_input(item.store_images),
+            }
+        )
+    if rows:
+        return rows
+    return [
+        {
+            "locale": fallback_locale.strip() or DEFAULT_LOCALE,
+            "promotional_text": "",
+            "store_images": {},
+        }
+    ]
+
+
+def _source_locale_from_marketing_payload(
+    locales: list[MarketingPageLocaleInput],
+    fallback_locale: str,
+) -> str:
+    if fallback_locale.strip():
+        return fallback_locale.strip()
+    if locales:
+        return locales[0].locale.strip() or DEFAULT_LOCALE
+    return DEFAULT_LOCALE
+
+
+def _save_marketing_page_from_payload(
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    page_id: str,
+    payload: MarketingPageSaveRequest,
+) -> None:
+    page = _marketing_page_or_error(session, account_id=account_id, app_id=app_id, page_id=page_id)
+    save_marketing_page(
+        session,
+        account_id=account_id,
+        app_id=app_id,
+        page_id=page_id,
+        page_name=payload.page_name or str(getattr(page, "page_name", "")),
+        page_type=payload.page_type or str(getattr(page, "page_type", "")),
+        keywords=str(getattr(page, "keywords", "") or ""),
+        apple_page_id=str(getattr(page, "apple_page_id", "") or ""),
+        deep_link_url=payload.deep_link_url or str(getattr(page, "deep_link_url", "") or ""),
+        locale_rows=_marketing_rows_from_payload(payload.locales, payload.locale),
+    )
+
+
+def _marketing_page_action_response(
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    page_id: str,
+    locale: str,
+    message: str,
+    sync_runs: list[object] | None = None,
+) -> MarketingPageActionResponse:
+    return MarketingPageActionResponse(
+        message=message,
+        state=_marketing_page_detail_state(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            page_id=page_id,
+            locale=locale,
+        ),
+        workspace=_store_workspace_state(
+            session,
+            account_id=account_id,
+            app_id=app_id,
+            section="marketing",
+            locale=locale,
+        ),
+        sync_runs=[_sync_run_summary(run) for run in sync_runs or []],
+    )
+
+
+def _marketing_page_or_error(
+    session: Session,
+    *,
+    account_id: str,
+    app_id: str,
+    page_id: str,
+) -> object:
+    page = marketing_page_for_scope(
+        session,
+        account_id=account_id,
+        app_id=app_id,
+        page_id=page_id,
+    )
+    if page is None:
+        raise ApiError("marketing_page_not_found", "营销页面不存在", status_code=404)
+    return page
+
+
+def _delete_marketing_page_image_from_draft(
+    session: Session,
+    *,
+    storage: object,
+    account_id: str,
+    app_id: str,
+    page_id: str,
+    locale: str,
+    slot_key: str,
+    storage_key: str,
+) -> None:
+    page = _marketing_page_or_error(session, account_id=account_id, app_id=app_id, page_id=page_id)
+    normalized_slot = slot_key.strip()
+    normalized_storage_key = storage_key.strip()
+    normalized_locale = locale.strip() or DEFAULT_LOCALE
+    if normalized_slot not in {"feature_graphic_url", "phone_screenshots", "tablet_screenshots"}:
+        raise ApiError("invalid_store_image_slot", "商店图类型不合法", status_code=422)
+    if not normalized_storage_key:
+        raise ApiError("invalid_store_image", "缺少要删除的商店图", status_code=422)
+    locale_row = session.scalar(
+        select(StoreMarketingPageLocale).where(
+            StoreMarketingPageLocale.marketing_page_id == page.id,
+            StoreMarketingPageLocale.locale == normalized_locale,
+        )
+    )
+    if locale_row is None:
+        raise ApiError("store_image_not_found", "这个语言下还没有营销页面截图", status_code=404)
+    updated_images, removed = _remove_store_image_asset_from_json(
+        locale_row.store_images_json,
+        slot_key=normalized_slot,
+        storage_key=normalized_storage_key,
+    )
+    if not removed:
+        raise ApiError(
+            "store_image_not_found",
+            "这张营销页面截图已经不存在或已被删除",
+            status_code=404,
+        )
+    locale_row.store_images_json = updated_images
+    locale_row.updated_at = datetime.now(UTC)
+    if hasattr(storage, "delete"):
+        try:
+            storage.delete(normalized_storage_key)
+        except Exception:
+            pass
+
+
+def _store_image_asset_count(store_images: object) -> int:
+    if not isinstance(store_images, dict):
+        return 0
+    total = 0
+    for value in store_images.values():
+        if isinstance(value, dict):
+            assets = value.get("assets")
+            if isinstance(assets, list):
+                total += len(assets)
+        elif isinstance(value, list):
+            total += len(value)
+    return total
+
+
+def _marketing_page_type_label(page_type: str) -> str:
+    return "产品页面优化" if page_type == "product_page_optimization" else "自定义产品页面"
+
+
+def _marketing_page_status_label(status: str) -> str:
+    return {
+        "draft": "未同步",
+        "synced": "已同步",
+        "archived": "已归档",
+    }.get(status, status or "未同步")
+
+
+def _delete_store_image_from_current_draft(
+    session: Session,
+    *,
+    storage: object,
+    account_id: str,
+    app: App,
+    locale: str,
+    slot_key: str,
+    storage_key: str,
+) -> None:
+    normalized_slot = slot_key.strip()
+    normalized_storage_key = storage_key.strip()
+    normalized_locale = locale.strip() or DEFAULT_LOCALE
+    if normalized_slot not in {"feature_graphic_url", "phone_screenshots", "tablet_screenshots"}:
+        raise ApiError("invalid_store_image_slot", "商店图类型不合法", status_code=422)
+    if not normalized_storage_key:
+        raise ApiError("invalid_store_image", "缺少要删除的商店图", status_code=422)
+
+    draft = session.scalar(
+        select(StoreAppMetadataDraft).where(
+            StoreAppMetadataDraft.developer_account_id == account_id,
+            StoreAppMetadataDraft.app_id == app.id,
+            StoreAppMetadataDraft.platform == app.platform,
+            StoreAppMetadataDraft.version == CURRENT_METADATA_VERSION,
+            StoreAppMetadataDraft.locale == normalized_locale,
+            StoreAppMetadataDraft.content_set_id == DEFAULT_CONTENT_SET_ID,
+        )
+    )
+    if draft is None:
+        raise ApiError("store_image_not_found", "这个语言下还没有商店图", status_code=404)
+    updated_images, removed = _remove_store_image_asset_from_json(
+        draft.store_images_json,
+        slot_key=normalized_slot,
+        storage_key=normalized_storage_key,
+    )
+    if not removed:
+        raise ApiError("store_image_not_found", "这张商店图已经不存在或已被删除", status_code=404)
+    draft.store_images_json = updated_images
+    draft.updated_at = datetime.now(UTC)
+    if hasattr(storage, "delete"):
+        try:
+            storage.delete(normalized_storage_key)
+        except Exception:
+            pass
+
+
+def _remove_store_image_asset_from_json(
+    store_images: object,
+    *,
+    slot_key: str,
+    storage_key: str,
+) -> tuple[dict[str, object], bool]:
+    if not isinstance(store_images, dict):
+        return {}, False
+    images = dict(store_images)
+    slot = images.get(slot_key)
+    if not isinstance(slot, dict):
+        return images, False
+    assets = slot.get("assets")
+    if not isinstance(assets, list | tuple):
+        return images, False
+    kept_assets: list[dict[str, object]] = []
+    removed = False
+    for item in assets:
+        if isinstance(item, dict) and str(item.get("storageKey") or "") == storage_key:
+            removed = True
+            continue
+        if isinstance(item, dict):
+            kept_assets.append(item)
+    images[slot_key] = {**slot, "assets": kept_assets}
+    return images, removed
+
+
+def _store_marketing_page_summary(
+    item: object,
+    *,
+    account_id: str,
+    app_id: str,
+) -> StoreMarketingPageSummary:
+    page = item.get("page") if isinstance(item, dict) else item
+    if page is None or not hasattr(page, "page_id"):
+        raise AdminApiError("invalid_marketing_page", "营销页面数据格式异常", status_code=500)
+    page_id = str(getattr(page, "page_id", "") or "")
+    return StoreMarketingPageSummary(
+        id=str(getattr(page, "id", "") or page_id),
+        page_id=page_id,
+        page_name=str(getattr(page, "page_name", "") or "未命名营销页面"),
+        page_type=str(getattr(page, "page_type", "") or ""),
+        type_label=(
+            str(item.get("type_label"))
+            if isinstance(item, dict) and item.get("type_label")
+            else "营销页面"
+        ),
+        status=str(getattr(page, "status", "") or "draft"),
+        status_label=(
+            str(item.get("status_label"))
+            if isinstance(item, dict) and item.get("status_label")
+            else str(getattr(page, "status", "") or "draft")
+        ),
+        apple_page_id_label=(
+            str(item.get("apple_page_id_label"))
+            if isinstance(item, dict) and item.get("apple_page_id_label")
+            else str(getattr(page, "apple_page_id", "") or "未同步后回填")
+        ),
+        deep_link_url=str(getattr(page, "deep_link_url", "") or ""),
+        language_count=int(item.get("language_count") or 0) if isinstance(item, dict) else 0,
+        filled_text_count=(
+            int(item.get("filled_text_count") or 0) if isinstance(item, dict) else 0
+        ),
+        asset_count=int(item.get("asset_count") or 0) if isinstance(item, dict) else 0,
+        detail_path=(
+            f"/admin-next/accounts/{account_id}/apps/{app_id}/marketing-pages/{page_id}"
+        ),
+    )
+
+
+def _preflight_status(preflight: object | None) -> str:
+    if preflight is None:
+        return "unchecked"
+    return "ok" if bool(getattr(preflight, "can_sync", False)) else "needs"
+
+
+def _preflight_label(preflight: object | None) -> str:
+    if preflight is None:
+        return "等待检查"
+    return str(getattr(preflight, "message", "") or "已检查")
 
 
 def _store_reviews_state(

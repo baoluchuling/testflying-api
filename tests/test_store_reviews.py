@@ -17,6 +17,12 @@ def _admin_headers(password: str = "dev-token") -> dict[str, str]:
     return {"Authorization": f"Basic {token}"}
 
 
+def _assert_admin_spa_shell(response) -> None:
+    assert response.status_code == 200
+    assert 'data-admin-app-root' in response.text
+    assert "/assets/index-" in response.text
+
+
 class FakeReviewClient:
     def __init__(self, pages: list[dict[str, object]]) -> None:
         self.pages = pages
@@ -144,8 +150,7 @@ def test_admin_store_reviews_page_fetches_initial_reviews(
     )
 
     stored_count = db_session.scalar(select(func.count(StoreReview.id)))
-    assert page.status_code == 200
-    assert "商店评论" in page.text
+    _assert_admin_spa_shell(page)
     assert response.status_code == 200
     assert "最新评论已拉取" in response.text
     assert stored_count == 2

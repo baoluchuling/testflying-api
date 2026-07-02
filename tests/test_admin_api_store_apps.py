@@ -78,7 +78,7 @@ def test_admin_api_store_apps_selects_requested_app(
     assert payload["selectedApp"]["id"] == "app-insight-ios"
     assert [item["selected"] for item in payload["apps"]] == [False, True]
     assert payload["selectedApp"]["storeManagementPath"].endswith(
-        "/admin/developer-accounts/account-apple-enterprise/apps/app-insight-ios/store"
+        "/admin-next/accounts/account-apple-enterprise/apps/app-insight-ios/store"
     )
     assert payload["selectedApp"]["reviewsPath"] == (
         "/admin-next/store-reviews?accountId=account-apple-enterprise&appId=app-insight-ios"

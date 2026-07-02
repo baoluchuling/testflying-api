@@ -174,6 +174,256 @@ class StoreAppsState(AdminApiModel):
     account_summary: StoreAppsAccountSummary
 
 
+class DeveloperAccountSummary(AdminApiModel):
+    id: str
+    team_name: str
+    status: str
+    status_label: str
+    expires_at: str
+    expires_at_label: str
+    remaining_days: int
+    app_names: list[str]
+    connector_name: str
+    connector_status: str
+    connector_status_label: str
+    latest_sync_status: str
+    latest_sync_at_label: str
+    detail_path: str
+
+
+class DeveloperAccountsStats(AdminApiModel):
+    total: int
+    ok: int
+    needs: int
+    bound_apps: int
+    connector_needs: int
+
+
+class DeveloperAccountsState(AdminApiModel):
+    accounts: list[DeveloperAccountSummary]
+    stats: DeveloperAccountsStats
+
+
+class DeveloperAccountForm(AdminApiModel):
+    account_id: str | None = None
+    team_name: str
+    expires_at: str
+    status: str
+    renewal_action_label: str = "去续费"
+
+
+class DeveloperAccountSaveResponse(AdminApiModel):
+    message: str
+    account: DeveloperAccountSummary
+    state: DeveloperAccountsState
+
+
+class AccountAppItem(AdminApiModel):
+    id: str
+    name: str
+    bundle_identifier: str
+    platform: str
+    platform_label: str
+    icon_color: str
+    icon_text: str
+    store_app_id: str
+    store_package_name: str
+    latest_version_label: str
+    store_path: str
+    marketing_path: str
+    release_notes_path: str
+    connection_path: str
+
+
+class UnassignedAppItem(AdminApiModel):
+    id: str
+    name: str
+    bundle_identifier: str
+    platform: str
+    platform_label: str
+
+
+class ConnectorState(AdminApiModel):
+    name: str
+    base_url: str
+    auth_token: str
+    status: str
+    status_label: str
+    checked_at_label: str
+
+
+class SyncRunSummary(AdminApiModel):
+    id: str
+    operation: str
+    status: str
+    started_at_label: str
+    summary: str
+
+
+class DeveloperAccountDetailState(AdminApiModel):
+    account: DeveloperAccountSummary
+    connector: ConnectorState | None
+    account_store_platform: str
+    apps: list[AccountAppItem]
+    unassigned_apps: list[UnassignedAppItem]
+    sync_runs: list[SyncRunSummary]
+
+
+class ConnectorSaveRequest(AdminApiModel):
+    name: str
+    base_url: str = ""
+    auth_token: str = ""
+
+
+class ConnectorActionResponse(AdminApiModel):
+    message: str
+    result: ConnectorState | None = None
+    state: DeveloperAccountDetailState
+
+
+class AccountAppBindRequest(AdminApiModel):
+    app_id: str
+    store_app_id: str = ""
+    store_package_name: str = ""
+
+
+class AccountAppSettingsRequest(AdminApiModel):
+    store_app_id: str = ""
+    store_package_name: str = ""
+
+
+class AccountDetailActionResponse(AdminApiModel):
+    message: str
+    state: DeveloperAccountDetailState
+
+
+class StoreLocaleContent(AdminApiModel):
+    locale: str
+    is_source: bool
+    keywords: str
+    promotional_text: str
+    description: str
+    release_notes: str
+    store_images: dict[str, Any] = Field(default_factory=dict)
+
+
+class StoreMarketingPageSummary(AdminApiModel):
+    id: str
+    page_id: str
+    page_name: str
+    page_type: str
+    type_label: str
+    status: str
+    status_label: str
+    apple_page_id_label: str
+    deep_link_url: str = ""
+    language_count: int
+    filled_text_count: int
+    asset_count: int
+    detail_path: str
+
+
+class MarketingPageLocaleContent(AdminApiModel):
+    locale: str
+    is_source: bool
+    promotional_text: str
+    store_images: dict[str, Any] = Field(default_factory=dict)
+
+
+class MarketingPageDetailState(AdminApiModel):
+    account: DeveloperAccountSummary
+    app: AccountAppItem
+    page: StoreMarketingPageSummary
+    section: str = "marketing"
+    locale: str
+    source_locale: str
+    supported_locales: list[str]
+    localized_page: list[MarketingPageLocaleContent]
+    connector: ConnectorState | None
+    preflight_status: str
+    preflight_label: str
+    sync_runs: list[SyncRunSummary]
+
+
+class MarketingPageLocaleInput(AdminApiModel):
+    locale: str
+    promotional_text: str = ""
+    store_images: dict[str, Any] = Field(default_factory=dict)
+
+
+class MarketingPageSaveRequest(AdminApiModel):
+    page_name: str
+    page_type: str = "custom_product_page"
+    deep_link_url: str = ""
+    locale: str = ""
+    locales: list[MarketingPageLocaleInput]
+
+
+class MarketingPageCreateRequest(MarketingPageSaveRequest):
+    page_id: str = ""
+
+
+class MarketingPageSyncRequest(MarketingPageSaveRequest):
+    sync_scopes: list[str]
+
+
+class MarketingPageActionResponse(AdminApiModel):
+    message: str
+    state: MarketingPageDetailState | None = None
+    workspace: StoreWorkspaceState | None = None
+    sync_runs: list[SyncRunSummary] = Field(default_factory=list)
+
+
+class StoreWorkspaceState(AdminApiModel):
+    account: DeveloperAccountSummary
+    app: AccountAppItem
+    section: str
+    version: str
+    locale: str
+    source_locale: str
+    supported_locales: list[str]
+    localized_metadata: list[StoreLocaleContent]
+    connector: ConnectorState | None
+    preflight_status: str
+    preflight_label: str
+    sync_runs: list[SyncRunSummary]
+    marketing_pages: list[StoreMarketingPageSummary]
+
+
+class StoreLocaleContentInput(AdminApiModel):
+    locale: str
+    promotional_text: str = ""
+    description: str = ""
+    release_notes: str = ""
+    store_images: dict[str, Any] = Field(default_factory=dict)
+
+
+class StoreWorkspaceSaveRequest(AdminApiModel):
+    version: str = ""
+    locale: str = ""
+    locales: list[StoreLocaleContentInput]
+
+
+class StoreWorkspaceSyncRequest(AdminApiModel):
+    version: str
+    locale: str = ""
+    sync_scopes: list[str]
+    locales: list[StoreLocaleContentInput]
+
+
+class StoreImageDeleteRequest(AdminApiModel):
+    version: str = ""
+    locale: str
+    slot_key: str
+    storage_key: str
+
+
+class StoreWorkspaceActionResponse(AdminApiModel):
+    message: str
+    state: StoreWorkspaceState
+    sync_runs: list[SyncRunSummary] = Field(default_factory=list)
+
+
 class UploadAccountOption(AdminApiModel):
     id: str
     team_name: str

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type MouseEvent } from 'react';
 import {
   AdminApiError,
   loadStoreApps,
@@ -57,6 +57,13 @@ export function StoreAppsPage() {
   function openReviews(app: StoreAppItem) {
     if (!app.reviewsPath) return;
     history.pushState({ adminRoute: 'store-reviews' }, '', app.reviewsPath);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  }
+
+  function openInternalPath(event: MouseEvent<HTMLAnchorElement>, path: string) {
+    event.preventDefault();
+    if (!path) return;
+    history.pushState({ adminRoute: 'accounts' }, '', path);
     window.dispatchEvent(new PopStateEvent('popstate'));
   }
 
@@ -167,11 +174,19 @@ export function StoreAppsPage() {
                 </dl>
                 <div className="selected-store-actions">
                   {selectedApp.storeManagementPath ? (
-                    <a className="button primary" href={selectedApp.storeManagementPath}>
+                    <a
+                      className="button primary"
+                      href={selectedApp.storeManagementPath}
+                      onClick={(event) => openInternalPath(event, selectedApp.storeManagementPath)}
+                    >
                       打开商店编辑
                     </a>
                   ) : (
-                    <a className="button" href="/admin/developer-accounts">
+                    <a
+                      className="button"
+                      href="/admin-next/accounts"
+                      onClick={(event) => openInternalPath(event, '/admin-next/accounts')}
+                    >
                       先绑定账号
                     </a>
                   )}
@@ -193,7 +208,13 @@ export function StoreAppsPage() {
           <section className="panel store-account-summary">
             <div className="panel-head compact">
               <strong>账号与连接</strong>
-              <a className="button" href="/admin/developer-accounts">打开账号</a>
+              <a
+                className="button"
+                href="/admin-next/accounts"
+                onClick={(event) => openInternalPath(event, '/admin-next/accounts')}
+              >
+                打开账号
+              </a>
             </div>
             <div className="summary-list">
               <SummaryRow label="开发者账号" value={state?.accountSummary.totalAccounts ?? 0} />

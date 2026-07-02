@@ -37,7 +37,7 @@ const baseState: StoreAppsState = {
       statusLabel: '可同步',
       latestBuild: { version: '1.0', buildNumber: '1', environment: 'production', uploadedAt: '2026-06-30T11:00:00' },
       selected: false,
-      storeManagementPath: '/admin/developer-accounts/account-ios/apps/app-ios/store',
+      storeManagementPath: '/admin-next/accounts/account-ios/apps/app-ios/store',
       reviewsPath: '/admin-next/store-reviews?accountId=account-ios&appId=app-ios'
     }
   ],
@@ -118,6 +118,22 @@ describe('StoreAppsPage', () => {
 
     expect(location.pathname).toBe('/admin-next/store-reviews');
     expect(location.search).toBe('?accountId=account-ios&appId=app-ios');
+  });
+
+  it('does not expose legacy admin page links for store or account actions', async () => {
+    const user = userEvent.setup();
+
+    render(<StoreAppsPage />);
+    await screen.findAllByText('Readink');
+    await user.click(screen.getByRole('row', { name: /lookrva/ }));
+
+    const storeLink = await screen.findByRole('link', { name: '打开商店编辑' });
+    const accountLinks = screen.getAllByRole('link', { name: /账号|绑定/ });
+
+    expect(storeLink.getAttribute('href')).toBe('/admin-next/accounts/account-ios/apps/app-ios/store');
+    for (const link of accountLinks) {
+      expect(link.getAttribute('href') ?? '').not.toContain('/admin/developer-accounts');
+    }
   });
 });
 

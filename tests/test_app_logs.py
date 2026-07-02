@@ -5,7 +5,7 @@ import json
 from fastapi.testclient import TestClient
 
 from testflying_api.app_logs import UNKNOWN_TOKEN, parse_log_line
-from tests.test_admin import _admin_headers
+from tests.test_admin import _admin_headers, _assert_admin_spa_shell
 
 
 def test_parse_log_line_extracts_key_values_and_quoted_values() -> None:
@@ -107,17 +107,7 @@ def test_admin_app_logs_page_and_qr_render(client: TestClient) -> None:
         headers=_admin_headers(),
     )
 
-    assert page.status_code == 200
-    assert "App 日志" in page.text
-    assert "ws://" in page.text
-    assert "/push?token=&lt;设备ID&gt;" in page.text
-    assert "/app-logs/connect" in page.text
-    assert "anystories:///connect" in page.text
-    assert "data-app-log-list" in page.text
-    assert "syncAppLogConnectedLayout" in page.text
-    assert "syncAppLogStickyOffsets" in page.text
-    assert "is-compact" in page.text
-    assert "window.addEventListener('scroll'" in page.text
+    _assert_admin_spa_shell(page)
     assert qr.status_code == 200
     assert qr.headers["content-type"].startswith("image/svg+xml")
 

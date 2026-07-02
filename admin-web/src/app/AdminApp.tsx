@@ -10,6 +10,7 @@ import { BuildsPage } from '../pages/BuildsPage';
 import { DevicesPage } from '../pages/DevicesPage';
 import { NotificationsPage } from '../pages/NotificationsPage';
 import { ApiDocsPage } from '../pages/ApiDocsPage';
+import { DeveloperAccountsPage } from '../pages/DeveloperAccountsPage';
 
 const fallbackNav = [
   { key: 'dashboard', label: '总览', path: '/admin-next' },
@@ -118,6 +119,7 @@ export function AdminApp() {
         {activeRoute === 'dashboard' ? <DashboardPage /> : null}
         {activeRoute === 'uploads' ? <UploadPage /> : null}
         {activeRoute === 'apps' ? <StoreAppsPage /> : null}
+        {activeRoute === 'accounts' ? <DeveloperAccountsPage /> : null}
         {activeRoute === 'store-reviews' ? <StoreReviewsPage /> : null}
         {activeRoute === 'api-docs' ? <ApiDocsPage /> : null}
         {activeRoute === 'builds' ? <BuildsPage /> : null}

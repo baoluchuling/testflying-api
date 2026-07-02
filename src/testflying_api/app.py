@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session, sessionmaker
 
+from testflying_api.admin_legacy_redirects import admin_next_redirect_path
 from testflying_api.app_logs import AppLogHub
 from testflying_api.config import Settings
 from testflying_api.database import create_engine_for_url, create_session_factory
@@ -50,6 +52,17 @@ def create_app(
     app.state.session_factory = session_factory
     app.state.artifact_storage = artifact_storage or storage_from_settings(app_settings)
     package_dir = Path(__file__).parent
+
+    @app.middleware("http")
+    async def redirect_legacy_admin_pages(request: Request, call_next):
+        if request.method == "GET":
+            redirect_path = admin_next_redirect_path(request.url.path)
+            if redirect_path is not None:
+                target = redirect_path
+                if request.url.query:
+                    target = f"{target}?{request.url.query}"
+                return RedirectResponse(target, status_code=307)
+        return await call_next(request)
 
     if app_settings.storage_backend == "local":
         app_settings.storage_root.mkdir(parents=True, exist_ok=True)

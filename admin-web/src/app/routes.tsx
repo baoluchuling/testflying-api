@@ -2,6 +2,7 @@ export type AdminRouteKey =
   | 'dashboard'
   | 'uploads'
   | 'apps'
+  | 'accounts'
   | 'store-reviews'
   | 'api-docs'
   | 'builds'
@@ -24,6 +25,11 @@ export const routeTitles: Record<AdminRouteKey, { eyebrow: string; title: string
     eyebrow: 'Store Management',
     title: '商店管理',
     summary: '从应用进入商店内容、评论和账号连接。'
+  },
+  accounts: {
+    eyebrow: 'Store Accounts',
+    title: '开发者账号',
+    summary: '维护账号配置、Connector 连接和 App 绑定。'
   },
   'store-reviews': {
     eyebrow: 'Store Reviews',
@@ -63,6 +69,7 @@ export function routeKeyFromPath(pathname: string): AdminRouteKey {
   if (first === 'store-reviews') return 'store-reviews';
   if (first === 'api-docs') return 'api-docs';
   if (first === 'app-logs') return 'app-logs';
+  if (first === 'accounts') return 'accounts';
   if (
     first === 'uploads'
     || first === 'apps'

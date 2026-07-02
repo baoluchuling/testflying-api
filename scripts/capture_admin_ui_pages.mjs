@@ -10,16 +10,13 @@ const chrome =
 const adminUser = process.env.ADMIN_USER || "admin";
 const adminToken = process.env.ADMIN_TOKEN || "dev-token";
 const port = Number(process.env.CDP_PORT || "9337");
+const authHeader = `Basic ${Buffer.from(`${adminUser}:${adminToken}`).toString("base64")}`;
 
-const pages = [
+const staticPages = [
   ["dashboard", "/admin-next"],
   ["uploads", "/admin-next/uploads"],
   ["apps", "/admin-next/apps"],
   ["accounts", "/admin-next/accounts"],
-  ["account-detail", "/admin-next/accounts/account-apple-enterprise"],
-  ["store-detail", "/admin-next/accounts/account-apple-enterprise/apps/app-aurora-ios/store"],
-  ["store-marketing", "/admin-next/accounts/account-apple-enterprise/apps/app-aurora-ios/marketing"],
-  ["store-connection", "/admin-next/accounts/account-apple-enterprise/apps/app-aurora-ios/connection"],
   ["store-reviews", "/admin-next/store-reviews"],
   ["api-docs", "/admin-next/api-docs"],
   ["builds", "/admin-next/builds"],
@@ -27,6 +24,65 @@ const pages = [
   ["app-logs", "/admin-next/app-logs"],
   ["notifications", "/admin-next/notifications"],
 ];
+
+function absoluteUrl(path) {
+  return new URL(path, `${baseUrl.replace(/\/+$/, "")}/`).toString();
+}
+
+async function fetchAdminJson(path) {
+  const response = await fetch(absoluteUrl(path), {
+    headers: { Authorization: authHeader },
+  });
+  if (!response.ok) {
+    throw new Error(`${path} -> ${response.status}`);
+  }
+  return response.json();
+}
+
+async function discoverPages() {
+  let accountPath = "/admin-next/accounts";
+  let storePath = "/admin-next/apps";
+  let reviewsPath = "/admin-next/store-reviews";
+
+  try {
+    const payload = await fetchAdminJson("/admin/api/developer-accounts");
+    const firstAccount = Array.isArray(payload.accounts) ? payload.accounts[0] : null;
+    if (firstAccount?.detailPath) {
+      accountPath = firstAccount.detailPath;
+    }
+  } catch (error) {
+    console.warn(`warn: cannot discover account page: ${error.message}`);
+  }
+
+  try {
+    const payload = await fetchAdminJson("/admin/api/store-apps");
+    const apps = Array.isArray(payload.apps) ? payload.apps : [];
+    const storeApp = apps.find((app) => app.storeManagementPath) || null;
+    if (storeApp?.storeManagementPath) {
+      storePath = storeApp.storeManagementPath;
+      reviewsPath = storeApp.reviewsPath || reviewsPath;
+    }
+  } catch (error) {
+    console.warn(`warn: cannot discover store app page: ${error.message}`);
+  }
+
+  const marketingPath = storePath.endsWith("/store")
+    ? storePath.replace(/\/store$/, "/marketing")
+    : "/admin-next/apps";
+  const connectionPath = storePath.endsWith("/store")
+    ? storePath.replace(/\/store$/, "/connection")
+    : accountPath;
+
+  return [
+    ...staticPages.slice(0, 4),
+    ["account-detail", accountPath],
+    ["store-detail", storePath],
+    ["store-marketing", marketingPath],
+    ["store-connection", connectionPath],
+    ["store-reviews", reviewsPath],
+    ...staticPages.slice(5),
+  ];
+}
 
 mkdirSync(outDir, { recursive: true });
 const profile = join(outDir, `profile-${Date.now()}`);
@@ -137,12 +193,13 @@ try {
     mobile: false,
   });
   await cdp.send("Network.setExtraHTTPHeaders", {
-    headers: { Authorization: `Basic ${Buffer.from(`${adminUser}:${adminToken}`).toString("base64")}` },
+    headers: { Authorization: authHeader },
   });
 
+  const pages = await discoverPages();
   for (const [name, path] of pages) {
     const loaded = cdp.waitFor("Page.loadEventFired").catch(() => null);
-    await cdp.send("Page.navigate", { url: `${baseUrl}${path}` });
+    await cdp.send("Page.navigate", { url: absoluteUrl(path) });
     await loaded;
     await cdp.send("Runtime.evaluate", {
       expression: "document.fonts && document.fonts.ready",

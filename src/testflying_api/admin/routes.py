@@ -2366,7 +2366,9 @@ if (!(Test-Path "$Root\testflying-connector.exe")) {
 
 $RunScript = @"
 `$env:TESTFLYING_CONNECTOR_CONFIG_PATH = "$Root\config.json"
-& "$Root\testflying-connector.exe" *>> "$Root\logs\connector.log"
+`$LogPath = "$Root\logs\connector.log"
+`$CommandLine = "`"$Root\testflying-connector.exe`" >> `"`$LogPath`" 2>&1"
+& `$env:ComSpec /d /s /c `$CommandLine
 exit `$LASTEXITCODE
 "@
 Set-Content -Encoding UTF8 "$Root\run-connector.ps1" $RunScript
@@ -2441,6 +2443,17 @@ function Start-Connector {
   }
 }
 
+function Write-RunScript {
+  $RunScript = @"
+`$env:TESTFLYING_CONNECTOR_CONFIG_PATH = "$Root\config.json"
+`$LogPath = "$Root\logs\connector.log"
+`$CommandLine = "`"$Root\testflying-connector.exe`" >> `"`$LogPath`" 2>&1"
+& `$env:ComSpec /d /s /c `$CommandLine
+exit `$LASTEXITCODE
+"@
+  Set-Content -Encoding UTF8 "$Root\run-connector.ps1" $RunScript
+}
+
 if (!(Test-Path "$Root\config.json")) {
   throw "Missing config.json. Run install.ps1 once before update.ps1."
 }
@@ -2493,6 +2506,7 @@ try {
   Copy-Item -Force $CurrentExe $BackupExe
   Stop-Connector
   Copy-Item -Force $Exe.FullName $CurrentExe
+  Write-RunScript
 
   try {
     Start-Connector

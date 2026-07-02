@@ -750,11 +750,16 @@ def test_admin_can_generate_windows_active_connector_package(
     assert "System32\\WindowsPowerShell\\v1.0\\powershell.exe" in install_script
     assert "Failed to create scheduled task" in install_script
     assert "Failed to start scheduled task" in install_script
+    assert "$env:ComSpec /d /s /c" in install_script
+    assert "*>>" not in install_script
     assert "testflying-connector-updater" in update_script
     assert "testflying-connector-windows-amd64-*.zip" in update_script
     assert "$InstalledUpdater = \"$Root\\update.ps1\"" in update_script
     assert "Copy-Item -Force $MyInvocation.MyCommand.Path $InstalledUpdater" in update_script
     assert "Copy-Item -Force $Exe.FullName $CurrentExe" in update_script
+    assert "function Write-RunScript" in update_script
+    assert "$env:ComSpec /d /s /c" in update_script
+    assert "*>>" not in update_script
     assert "config.json" in update_script
     assert 'Copy-Item -Force "$PSScriptRoot\\config.json"' not in update_script
     assert "secrets" not in update_script

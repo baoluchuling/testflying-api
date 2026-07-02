@@ -136,7 +136,10 @@ Move-Item -Force "$Root\testflying-connector-windows-amd64-$Sha.exe" "$Root\test
 # `$env:TESTFLYING_CONNECTOR_GOOGLE_CLIENT_EMAIL = "service-account@project.iam.gserviceaccount.com"
 # `$env:TESTFLYING_CONNECTOR_GOOGLE_PRIVATE_KEY = "-----BEGIN PRIVATE KEY-----`n...`n-----END PRIVATE KEY-----"
 
-& "$Root\testflying-connector.exe"
+`$LogPath = "$Root\logs\connector.log"
+`$CommandLine = "`"$Root\testflying-connector.exe`" >> `"`$LogPath`" 2>&1"
+& `$env:ComSpec /d /s /c `$CommandLine
+exit `$LASTEXITCODE
 "@ | Set-Content -Encoding UTF8 "$Root\run-connector.ps1"
 
 schtasks /Create /TN $TaskName /SC ONSTART /RL HIGHEST /RU SYSTEM /TR "powershell.exe -ExecutionPolicy Bypass -File $Root\run-connector.ps1" /F

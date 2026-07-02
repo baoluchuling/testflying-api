@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { routeKeyFromPath } from './routes';
+import { navKeyFromPath, routeKeyFromPath } from './routes';
 
 describe('routeKeyFromPath', () => {
   it('keeps developer account and store workspace paths inside the React shell', () => {
@@ -8,5 +8,13 @@ describe('routeKeyFromPath', () => {
     expect(routeKeyFromPath('/admin-next/accounts/account-ios/apps/app-ios/store')).toBe('accounts');
     expect(routeKeyFromPath('/admin-next/accounts/account-ios/apps/app-ios/marketing')).toBe('accounts');
     expect(routeKeyFromPath('/admin-next/accounts/account-ios/apps/app-ios/marketing-pages/page-1')).toBe('accounts');
+  });
+});
+
+describe('navKeyFromPath', () => {
+  it('highlights store management for app store workspace pages', () => {
+    expect(navKeyFromPath('/admin-next/accounts/account-ios/apps/app-ios/store')).toBe('apps');
+    expect(navKeyFromPath('/admin-next/accounts/account-ios/apps/app-ios/marketing')).toBe('apps');
+    expect(navKeyFromPath('/admin-next/accounts/account-ios/apps/app-ios/connection')).toBe('apps');
   });
 });

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { bootstrapAdmin, type BootstrapResponse } from './apiClient';
-import { routeKeyFromPath, routeTitles, type AdminRouteKey } from './routes';
+import { navKeyFromPath, routeKeyFromPath, routeTitles, type AdminRouteKey } from './routes';
 import { StoreAppsPage } from '../pages/StoreAppsPage';
 import { StoreReviewsPage } from '../pages/StoreReviewsPage';
 import { UploadPage } from '../pages/UploadPage';
@@ -28,6 +28,7 @@ type HealthState = BootstrapResponse['health'] & { checking?: boolean };
 
 export function AdminApp() {
   const [activeRoute, setActiveRoute] = useState<AdminRouteKey>(() => routeKeyFromPath(location.pathname));
+  const [activeNavRoute, setActiveNavRoute] = useState<AdminRouteKey>(() => navKeyFromPath(location.pathname));
   const [bootstrap, setBootstrap] = useState<BootstrapResponse | null>(null);
   const [health, setHealth] = useState<HealthState>({ state: 'idle', label: '未检查' });
   const [error, setError] = useState('');
@@ -42,19 +43,35 @@ export function AdminApp() {
   }, []);
 
   useEffect(() => {
-    const onPopState = () => setActiveRoute(routeKeyFromPath(location.pathname));
-    window.addEventListener('popstate', onPopState);
-    return () => window.removeEventListener('popstate', onPopState);
+    const originalPushState = history.pushState;
+    history.pushState = function pushStateWithAdminNavigation(...args) {
+      const result = originalPushState.apply(this, args);
+      window.dispatchEvent(new Event('admin:navigation'));
+      return result;
+    };
+
+    const syncRoute = () => {
+      setActiveRoute(routeKeyFromPath(location.pathname));
+      setActiveNavRoute(navKeyFromPath(location.pathname));
+    };
+    window.addEventListener('popstate', syncRoute);
+    window.addEventListener('admin:navigation', syncRoute);
+    return () => {
+      history.pushState = originalPushState;
+      window.removeEventListener('popstate', syncRoute);
+      window.removeEventListener('admin:navigation', syncRoute);
+    };
   }, []);
 
   const navItems = bootstrap?.navItems ?? fallbackNav;
-  const title = useMemo(() => routeTitles[activeRoute], [activeRoute]);
+  const title = useMemo(() => routeTitles[activeNavRoute], [activeNavRoute]);
 
   function navigate(path: string, key: AdminRouteKey) {
     if (location.pathname !== path) {
       history.pushState({ adminRoute: key }, '', path);
     }
-    setActiveRoute(key);
+    setActiveRoute(routeKeyFromPath(path));
+    setActiveNavRoute(navKeyFromPath(path));
   }
 
   async function checkHealth() {
@@ -71,7 +88,7 @@ export function AdminApp() {
   }
 
   return (
-    <div className="admin-shell" data-admin-app-shell>
+    <div className="admin-shell" data-admin-app-shell data-route={activeNavRoute}>
       <header className="topbar">
         <div className="brand">
           <span className="brand-mark">TF</span>
@@ -83,7 +100,7 @@ export function AdminApp() {
             return (
               <button
                 key={item.key}
-                className={key === activeRoute ? 'nav-link active' : 'nav-link'}
+                className={key === activeNavRoute ? 'nav-link active' : 'nav-link'}
                 type="button"
                 onClick={() => navigate(item.path, key)}
               >

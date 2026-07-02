@@ -7,7 +7,8 @@
     "dev": "vite --host 127.0.0.1",
     "lint": "tsc --noEmit",
     "test": "vitest --environment jsdom",
-    "build": "tsc --noEmit && vite build"
+    "build": "tsc --noEmit && vite build",
+    "capture:pages": "node ../scripts/capture_admin_ui_pages.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",

@@ -112,7 +112,15 @@ export function UploadPage() {
       <form className="panel upload-panel" noValidate onSubmit={(event) => void submitUpload(event)}>
         <div className="panel-head compact">
           <strong>上传 IPA / APK</strong>
-          <span>包信息自动解析</span>
+          <div className="inline-actions">
+            <span className="tag">{view.status === 'uploading' ? '上传中' : view.status === 'done' ? '已完成' : '等待选择'}</span>
+            <button className="button" type="reset" disabled={view.status === 'uploading'}>
+              清空
+            </button>
+            <button className="button primary" type="submit" disabled={view.status === 'uploading'}>
+              {view.status === 'uploading' ? `${view.progress}%` : '开始上传'}
+            </button>
+          </div>
         </div>
 
         <label className="upload-drop-zone">
@@ -131,79 +139,73 @@ export function UploadPage() {
           <strong>{view.fileName || '还没有选择文件'}</strong>
         </label>
 
-        <div className="form-grid two">
+        <details className="upload-config">
+          <summary>上传配置</summary>
+          <div className="form-grid two">
+            <label>
+              <span>平台</span>
+              <select
+                name="platform"
+                value={platform}
+                onChange={(event) => setPlatform(event.currentTarget.value)}
+                disabled={view.status === 'uploading'}
+              >
+                <option value="ios">iOS</option>
+                <option value="android">Android</option>
+              </select>
+            </label>
+            <label>
+              <span>环境</span>
+              <select name="environment" defaultValue="development" disabled={view.status === 'uploading'}>
+                <option value="development">开发环境</option>
+                <option value="production">线上环境</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="form-grid two">
+            <label>
+              <span>开发者账号</span>
+              <select name="developerAccountId" disabled={view.status === 'uploading'}>
+                <option value="">不绑定账号</option>
+                {state?.accounts.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.teamName}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {platform === 'ios' ? (
+              <label>
+                <span>App Store Connect App ID</span>
+                <input
+                  name="storeAppId"
+                  placeholder="可选，数字 ID"
+                  disabled={view.status === 'uploading'}
+                />
+              </label>
+            ) : (
+              <label>
+                <span>Google Play package name</span>
+                <input
+                  name="storePackageName"
+                  placeholder="默认使用 APK package"
+                  disabled={view.status === 'uploading'}
+                />
+              </label>
+            )}
+          </div>
+
           <label>
-            <span>平台</span>
-            <select
-              name="platform"
-              value={platform}
-              onChange={(event) => setPlatform(event.currentTarget.value)}
+            <span>更新说明</span>
+            <textarea
+              name="changelog"
+              rows={4}
+              placeholder="本次构建变更、验证重点或风险说明"
               disabled={view.status === 'uploading'}
-            >
-              <option value="ios">iOS</option>
-              <option value="android">Android</option>
-            </select>
+            />
           </label>
-          <label>
-            <span>环境</span>
-            <select name="environment" defaultValue="development" disabled={view.status === 'uploading'}>
-              <option value="development">开发环境</option>
-              <option value="production">线上环境</option>
-            </select>
-          </label>
-        </div>
-
-        <div className="form-grid two">
-          <label>
-            <span>开发者账号</span>
-            <select name="developerAccountId" disabled={view.status === 'uploading'}>
-              <option value="">不绑定账号</option>
-              {state?.accounts.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.teamName}
-                </option>
-              ))}
-            </select>
-          </label>
-          {platform === 'ios' ? (
-            <label>
-              <span>App Store Connect App ID</span>
-              <input
-                name="storeAppId"
-                placeholder="可选，数字 ID"
-                disabled={view.status === 'uploading'}
-              />
-            </label>
-          ) : (
-            <label>
-              <span>Google Play package name</span>
-              <input
-                name="storePackageName"
-                placeholder="默认使用 APK package"
-                disabled={view.status === 'uploading'}
-              />
-            </label>
-          )}
-        </div>
-
-        <label>
-          <span>更新说明</span>
-          <textarea
-            name="changelog"
-            rows={5}
-            placeholder="本次构建变更、验证重点或风险说明"
-            disabled={view.status === 'uploading'}
-          />
-        </label>
-
-        <div className="upload-actions">
-          <button className="button" type="reset" disabled={view.status === 'uploading'}>
-            清空
-          </button>
-          <button className="button primary" type="submit" disabled={view.status === 'uploading'}>
-            {view.status === 'uploading' ? `${view.progress}%` : '开始上传'}
-          </button>
-        </div>
+        </details>
 
         {view.status === 'uploading' ? (
           <div className="upload-progress" aria-label="上传进度">

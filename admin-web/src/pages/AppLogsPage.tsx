@@ -100,7 +100,7 @@ export function AppLogsPage() {
             />
             <div className="app-log-level-filter" aria-label="级别筛选">
               {levels.map((level) => (
-                <label key={level}>
+                <label key={level} className={selectedLevels.includes(level) ? 'active' : ''}>
                   <input
                     type="checkbox"
                     checked={selectedLevels.includes(level)}

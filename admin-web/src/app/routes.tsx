@@ -17,9 +17,9 @@ export const routeTitles: Record<AdminRouteKey, { eyebrow: string; title: string
     summary: '查看应用、构建、设备和账号提醒的当前状态。'
   },
   uploads: {
-    eyebrow: 'Internal Distribution',
-    title: '上传构建',
-    summary: '上传 IPA / APK，解析包信息并生成安装地址。'
+    eyebrow: 'Package Intake',
+    title: '上传',
+    summary: '自动解析包信息，支持 iOS / Android，不会提交到商店。'
   },
   apps: {
     eyebrow: 'Store Management',
@@ -80,4 +80,11 @@ export function routeKeyFromPath(pathname: string): AdminRouteKey {
     return first;
   }
   return 'dashboard';
+}
+
+export function navKeyFromPath(pathname: string): AdminRouteKey {
+  if (/^\/admin-next\/accounts\/[^/]+\/apps\/[^/]+\//.test(pathname)) {
+    return 'apps';
+  }
+  return routeKeyFromPath(pathname);
 }

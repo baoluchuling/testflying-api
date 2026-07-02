@@ -232,10 +232,21 @@ select {
   background: #f0fdf4;
 }
 
+.notice.success {
+  border-color: #bbf7d0;
+  color: #166534;
+  background: #f0fdf4;
+}
+
 .button.primary {
   border-color: var(--blue);
   color: white;
   background: var(--blue);
+}
+
+.button.subtle {
+  color: var(--sub);
+  background: var(--surface-soft);
 }
 
 .button.text {
@@ -459,6 +470,11 @@ select {
   background: white;
 }
 
+.filter-tabs.vertical {
+  display: grid;
+  align-items: stretch;
+}
+
 .filter-tab {
   min-height: 34px;
   border: 0;
@@ -476,15 +492,15 @@ select {
 }
 
 .store-apps-counts {
-  display: inline-flex;
-  gap: 14px;
+  display: grid;
+  gap: 10px;
   color: #73757d;
   font-weight: 720;
 }
 
 .store-apps-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-template-columns: 280px minmax(0, 1fr);
   gap: 18px;
   align-items: start;
 }
@@ -496,7 +512,7 @@ select {
 
 .store-app-table-row {
   display: grid;
-  grid-template-columns: minmax(260px, 1.4fr) 110px minmax(160px, 0.8fr) 150px 130px;
+  grid-template-columns: minmax(240px, 1.3fr) 92px minmax(140px, .75fr) 120px 120px 220px;
   gap: 14px;
   align-items: center;
   width: 100%;
@@ -569,6 +585,123 @@ select {
 .store-apps-side {
   display: grid;
   gap: 18px;
+}
+
+.store-app-row-actions {
+  display: inline-flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.llm-config-page {
+  display: grid;
+  gap: 18px;
+}
+
+.llm-config-panel,
+.llm-binding-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.llm-config-grid {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.llm-profile-list {
+  display: grid;
+  gap: 10px;
+}
+
+.llm-preset-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  padding: 10px;
+  background: var(--surface-soft);
+}
+
+.llm-profile-card {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px;
+  color: var(--text);
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+}
+
+.llm-profile-card:hover,
+.llm-profile-card.active {
+  border-color: var(--text);
+}
+
+.llm-profile-card span,
+.llm-profile-card small,
+.llm-binding-row span {
+  color: var(--muted);
+  font-weight: 650;
+}
+
+.llm-profile-editor {
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  padding: 16px;
+  background: var(--surface-soft);
+}
+
+.llm-profile-editor label {
+  display: grid;
+  gap: 7px;
+  color: var(--sub);
+  font-weight: 700;
+}
+
+.llm-profile-editor input,
+.llm-profile-editor select,
+.llm-binding-row select {
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0 12px;
+  color: var(--text);
+  background: var(--surface);
+  font-weight: 700;
+}
+
+.llm-profile-editor .form-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.llm-binding-list {
+  display: grid;
+  gap: 10px;
+}
+
+.llm-binding-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(240px, 320px) auto;
+  gap: 14px;
+  align-items: center;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  padding: 14px;
+  background: var(--surface-soft);
+}
+
+.llm-binding-row > div {
+  display: grid;
+  gap: 4px;
 }
 
 .selected-store-app,

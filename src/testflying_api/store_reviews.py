@@ -14,6 +14,11 @@ from sqlalchemy.orm import Session
 
 from testflying_api.config import Settings
 from testflying_api.errors import ApiError
+from testflying_api.llm_config import (
+    LLM_FEATURE_REVIEW_ANALYSIS,
+    LlmRuntimeConfig,
+    resolve_llm_runtime_config,
+)
 from testflying_api.schema import (
     App,
     DeveloperAccount,
@@ -254,7 +259,12 @@ def analyze_store_reviews(
     started_at = datetime.now(UTC)
     low_rating_count = sum(1 for review in reviews if (review.rating or 0) <= 3)
     try:
-        analysis = _analyze_reviews_with_provider(settings, app=app, reviews=reviews)
+        analysis = _analyze_reviews_with_provider(
+            session,
+            settings,
+            app=app,
+            reviews=reviews,
+        )
     except ApiError as error:
         run = StoreReviewAnalysisRun(
             id=f"review-analysis-{uuid4().hex}",
@@ -589,12 +599,18 @@ def _analysis_issues(latest_analysis: StoreReviewAnalysisRun | None) -> list[dic
 
 
 def _analyze_reviews_with_provider(
+    session: Session,
     settings: Settings,
     *,
     app: App,
     reviews: list[StoreReview],
 ) -> dict[str, object]:
-    provider = settings.review_analysis_provider.strip().lower()
+    runtime = resolve_llm_runtime_config(
+        session,
+        settings,
+        feature_key=LLM_FEATURE_REVIEW_ANALYSIS,
+    )
+    provider = runtime.provider.strip().lower()
     if provider in {"", "disabled", "none"}:
         raise ApiError(
             "review_analysis_not_configured",
@@ -603,11 +619,13 @@ def _analyze_reviews_with_provider(
         )
     if provider == "mock":
         return _mock_review_analysis(reviews)
-    if provider == "openai":
-        return _review_analysis_with_openai(settings, app=app, reviews=reviews)
+    if provider in {"openai", "configured"} and runtime.protocol == "openai_compatible":
+        return _review_analysis_with_openai_compatible(runtime, app=app, reviews=reviews)
+    if provider == "configured" and runtime.protocol == "claude_compatible":
+        return _review_analysis_with_claude_compatible(runtime, app=app, reviews=reviews)
     raise ApiError(
         "unsupported_review_analysis_provider",
-        f"不支持的评论分析服务：{settings.review_analysis_provider}",
+        "不支持的评论分析服务配置",
         status_code=422,
     )
 
@@ -636,20 +654,20 @@ def _mock_review_analysis(reviews: list[StoreReview]) -> dict[str, object]:
     }
 
 
-def _review_analysis_with_openai(
-    settings: Settings,
+def _review_analysis_with_openai_compatible(
+    runtime: LlmRuntimeConfig,
     *,
     app: App,
     reviews: list[StoreReview],
 ) -> dict[str, object]:
-    if not settings.review_analysis_openai_api_key:
+    if not runtime.api_key:
         raise ApiError(
             "review_analysis_not_configured",
             "评论分析服务缺少 API Key",
             status_code=503,
         )
     payload = {
-        "model": settings.review_analysis_openai_model,
+        "model": runtime.model,
         "temperature": 0.2,
         "response_format": {"type": "json_object"},
         "messages": [
@@ -692,14 +710,113 @@ def _review_analysis_with_openai(
             },
         ],
     }
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+    headers.update(_auth_headers(runtime))
     request = Request(
-        settings.review_analysis_openai_base_url.rstrip("/") + "/chat/completions",
+        runtime.base_url.rstrip("/") + "/chat/completions",
         data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {settings.review_analysis_openai_api_key}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        },
+        headers=headers,
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=45) as response:
+            response_payload = json.loads(response.read().decode("utf-8"))
+    except HTTPError as error:
+        raise ApiError(
+            "review_analysis_failed",
+            f"评论分析服务调用失败（HTTP {error.code}）",
+            status_code=502,
+        ) from error
+    except (TimeoutError, URLError, json.JSONDecodeError) as error:
+        raise ApiError(
+            "review_analysis_failed",
+            "评论分析服务调用失败，请稍后重试",
+            status_code=502,
+        ) from error
+    content = _response_content(response_payload)
+    try:
+        decoded = json.loads(content)
+    except json.JSONDecodeError as error:
+        raise ApiError(
+            "review_analysis_failed",
+            "评论分析服务返回格式不正确",
+            status_code=502,
+        ) from error
+    if not isinstance(decoded, dict):
+        raise ApiError(
+            "review_analysis_failed",
+            "评论分析服务返回格式不正确",
+            status_code=502,
+        )
+    return decoded
+
+
+def _review_analysis_with_claude_compatible(
+    runtime: LlmRuntimeConfig,
+    *,
+    app: App,
+    reviews: list[StoreReview],
+) -> dict[str, object]:
+    if not runtime.api_key:
+        raise ApiError(
+            "review_analysis_not_configured",
+            "评论分析服务缺少 API Key",
+            status_code=503,
+        )
+    payload = {
+        "model": runtime.model,
+        "max_tokens": 2000,
+        "temperature": 0.2,
+        "system": (
+            "You analyze App Store and Google Play reviews for internal QA/product teams. "
+            "Return only JSON: {\"summary\":\"...\",\"issues\":[{\"title\":\"...\","
+            "\"severity\":\"low|medium|high\",\"count\":1,"
+            "\"representativeReviewIds\":[\"...\"],\"focus\":\"...\"}]}. "
+            "Do not write review replies. Do not suggest automatically editing "
+            "store metadata. Focus on product defects, UX friction, regression "
+            "signals, and optimization concerns."
+        ),
+        "messages": [
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {
+                        "app": {
+                            "name": app.name,
+                            "platform": app.platform,
+                            "bundleIdentifier": app.bundle_identifier,
+                        },
+                        "reviews": [
+                            {
+                                "id": review.store_review_id,
+                                "rating": review.rating,
+                                "title": review.title,
+                                "body": review.body,
+                                "locale": review.locale,
+                                "appVersion": review.app_version,
+                                "createdAt": review.created_at.isoformat(),
+                            }
+                            for review in reviews
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+            }
+        ],
+    }
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "anthropic-version": "2023-06-01",
+    }
+    headers.update(_auth_headers(runtime))
+    request = Request(
+        _claude_messages_url(runtime.base_url),
+        data=json.dumps(payload).encode("utf-8"),
+        headers=headers,
         method="POST",
     )
     try:
@@ -736,6 +853,15 @@ def _review_analysis_with_openai(
 
 
 def _response_content(response_payload: dict[str, object]) -> str:
+    content = response_payload.get("content")
+    if isinstance(content, list):
+        text_parts = [
+            str(item.get("text") or "")
+            for item in content
+            if isinstance(item, dict) and item.get("type") == "text"
+        ]
+        if text_parts:
+            return "\n".join(text_parts).strip()
     choices = response_payload.get("choices")
     if not isinstance(choices, list) or not choices:
         return ""
@@ -746,3 +872,20 @@ def _response_content(response_payload: dict[str, object]) -> str:
     if not isinstance(message, dict):
         return ""
     return str(message.get("content") or "").strip()
+
+
+def _auth_headers(runtime: LlmRuntimeConfig) -> dict[str, str]:
+    if not runtime.api_key:
+        return {}
+    if runtime.auth_header == "api-key":
+        return {"api-key": runtime.api_key}
+    if runtime.auth_header == "x-api-key":
+        return {"x-api-key": runtime.api_key}
+    return {"Authorization": f"Bearer {runtime.api_key}"}
+
+
+def _claude_messages_url(base_url: str) -> str:
+    normalized = base_url.rstrip("/")
+    if normalized.endswith("/v1"):
+        return normalized + "/messages"
+    return normalized + "/v1/messages"

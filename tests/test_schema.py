@@ -33,6 +33,8 @@ def test_catalog_schema_contains_no_user_state_tables() -> None:
         "store_reviews",
         "store_review_fetch_runs",
         "store_review_analysis_runs",
+        "llm_profiles",
+        "llm_feature_bindings",
         "audit_logs",
     }.issubset(table_names)
     assert "install_tasks" not in table_names

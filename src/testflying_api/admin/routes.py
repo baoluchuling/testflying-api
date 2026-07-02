@@ -1242,6 +1242,7 @@ async def translate_store_metadata_field(
     try:
         translations = translate_store_metadata_text(
             request.app.state.settings,
+            session=session,
             source_locale=str(payload.get("sourceLocale") or DEFAULT_LOCALE),
             target_locales=[
                 str(locale or "")

@@ -31,6 +31,83 @@ class AdminBootstrapResponse(AdminApiModel):
     health: AdminHealthState
 
 
+class LlmProtocolItem(AdminApiModel):
+    key: str
+    label: str
+    default_base_url: str
+    default_model: str
+    default_auth_header: str
+
+
+class LlmPresetItem(AdminApiModel):
+    key: str
+    label: str
+    protocol: str
+    base_url: str
+    model: str
+    auth_header: str
+
+
+class LlmProfileItem(AdminApiModel):
+    id: str
+    name: str
+    protocol: str
+    protocol_label: str
+    base_url: str
+    model: str
+    auth_header: str
+    auth_header_label: str
+    api_key_set: bool
+    api_key_preview: str
+    status: str
+    status_label: str
+    updated_at_label: str
+
+
+class LlmFeatureBindingItem(AdminApiModel):
+    feature_key: str
+    feature_label: str
+    description: str
+    primary_profile_id: str | None
+    fallback_profile_id: str | None
+    effective_profile_label: str
+    status: str
+    status_label: str
+
+
+class LlmConfigState(AdminApiModel):
+    protocols: list[LlmProtocolItem]
+    presets: list[LlmPresetItem]
+    profiles: list[LlmProfileItem]
+    feature_bindings: list[LlmFeatureBindingItem]
+
+
+class LlmProfileSaveRequest(AdminApiModel):
+    name: str
+    protocol: str
+    base_url: str
+    model: str
+    api_key: str | None = None
+    auth_header: str = ""
+
+
+class LlmProfileSaveResponse(AdminApiModel):
+    message: str
+    profile: LlmProfileItem
+    state: LlmConfigState
+
+
+class LlmFeatureBindingSaveRequest(AdminApiModel):
+    primary_profile_id: str | None = None
+    fallback_profile_id: str | None = None
+
+
+class LlmFeatureBindingSaveResponse(AdminApiModel):
+    message: str
+    binding: LlmFeatureBindingItem
+    state: LlmConfigState
+
+
 class ReviewAppItem(AdminApiModel):
     account_id: str
     app_id: str

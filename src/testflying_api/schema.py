@@ -579,6 +579,47 @@ class StoreReviewAnalysisRun(Base):
     error_summary: Mapped[str | None] = mapped_column(String(280))
 
 
+class LlmProfile(Base):
+    __tablename__ = "llm_profiles"
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    protocol: Mapped[str] = mapped_column(String(40), nullable=False)
+    base_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    model: Mapped[str] = mapped_column(String(160), nullable=False)
+    api_key: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    auth_header: Mapped[str] = mapped_column(String(80), nullable=False, default="")
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="unchecked")
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+    )
+
+
+class LlmFeatureBinding(Base):
+    __tablename__ = "llm_feature_bindings"
+
+    feature_key: Mapped[str] = mapped_column(String(80), primary_key=True)
+    primary_profile_id: Mapped[str | None] = mapped_column(
+        ForeignKey("llm_profiles.id", ondelete="SET NULL"),
+    )
+    fallback_profile_id: Mapped[str | None] = mapped_column(
+        ForeignKey("llm_profiles.id", ondelete="SET NULL"),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+    )
+
+
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 

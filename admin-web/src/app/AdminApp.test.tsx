@@ -11,6 +11,7 @@ const bootstrapPayload = {
     { key: 'uploads', label: '上传', path: '/admin-next/uploads' },
     { key: 'apps', label: '商店管理', path: '/admin-next/apps' },
     { key: 'store-reviews', label: '商店评论', path: '/admin-next/store-reviews' },
+    { key: 'llm-config', label: 'LLM 配置', path: '/admin-next/llm-config' },
     { key: 'api-docs', label: '接口文档', path: '/admin-next/api-docs' },
     { key: 'builds', label: '构建', path: '/admin-next/builds' },
     { key: 'devices', label: '设备', path: '/admin-next/devices' },

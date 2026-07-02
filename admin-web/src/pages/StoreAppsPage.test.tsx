@@ -114,7 +114,8 @@ describe('StoreAppsPage', () => {
     render(<StoreAppsPage />);
     await screen.findAllByText('Readink');
     await user.click(screen.getByRole('row', { name: /lookrva/ }));
-    await user.click(await screen.findByRole('button', { name: '评论分析' }));
+    const reviewLinks = await screen.findAllByRole('link', { name: '评论分析' });
+    await user.click(reviewLinks[1]);
 
     expect(location.pathname).toBe('/admin-next/store-reviews');
     expect(location.search).toBe('?accountId=account-ios&appId=app-ios');
@@ -127,7 +128,7 @@ describe('StoreAppsPage', () => {
     await screen.findAllByText('Readink');
     await user.click(screen.getByRole('row', { name: /lookrva/ }));
 
-    const storeLink = await screen.findByRole('link', { name: '打开商店编辑' });
+    const storeLink = await screen.findByRole('link', { name: '商店管理' });
     const accountLinks = screen.getAllByRole('link', { name: /账号|绑定/ });
 
     expect(storeLink.getAttribute('href')).toBe('/admin-next/accounts/account-ios/apps/app-ios/store');

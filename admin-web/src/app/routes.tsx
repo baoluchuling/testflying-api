@@ -4,6 +4,7 @@ export type AdminRouteKey =
   | 'apps'
   | 'accounts'
   | 'store-reviews'
+  | 'llm-config'
   | 'api-docs'
   | 'builds'
   | 'devices'
@@ -36,6 +37,11 @@ export const routeTitles: Record<AdminRouteKey, { eyebrow: string; title: string
     title: '商店评论',
     summary: '增量拉取最近评论，并通过 LLM 归纳需要关注的问题。'
   },
+  'llm-config': {
+    eyebrow: 'LLM Settings',
+    title: 'LLM 配置',
+    summary: '维护 OpenAI / Claude 兼容模型，并把功能绑定到指定模型。'
+  },
   'api-docs': {
     eyebrow: 'Developer API',
     title: '接口文档',
@@ -67,6 +73,7 @@ export function routeKeyFromPath(pathname: string): AdminRouteKey {
   const relative = pathname.replace(/^\/admin-next\/?/, '').replace(/^\/+/, '');
   const first = relative.split('/')[0] || 'dashboard';
   if (first === 'store-reviews') return 'store-reviews';
+  if (first === 'llm-config') return 'llm-config';
   if (first === 'api-docs') return 'api-docs';
   if (first === 'app-logs') return 'app-logs';
   if (first === 'accounts') return 'accounts';

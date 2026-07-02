@@ -3,6 +3,7 @@ import { bootstrapAdmin, type BootstrapResponse } from './apiClient';
 import { navKeyFromPath, routeKeyFromPath, routeTitles, type AdminRouteKey } from './routes';
 import { StoreAppsPage } from '../pages/StoreAppsPage';
 import { StoreReviewsPage } from '../pages/StoreReviewsPage';
+import { LlmConfigPage } from '../pages/LlmConfigPage';
 import { UploadPage } from '../pages/UploadPage';
 import { AppLogsPage } from '../pages/AppLogsPage';
 import { DashboardPage } from '../pages/DashboardPage';
@@ -17,6 +18,7 @@ const fallbackNav = [
   { key: 'uploads', label: '上传', path: '/admin-next/uploads' },
   { key: 'apps', label: '商店管理', path: '/admin-next/apps' },
   { key: 'store-reviews', label: '商店评论', path: '/admin-next/store-reviews' },
+  { key: 'llm-config', label: 'LLM 配置', path: '/admin-next/llm-config' },
   { key: 'api-docs', label: '接口文档', path: '/admin-next/api-docs' },
   { key: 'builds', label: '构建', path: '/admin-next/builds' },
   { key: 'devices', label: '设备', path: '/admin-next/devices' },
@@ -138,6 +140,7 @@ export function AdminApp() {
         {activeRoute === 'apps' ? <StoreAppsPage /> : null}
         {activeRoute === 'accounts' ? <DeveloperAccountsPage /> : null}
         {activeRoute === 'store-reviews' ? <StoreReviewsPage /> : null}
+        {activeRoute === 'llm-config' ? <LlmConfigPage /> : null}
         {activeRoute === 'api-docs' ? <ApiDocsPage /> : null}
         {activeRoute === 'builds' ? <BuildsPage /> : null}
         {activeRoute === 'devices' ? <DevicesPage /> : null}

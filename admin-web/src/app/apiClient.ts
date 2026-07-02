@@ -148,6 +148,78 @@ export type StoreAppsState = {
   accountSummary: StoreAppsAccountSummary;
 };
 
+export type LlmProtocolItem = {
+  key: string;
+  label: string;
+  defaultBaseUrl: string;
+  defaultModel: string;
+  defaultAuthHeader: string;
+};
+
+export type LlmPresetItem = {
+  key: string;
+  label: string;
+  protocol: string;
+  baseUrl: string;
+  model: string;
+  authHeader: string;
+};
+
+export type LlmProfileItem = {
+  id: string;
+  name: string;
+  protocol: string;
+  protocolLabel: string;
+  baseUrl: string;
+  model: string;
+  authHeader: string;
+  authHeaderLabel: string;
+  apiKeySet: boolean;
+  apiKeyPreview: string;
+  status: string;
+  statusLabel: string;
+  updatedAtLabel: string;
+};
+
+export type LlmFeatureBindingItem = {
+  featureKey: string;
+  featureLabel: string;
+  description: string;
+  primaryProfileId: string | null;
+  fallbackProfileId: string | null;
+  effectiveProfileLabel: string;
+  status: string;
+  statusLabel: string;
+};
+
+export type LlmConfigState = {
+  protocols: LlmProtocolItem[];
+  presets: LlmPresetItem[];
+  profiles: LlmProfileItem[];
+  featureBindings: LlmFeatureBindingItem[];
+};
+
+export type LlmProfilePayload = {
+  name: string;
+  protocol: string;
+  baseUrl: string;
+  model: string;
+  apiKey?: string;
+  authHeader: string;
+};
+
+export type LlmProfileSaveResponse = {
+  message: string;
+  profile: LlmProfileItem;
+  state: LlmConfigState;
+};
+
+export type LlmFeatureBindingSaveResponse = {
+  message: string;
+  binding: LlmFeatureBindingItem;
+  state: LlmConfigState;
+};
+
 export type DeveloperAccountSummary = {
   id: string;
   teamName: string;
@@ -718,6 +790,31 @@ export function loadDashboardState(): Promise<DashboardState> {
 
 export function loadStoreApps(pathAndQuery: string): Promise<StoreAppsState> {
   return getJson<StoreAppsState>(`/admin/api/store-apps${pathAndQuery}`);
+}
+
+export function loadLlmConfig(): Promise<LlmConfigState> {
+  return getJson<LlmConfigState>('/admin/api/llm-config');
+}
+
+export function createLlmProfile(payload: LlmProfilePayload): Promise<LlmProfileSaveResponse> {
+  return postJson<LlmProfileSaveResponse>('/admin/api/llm-config/profiles', payload);
+}
+
+export function updateLlmProfile(
+  profileId: string,
+  payload: LlmProfilePayload
+): Promise<LlmProfileSaveResponse> {
+  return patchJson<LlmProfileSaveResponse>(`/admin/api/llm-config/profiles/${profileId}`, payload);
+}
+
+export function updateLlmFeatureBinding(
+  featureKey: string,
+  payload: { primaryProfileId: string | null; fallbackProfileId?: string | null }
+): Promise<LlmFeatureBindingSaveResponse> {
+  return putJson<LlmFeatureBindingSaveResponse>(
+    `/admin/api/llm-config/bindings/${featureKey}`,
+    payload
+  );
 }
 
 export function loadDeveloperAccounts(): Promise<DeveloperAccountsState> {

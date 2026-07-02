@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type MouseEvent } from 'react';
+import { useEffect, useState, type MouseEvent } from 'react';
 import {
   AdminApiError,
   loadStoreApps,
@@ -20,8 +20,6 @@ export function StoreAppsPage() {
   const [state, setState] = useState<StoreAppsState | null>(null);
   const [loading, setLoading] = useState<LoadingState>('load');
   const [error, setError] = useState('');
-
-  const selectedApp = useMemo(() => state?.selectedApp ?? null, [state]);
 
   useEffect(() => {
     void loadFromLocation();
@@ -62,6 +60,7 @@ export function StoreAppsPage() {
 
   function openInternalPath(event: MouseEvent<HTMLAnchorElement>, path: string) {
     event.preventDefault();
+    event.stopPropagation();
     if (!path) return;
     history.pushState({ adminRoute: 'accounts' }, '', path);
     window.dispatchEvent(new PopStateEvent('popstate'));
@@ -69,140 +68,33 @@ export function StoreAppsPage() {
 
   return (
     <div className="store-apps-page" data-store-apps-page>
-      <section className="store-apps-filterbar">
-        <div className="filter-tabs" aria-label="商店应用筛选">
-          {filters.map((filter) => (
-            <button
-              key={filter.value}
-              className={state?.filter === filter.value ? 'filter-tab active' : 'filter-tab'}
-              type="button"
-              onClick={() => void selectFilter(filter.value)}
-            >
-              {filter.label}
-            </button>
-          ))}
-        </div>
-        <div className="store-apps-counts">
-          <span>{state?.stats.total ?? 0} 个应用</span>
-          <span>{state?.stats.ready ?? 0} 个可同步</span>
-          <span>{state?.stats.needs ?? 0} 个需处理</span>
-        </div>
-      </section>
-
       {error ? <div className="notice error">{error}</div> : null}
 
       <div className="store-apps-layout">
-        <section className="panel store-apps-list-panel">
-          <div className="panel-head compact">
-            <strong>商店应用</strong>
-            <span>点击应用查看操作</span>
-          </div>
-          <div className="store-app-table" role="table" aria-label="商店应用">
-            <div className="store-app-table-row header" role="row">
-              <span>应用</span>
-              <span>平台</span>
-              <span>开发者账号</span>
-              <span>商店状态</span>
-              <span>最新构建</span>
-            </div>
-            {state?.apps.map((app) => (
-              <button
-                key={app.id}
-                className={app.selected ? 'store-app-table-row active' : 'store-app-table-row'}
-                type="button"
-                role="row"
-                onClick={() => void selectApp(app)}
-              >
-                <span className="app-cell">
-                  <span className="app-avatar" style={{ backgroundColor: app.iconColor }}>
-                    {app.iconText}
-                  </span>
-                  <span>
-                    <strong>{app.name}</strong>
-                    <small>{app.bundleIdentifier}</small>
-                  </span>
-                </span>
-                <span>{platformLabel(app.platform)}</span>
-                <span>{app.developerAccountName || '未绑定'}</span>
-                <span className={`tag ${app.status === 'ready' ? 'ok' : 'warn'}`}>
-                  {app.statusLabel}
-                </span>
-                <span>{buildLabel(app)}</span>
-              </button>
-            ))}
-          </div>
-          {loading === 'load' ? <div className="empty-state">正在加载商店应用...</div> : null}
-          {state && state.apps.length === 0 && loading === 'idle' ? (
-            <div className="empty-state">当前筛选下没有应用。</div>
-          ) : null}
-        </section>
-
         <aside className="store-apps-side">
-          <section className="panel selected-store-app-panel">
+          <section className="panel store-account-summary">
             <div className="panel-head compact">
-              <strong>当前应用</strong>
-              <span>{selectedApp?.statusLabel ?? '未选择'}</span>
+              <strong>筛选</strong>
+              <span>{state?.stats.total ?? 0} 个应用</span>
             </div>
-            {selectedApp ? (
-              <div className="selected-store-app">
-                <div className="selected-store-app-title">
-                  <span className="app-avatar" style={{ backgroundColor: selectedApp.iconColor }}>
-                    {selectedApp.iconText}
-                  </span>
-                  <div>
-                    <strong>{selectedApp.name}</strong>
-                    <span>{selectedApp.bundleIdentifier}</span>
-                  </div>
-                </div>
-                <dl>
-                  <div>
-                    <dt>平台</dt>
-                    <dd>{platformLabel(selectedApp.platform)}</dd>
-                  </div>
-                  <div>
-                    <dt>开发者账号</dt>
-                    <dd>{selectedApp.developerAccountName || '未绑定'}</dd>
-                  </div>
-                  <div>
-                    <dt>商店标识</dt>
-                    <dd>{selectedApp.storeIdentifier || '未填写'}</dd>
-                  </div>
-                  <div>
-                    <dt>最新构建</dt>
-                    <dd>{buildLabel(selectedApp)}</dd>
-                  </div>
-                </dl>
-                <div className="selected-store-actions">
-                  {selectedApp.storeManagementPath ? (
-                    <a
-                      className="button primary"
-                      href={selectedApp.storeManagementPath}
-                      onClick={(event) => openInternalPath(event, selectedApp.storeManagementPath)}
-                    >
-                      打开商店编辑
-                    </a>
-                  ) : (
-                    <a
-                      className="button"
-                      href="/admin-next/accounts"
-                      onClick={(event) => openInternalPath(event, '/admin-next/accounts')}
-                    >
-                      先绑定账号
-                    </a>
-                  )}
-                  <button
-                    className="button"
-                    type="button"
-                    onClick={() => openReviews(selectedApp)}
-                    disabled={!selectedApp.reviewsPath}
-                  >
-                    评论分析
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="empty-state">从左侧选择一个应用。</div>
-            )}
+            <div className="filter-tabs vertical" aria-label="商店应用筛选">
+              {filters.map((filter) => (
+                <button
+                  key={filter.value}
+                  className={state?.filter === filter.value ? 'filter-tab active' : 'filter-tab'}
+                  type="button"
+                  onClick={() => void selectFilter(filter.value)}
+                >
+                  {filter.label}
+                </button>
+              ))}
+            </div>
+            <div className="store-apps-counts">
+              <span>{state?.stats.ios ?? 0} 个 iOS</span>
+              <span>{state?.stats.android ?? 0} 个 Android</span>
+              <span>{state?.stats.ready ?? 0} 个可同步</span>
+              <span>{state?.stats.needs ?? 0} 个需处理</span>
+            </div>
           </section>
 
           <section className="panel store-account-summary">
@@ -225,6 +117,84 @@ export function StoreAppsPage() {
             </div>
           </section>
         </aside>
+
+        <section className="panel store-apps-list-panel">
+          <div className="panel-head compact">
+            <strong>商店应用</strong>
+            <span>每个应用可以直接进入商店管理或评论分析</span>
+          </div>
+          <div className="store-app-table" role="table" aria-label="商店应用">
+            <div className="store-app-table-row header" role="row">
+              <span>应用</span>
+              <span>平台</span>
+              <span>开发者账号</span>
+              <span>商店状态</span>
+              <span>最新构建</span>
+              <span>操作</span>
+            </div>
+            {state?.apps.map((app) => (
+              <div
+                key={app.id}
+                className={app.selected ? 'store-app-table-row active' : 'store-app-table-row'}
+                role="row"
+                tabIndex={0}
+                onClick={() => void selectApp(app)}
+              >
+                <span className="app-cell">
+                  <span className="app-avatar" style={{ backgroundColor: app.iconColor }}>
+                    {app.iconText}
+                  </span>
+                  <span>
+                    <strong>{app.name}</strong>
+                    <small>{app.bundleIdentifier}</small>
+                  </span>
+                </span>
+                <span>{platformLabel(app.platform)}</span>
+                <span>{app.developerAccountName || '未绑定'}</span>
+                <span className={`tag ${app.status === 'ready' ? 'ok' : 'warn'}`}>
+                  {app.statusLabel}
+                </span>
+                <span>{buildLabel(app)}</span>
+                <span className="store-app-row-actions">
+                  {app.storeManagementPath ? (
+                    <a
+                      className="button primary"
+                      href={app.storeManagementPath}
+                      onClick={(event) => openInternalPath(event, app.storeManagementPath)}
+                    >
+                      商店管理
+                    </a>
+                  ) : (
+                    <a
+                      className="button"
+                      href="/admin-next/accounts"
+                      onClick={(event) => openInternalPath(event, '/admin-next/accounts')}
+                    >
+                      绑定账号
+                    </a>
+                  )}
+                  <a
+                    className="button"
+                    href={app.reviewsPath || '/admin-next/store-reviews'}
+                    aria-disabled={!app.reviewsPath}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      openReviews(app);
+                    }}
+                  >
+                    评论分析
+                  </a>
+                </span>
+              </div>
+            ))}
+          </div>
+          {loading === 'load' ? <div className="empty-state">正在加载商店应用...</div> : null}
+          {state && state.apps.length === 0 && loading === 'idle' ? (
+            <div className="empty-state">当前筛选下没有应用。</div>
+          ) : null}
+        </section>
+
       </div>
     </div>
   );

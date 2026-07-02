@@ -68,6 +68,15 @@ from testflying_api.admin_api.schemas import (
     DeveloperAccountSummary,
     DeviceItem,
     DevicesState,
+    LlmConfigState,
+    LlmFeatureBindingItem,
+    LlmFeatureBindingSaveRequest,
+    LlmFeatureBindingSaveResponse,
+    LlmPresetItem,
+    LlmProfileItem,
+    LlmProfileSaveRequest,
+    LlmProfileSaveResponse,
+    LlmProtocolItem,
     MarketingPageActionResponse,
     MarketingPageCreateRequest,
     MarketingPageDetailState,
@@ -110,11 +119,25 @@ from testflying_api.admin_api.schemas import (
 from testflying_api.app_logs import LEVELS, build_app_log_connect_context
 from testflying_api.database import get_db_session
 from testflying_api.errors import ApiError
+from testflying_api.llm_config import (
+    LLM_FEATURES,
+    LLM_PRESETS,
+    LLM_PROTOCOLS,
+    auth_header_label,
+    list_llm_bindings,
+    list_llm_profiles,
+    mask_api_key,
+    protocol_label,
+    save_feature_binding,
+    save_llm_profile,
+)
 from testflying_api.schema import (
     App,
     Build,
     DeveloperAccount,
     Device,
+    LlmFeatureBinding,
+    LlmProfile,
     Notification,
     StoreAppMetadataDraft,
     StoreMarketingPageLocale,
@@ -170,6 +193,7 @@ def admin_bootstrap(_: AdminDep) -> AdminBootstrapResponse:
             AdminNavItem(key="uploads", label="上传", path="/admin-next/uploads"),
             AdminNavItem(key="apps", label="商店管理", path="/admin-next/apps"),
             AdminNavItem(key="store-reviews", label="商店评论", path="/admin-next/store-reviews"),
+            AdminNavItem(key="llm-config", label="LLM 配置", path="/admin-next/llm-config"),
             AdminNavItem(key="api-docs", label="接口文档", path="/admin-next/api-docs"),
             AdminNavItem(key="builds", label="构建", path="/admin-next/builds"),
             AdminNavItem(key="devices", label="设备", path="/admin-next/devices"),
@@ -264,6 +288,112 @@ def api_docs_state(_: AdminDep) -> ApiDocsState:
     return ApiDocsState(
         endpoints=_parse_public_api_endpoints(markdown),
         download_url="/admin/api-docs/store-management.md",
+    )
+
+
+@router.get(
+    "/llm-config",
+    response_model=LlmConfigState,
+    response_model_by_alias=True,
+)
+def llm_config_state(
+    session: SessionDep,
+    _: AdminDep,
+) -> LlmConfigState:
+    return _llm_config_state(session)
+
+
+@router.post(
+    "/llm-config/profiles",
+    response_model=LlmProfileSaveResponse,
+    response_model_by_alias=True,
+)
+def create_llm_profile(
+    payload: LlmProfileSaveRequest,
+    session: SessionDep,
+    _: AdminDep,
+) -> LlmProfileSaveResponse:
+    try:
+        profile = save_llm_profile(
+            session,
+            profile_id=None,
+            name=payload.name,
+            protocol=payload.protocol,
+            base_url=payload.base_url,
+            model=payload.model,
+            api_key=payload.api_key,
+            auth_header=payload.auth_header,
+        )
+        session.commit()
+    except ApiError as error:
+        session.rollback()
+        raise _admin_api_error(error) from error
+    return LlmProfileSaveResponse(
+        message="LLM 模型已保存",
+        profile=_llm_profile_item(profile),
+        state=_llm_config_state(session),
+    )
+
+
+@router.patch(
+    "/llm-config/profiles/{profile_id}",
+    response_model=LlmProfileSaveResponse,
+    response_model_by_alias=True,
+)
+def update_llm_profile(
+    profile_id: str,
+    payload: LlmProfileSaveRequest,
+    session: SessionDep,
+    _: AdminDep,
+) -> LlmProfileSaveResponse:
+    try:
+        profile = save_llm_profile(
+            session,
+            profile_id=profile_id,
+            name=payload.name,
+            protocol=payload.protocol,
+            base_url=payload.base_url,
+            model=payload.model,
+            api_key=payload.api_key,
+            auth_header=payload.auth_header,
+        )
+        session.commit()
+    except ApiError as error:
+        session.rollback()
+        raise _admin_api_error(error) from error
+    return LlmProfileSaveResponse(
+        message="LLM 模型已更新",
+        profile=_llm_profile_item(profile),
+        state=_llm_config_state(session),
+    )
+
+
+@router.put(
+    "/llm-config/bindings/{feature_key}",
+    response_model=LlmFeatureBindingSaveResponse,
+    response_model_by_alias=True,
+)
+def update_llm_feature_binding(
+    feature_key: str,
+    payload: LlmFeatureBindingSaveRequest,
+    session: SessionDep,
+    _: AdminDep,
+) -> LlmFeatureBindingSaveResponse:
+    try:
+        binding = save_feature_binding(
+            session,
+            feature_key=feature_key,
+            primary_profile_id=payload.primary_profile_id,
+            fallback_profile_id=payload.fallback_profile_id,
+        )
+        session.commit()
+    except ApiError as error:
+        session.rollback()
+        raise _admin_api_error(error) from error
+    return LlmFeatureBindingSaveResponse(
+        message="功能绑定已保存",
+        binding=_llm_feature_binding_item(binding, list_llm_profiles(session)),
+        state=_llm_config_state(session),
     )
 
 
@@ -1637,6 +1767,101 @@ def analyze_reviews(
                 "message": error.message,
             },
         )
+
+
+def _llm_config_state(session: Session) -> LlmConfigState:
+    profiles = list_llm_profiles(session)
+    bindings = list_llm_bindings(session)
+    return LlmConfigState(
+        protocols=[
+            LlmProtocolItem(
+                key=str(protocol["key"]),
+                label=str(protocol["label"]),
+                default_base_url=str(protocol["defaultBaseUrl"]),
+                default_model=str(protocol["defaultModel"]),
+                default_auth_header=str(protocol["defaultAuthHeader"]),
+            )
+            for protocol in LLM_PROTOCOLS
+        ],
+        presets=[
+            LlmPresetItem(
+                key=str(preset["key"]),
+                label=str(preset["label"]),
+                protocol=str(preset["protocol"]),
+                base_url=str(preset["baseUrl"]),
+                model=str(preset["model"]),
+                auth_header=str(preset["authHeader"]),
+            )
+            for preset in LLM_PRESETS
+        ],
+        profiles=[_llm_profile_item(profile) for profile in profiles],
+        feature_bindings=[
+            _llm_feature_binding_item(bindings.get(str(feature["key"])), profiles, feature=feature)
+            for feature in LLM_FEATURES
+        ],
+    )
+
+
+def _llm_profile_item(profile: LlmProfile) -> LlmProfileItem:
+    status_label = "已配置" if profile.api_key else "缺少 Key"
+    if profile.status == "unchecked" and profile.api_key:
+        status_label = "未检查"
+    return LlmProfileItem(
+        id=profile.id,
+        name=profile.name,
+        protocol=profile.protocol,
+        protocol_label=protocol_label(profile.protocol),
+        base_url=profile.base_url,
+        model=profile.model,
+        auth_header=profile.auth_header,
+        auth_header_label=auth_header_label(profile.auth_header),
+        api_key_set=bool(profile.api_key),
+        api_key_preview=mask_api_key(profile.api_key),
+        status=profile.status,
+        status_label=status_label,
+        updated_at_label=format_datetime(profile.updated_at),
+    )
+
+
+def _llm_feature_binding_item(
+    binding: LlmFeatureBinding | None,
+    profiles: list[LlmProfile],
+    *,
+    feature: dict[str, object] | None = None,
+) -> LlmFeatureBindingItem:
+    if feature is None and binding is not None:
+        feature = next(
+            (item for item in LLM_FEATURES if str(item["key"]) == binding.feature_key),
+            None,
+        )
+    feature_key = str(feature["key"] if feature else binding.feature_key if binding else "")
+    feature_label = str(feature["label"] if feature else feature_key)
+    description = str(feature["description"] if feature else "")
+    profile_by_id = {profile.id: profile for profile in profiles}
+    primary_id = binding.primary_profile_id if binding else None
+    primary_profile = profile_by_id.get(primary_id or "")
+    if primary_profile is None:
+        status = "unbound"
+        status_label = "未绑定"
+        effective_label = "未选择模型"
+    elif primary_profile.api_key:
+        status = "ready"
+        status_label = "已启用"
+        effective_label = primary_profile.name
+    else:
+        status = "needs_key"
+        status_label = "缺少 Key"
+        effective_label = primary_profile.name
+    return LlmFeatureBindingItem(
+        feature_key=feature_key,
+        feature_label=feature_label,
+        description=description,
+        primary_profile_id=primary_id,
+        fallback_profile_id=binding.fallback_profile_id if binding else None,
+        effective_profile_label=effective_label,
+        status=status,
+        status_label=status_label,
+    )
 
 
 def _store_apps_state(

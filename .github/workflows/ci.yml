@@ -47,6 +47,10 @@ jobs:
           ruff check src tests alembic
           npm --prefix admin-web run lint
 
+      - name: Build Admin App
+        run: |
+          npm --prefix admin-web run build
+
       - name: Test
         run: |
           pytest -q
@@ -58,7 +62,6 @@ jobs:
           python -m compileall -q src tests
           (cd connector && go build ./cmd/testflying-connector)
           (cd connector && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o /tmp/testflying-connector.exe ./cmd/testflying-connector)
-          npm --prefix admin-web run build
 
       - name: Validate Docker Compose files
         run: |

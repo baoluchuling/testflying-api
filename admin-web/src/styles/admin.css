@@ -259,7 +259,7 @@ select {
 
 .reviews-workspace {
   display: grid;
-  grid-template-columns: 320px minmax(0, 1fr) 360px;
+  grid-template-columns: 300px minmax(420px, 1fr) 460px;
   gap: 18px;
   align-items: start;
 }

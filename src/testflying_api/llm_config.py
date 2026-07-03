@@ -13,6 +13,7 @@ from testflying_api.schema import LlmFeatureBinding, LlmProfile
 
 LLM_FEATURE_REVIEW_ANALYSIS = "review_analysis"
 LLM_FEATURE_TRANSLATION = "translation"
+LLM_FEATURE_FEEDBACK_CLASSIFICATION = "feedback_classification"
 
 LLM_FEATURES = (
     {
@@ -24,6 +25,11 @@ LLM_FEATURES = (
         "key": LLM_FEATURE_TRANSLATION,
         "label": "多语言翻译",
         "description": "商店文案从源语言生成其他语言草稿。",
+    },
+    {
+        "key": LLM_FEATURE_FEEDBACK_CLASSIFICATION,
+        "label": "用户反馈分类",
+        "description": "根据用户反馈判断问题类型、是否缺陷、是否建议和处理优先级。",
     },
 )
 
@@ -122,6 +128,16 @@ def legacy_runtime_config(settings: Settings, *, feature_key: str) -> LlmRuntime
             auth_header="authorization_bearer",
         )
     if feature_key == LLM_FEATURE_REVIEW_ANALYSIS:
+        provider = settings.review_analysis_provider.strip().lower()
+        return LlmRuntimeConfig(
+            provider=provider,
+            protocol="openai_compatible",
+            base_url=settings.review_analysis_openai_base_url,
+            model=settings.review_analysis_openai_model,
+            api_key=settings.review_analysis_openai_api_key,
+            auth_header="authorization_bearer",
+        )
+    if feature_key == LLM_FEATURE_FEEDBACK_CLASSIFICATION:
         provider = settings.review_analysis_provider.strip().lower()
         return LlmRuntimeConfig(
             provider=provider,

@@ -17,7 +17,7 @@ VERSION="1.0.0"
 PAGE_ID="page-xxxxxxxx"
 ```
 
-所有 `/v1/store-management/*` 接口都需要静态 token：
+所有 `/v1/store-management/*` 和 `/v1/llm/*` 接口都需要静态 token：
 
 ```http
 Authorization: Bearer <TESTFLYING_STATIC_TOKEN>
@@ -85,6 +85,11 @@ storeImageFiles__featureGraphicUrl__en-US
 - 同一开发者账号同一时间只允许一个直接同步或创建实验请求执行
 - `idempotencyKey` 缓存 1 小时，同 key 重试返回同一结果
 
+LLM 用户反馈分类接口按 token 单独限流：
+
+- `30 次/分钟`
+- `300 次/小时`
+
 ## 接口总览
 
 | 接口 | 方法 | 是否连接真实商店 | 用途 |
@@ -101,6 +106,7 @@ storeImageFiles__featureGraphicUrl__en-US
 | `/v1/store-management/developer-accounts/{accountId}/apps/{appId}/marketing-pages/{pageId}/sync-runs` | POST | 是 | 同步自定义产品页面 |
 | `/v1/store-management/developer-accounts/{accountId}/apps/{appId}/product-page-optimizations` | GET | 是 | 查询 Apple 产品页面优化实验 |
 | `/v1/store-management/developer-accounts/{accountId}/apps/{appId}/product-page-optimizations` | POST | 是 | 创建 Apple 产品页面优化实验 |
+| `/v1/llm/feedback-classifications` | POST | 否 | 用户反馈问题分类 |
 
 ## 1. 读取商店支持语言
 
@@ -810,6 +816,85 @@ curl -X POST "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/
 }
 ```
 
+## 13. 用户反馈问题分类
+
+```http
+POST /v1/llm/feedback-classifications
+Content-Type: application/json
+```
+
+用途：
+
+- 第三方电脑或外部系统把用户反馈传给中心后台，由已配置的 LLM 判断问题类型。
+- 返回是否是 bug、是否是建议、严重程度、优先级、证据片段和内部处理建议。
+- 这个接口不连接 App Store Connect 或 Google Play，也不会保存分析记录。
+
+请求字段：
+
+| 字段 | 必填 | 说明 |
+| --- | --- | --- |
+| `feedbackId` | 否 | 外部系统反馈 ID，会原样返回 |
+| `content` | 是 | 用户反馈原文，最多 8000 字 |
+| `title` | 否 | 反馈标题 |
+| `source` | 否 | 来源，例如 `app_store`、`google_play`、`in_app`、`support`、`manual` |
+| `platform` | 否 | 平台，例如 `ios`、`android`、`web`、`unknown` |
+| `app` | 否 | App 上下文，支持 `id`、`name`、`version` |
+| `locale` | 否 | 反馈语言，默认 `zh-CN` |
+| `context` | 否 | 额外上下文，例如评分、设备、系统版本、标签 |
+
+完整 curl：
+
+```bash
+curl -X POST "$BASE_URL/v1/llm/feedback-classifications" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "feedbackId": "fb-1001",
+    "content": "打不开，一直闪退，更新后就这样",
+    "source": "app_store",
+    "platform": "ios",
+    "app": {
+      "id": "com.example.app",
+      "name": "Example",
+      "version": "1.0.0"
+    },
+    "context": {
+      "rating": 1,
+      "device": "iPhone 15",
+      "osVersion": "iOS 18"
+    }
+  }'
+```
+
+成功响应示例：
+
+```json
+{
+  "feedbackId": "fb-1001",
+  "category": "crash",
+  "categoryLabel": "闪退问题",
+  "isBug": true,
+  "isSuggestion": false,
+  "severity": "high",
+  "priority": "p1",
+  "confidence": 0.88,
+  "summary": "用户反馈新版本持续闪退。",
+  "problem": "应用打开后异常退出。",
+  "evidence": ["打不开", "一直闪退"],
+  "suggestedAction": "优先排查新版本启动崩溃。",
+  "routing": {
+    "team": "client",
+    "labels": ["crash", "ios"]
+  },
+  "needsHumanReview": false,
+  "model": {
+    "provider": "configured",
+    "protocol": "openai_compatible",
+    "model": "mimo-v2.5-pro"
+  }
+}
+```
+
 ## 主动 Connector 协议
 
 这组接口是中心后台和 Windows/Mac 上运行的主动 Connector 之间的内部协议。第三方业务脚本一般不需要直接调用。
@@ -933,3 +1018,5 @@ curl -X POST "$BASE_URL/connector-agent/v1/results" \
 | `rate_limited` | 429 | 直接同步或创建实验过于频繁 |
 | `unsupported_marketing_page` | 422 | 非 iOS App 调用了自定义产品页面接口 |
 | `unsupported_product_page_optimization` | 422 | 非 iOS App 调用了产品页面优化接口 |
+| `feedback_classification_not_configured` | 503 | 用户反馈分类 LLM 未配置 |
+| `llm_invalid_response` | 502 | 用户反馈分类 LLM 返回格式不正确 |

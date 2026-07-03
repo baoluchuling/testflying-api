@@ -11,6 +11,7 @@
 - 所有连接真实商店的接口都支持显式覆盖商店目标：iOS 用 `iosAppId`（兼容 `storeAppId` / `appleAppId`），Android 用 `packageName`
 - 传了真实 `iosAppId` 或 `packageName` 后，中心后台会直接下发给 connector；不传才使用后台绑定值或包解析值
 - Google Play 同步会提交 edit，但默认带 `changesNotSentForReview=true`，不会直接送审；如果已有变更正在审核中，会按 `changesInReviewBehavior=ERROR_IF_IN_REVIEW` 返回错误
+- LLM 用户反馈分类接口按 token 限流：`30 次/分钟`、`300 次/小时`
 
 ## 接口总览
 
@@ -28,6 +29,7 @@
 | `/v1/store-management/developer-accounts/{accountId}/apps/{appId}/marketing-pages/{pageId}/sync-runs` | POST | 是 | 同步自定义产品页面 |
 | `/v1/store-management/developer-accounts/{accountId}/apps/{appId}/product-page-optimizations` | GET | 是 | 查询产品页面优化 |
 | `/v1/store-management/developer-accounts/{accountId}/apps/{appId}/product-page-optimizations` | POST | 是 | 创建产品页面优化 |
+| `/v1/llm/feedback-classifications` | POST | 否 | 用户反馈问题分类 |
 
 ## 1. 读取商店支持语言
 
@@ -505,6 +507,78 @@ curl -X POST "$BASE_URL/v1/store-management/developer-accounts/$ACCOUNT_ID/apps/
     "state": "PREPARE_FOR_SUBMISSION"
   },
   "idempotent": false
+}
+```
+
+## 13. 用户反馈问题分类
+
+```http
+POST /v1/llm/feedback-classifications
+```
+
+根据外部系统传入的用户反馈内容，返回问题类型、是否是 bug、是否是建议、重要性和内部处理建议。
+
+这个接口只调用已配置的 LLM，不会连接 App Store Connect 或 Google Play，也不会保存分析记录。
+
+参数：
+
+| 参数 | 位置 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `feedbackId` | body | 否 | 外部系统自己的反馈 ID，会原样返回 |
+| `content` | body | 是 | 用户反馈原文，最多 8000 字 |
+| `title` | body | 否 | 反馈标题 |
+| `source` | body | 否 | 来源，例如 `app_store`、`google_play`、`in_app`、`support`、`manual` |
+| `platform` | body | 否 | 平台，例如 `ios`、`android`、`web`、`unknown` |
+| `app` | body | 否 | App 上下文，支持 `id`、`name`、`version` |
+| `locale` | body | 否 | 反馈语言，默认 `zh-CN` |
+| `context` | body | 否 | 额外上下文，例如评分、设备、系统版本、标签 |
+
+```bash
+curl -X POST "$BASE_URL/v1/llm/feedback-classifications" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "feedbackId": "fb-1001",
+    "content": "打不开，一直闪退，更新后就这样",
+    "source": "app_store",
+    "platform": "ios",
+    "app": {
+      "id": "com.example.app",
+      "name": "Example",
+      "version": "1.0.0"
+    },
+    "context": {
+      "rating": 1,
+      "device": "iPhone 15",
+      "osVersion": "iOS 18"
+    }
+  }'
+```
+
+```json
+{
+  "feedbackId": "fb-1001",
+  "category": "crash",
+  "categoryLabel": "闪退问题",
+  "isBug": true,
+  "isSuggestion": false,
+  "severity": "high",
+  "priority": "p1",
+  "confidence": 0.88,
+  "summary": "用户反馈新版本持续闪退。",
+  "problem": "应用打开后异常退出。",
+  "evidence": ["打不开", "一直闪退"],
+  "suggestedAction": "优先排查新版本启动崩溃。",
+  "routing": {
+    "team": "client",
+    "labels": ["crash", "ios"]
+  },
+  "needsHumanReview": false,
+  "model": {
+    "provider": "configured",
+    "protocol": "openai_compatible",
+    "model": "mimo-v2.5-pro"
+  }
 }
 ```
 

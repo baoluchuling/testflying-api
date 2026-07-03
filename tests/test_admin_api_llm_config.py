@@ -20,6 +20,7 @@ def test_admin_api_llm_config_lists_protocols_and_features(client: TestClient) -
         "claude_compatible",
     ]
     assert {item["featureKey"] for item in payload["featureBindings"]} == {
+        "feedback_classification",
         "review_analysis",
         "translation",
     }

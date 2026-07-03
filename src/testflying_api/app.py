@@ -88,6 +88,7 @@ def create_app(
         connector_agent,
         devices,
         health,
+        llm_feedback,
         notifications,
         store_management,
         uploads,
@@ -103,6 +104,7 @@ def create_app(
     app.include_router(admin_spa.router)
     app.include_router(workspace.router)
     app.include_router(uploads.router)
+    app.include_router(llm_feedback.router)
     app.include_router(store_management.router)
     app.include_router(devices.router)
     app.include_router(accounts.router)

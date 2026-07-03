@@ -29,6 +29,12 @@ FEEDBACK_CATEGORIES = {
 }
 FEEDBACK_SEVERITIES = {"low", "medium", "high", "critical"}
 FEEDBACK_PRIORITIES = {"p0", "p1", "p2", "p3"}
+MAX_FEEDBACK_IMAGES = 5
+SUPPORTED_IMAGE_DETAILS = {"auto", "low", "high"}
+_DATA_IMAGE_URL_RE = re.compile(
+    r"^data:(image/(?:png|jpeg|jpg|webp|gif));base64,(.+)$",
+    re.IGNORECASE | re.DOTALL,
+)
 
 FEEDBACK_CLASSIFICATION_SCHEMA_INSTRUCTION = (
     "你是面向内部产品、QA 和研发团队的用户反馈分类助手。"
@@ -52,6 +58,7 @@ FEEDBACK_CLASSIFICATION_SCHEMA_INSTRUCTION = (
     '"needsHumanReview":false}. '
     "priority 规则：critical 对应 p0，high 对应 p1，medium 对应 p2，low 对应 p3。"
     "如果证据不足、分类不确定或可能涉及安全/支付/数据丢失，needsHumanReview 返回 true。"
+    "如果输入里包含图片，请结合图片内容和文字反馈判断；看不清或图片无法证明的内容不要编造。"
     "不要回复用户，不要编造不存在的事实，只能根据输入内容和上下文判断。"
 )
 
@@ -63,10 +70,21 @@ def classify_feedback(
     feedback: dict[str, object],
 ) -> dict[str, object]:
     normalized_content = str(feedback.get("content") or "").strip()
-    if not normalized_content:
-        raise ApiError("invalid_feedback_content", "反馈内容不能为空", status_code=422)
     if len(normalized_content) > 8000:
         raise ApiError("invalid_feedback_content", "反馈内容不能超过 8000 个字符", status_code=422)
+    feedback = dict(feedback)
+    feedback["content"] = normalized_content
+    images = _normalize_feedback_images(feedback.get("images"))
+    if not normalized_content and not images:
+        raise ApiError(
+            "invalid_feedback_content",
+            "反馈内容或图片至少需要提供一个",
+            status_code=422,
+        )
+    if images:
+        feedback["images"] = images
+    else:
+        feedback.pop("images", None)
 
     runtime = resolve_llm_runtime_config(
         session,
@@ -122,7 +140,7 @@ def _classify_with_openai_compatible(
             },
             {
                 "role": "user",
-                "content": json.dumps(feedback, ensure_ascii=False),
+                "content": _openai_user_content(feedback),
             },
         ],
     }
@@ -155,7 +173,7 @@ def _classify_with_claude_compatible(
         "messages": [
             {
                 "role": "user",
-                "content": json.dumps(feedback, ensure_ascii=False),
+                "content": _claude_user_content(feedback),
             }
         ],
     }
@@ -170,6 +188,148 @@ def _classify_with_claude_compatible(
     )
     response_payload = _send_llm_request(request)
     return _decode_feedback_classification(_response_content(response_payload), feedback=feedback)
+
+
+def _openai_user_content(feedback: dict[str, object]) -> str | list[dict[str, object]]:
+    images = _feedback_images(feedback)
+    text = _feedback_text_payload(feedback)
+    if not images:
+        return text
+    content: list[dict[str, object]] = [{"type": "text", "text": text}]
+    for image in images:
+        content.append(
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": image["url"],
+                    "detail": image.get("detail") or "auto",
+                },
+            }
+        )
+    return content
+
+
+def _claude_user_content(feedback: dict[str, object]) -> str | list[dict[str, object]]:
+    images = _feedback_images(feedback)
+    text = _feedback_text_payload(feedback)
+    if not images:
+        return text
+    content: list[dict[str, object]] = [{"type": "text", "text": text}]
+    for image in images:
+        content.append(
+            {
+                "type": "image",
+                "source": _claude_image_source(image["url"]),
+            }
+        )
+    return content
+
+
+def _feedback_text_payload(feedback: dict[str, object]) -> str:
+    sanitized = dict(feedback)
+    images = _feedback_images(feedback)
+    if images:
+        sanitized["images"] = [_image_text_metadata(image) for image in images]
+    return json.dumps(sanitized, ensure_ascii=False)
+
+
+def _image_text_metadata(image: dict[str, str]) -> dict[str, str]:
+    url = image["url"]
+    metadata = {
+        "name": image.get("name", ""),
+        "mimeType": image.get("mimeType", ""),
+        "detail": image.get("detail", "auto"),
+        "kind": "data_url" if _is_data_image_url(url) else "url",
+    }
+    if _is_data_image_url(url):
+        data_match = _DATA_IMAGE_URL_RE.match(url)
+        metadata["url"] = f"data-url:{data_match.group(1).lower()}" if data_match else "data-url"
+    else:
+        metadata["url"] = url
+    return metadata
+
+
+def _normalize_feedback_images(value: object) -> list[dict[str, str]]:
+    if value in (None, ""):
+        return []
+    if not isinstance(value, list):
+        raise ApiError("invalid_feedback_images", "images 必须是数组", status_code=422)
+    if len(value) > MAX_FEEDBACK_IMAGES:
+        raise ApiError(
+            "invalid_feedback_images",
+            f"最多支持 {MAX_FEEDBACK_IMAGES} 张图片",
+            status_code=422,
+        )
+    images: list[dict[str, str]] = []
+    for index, item in enumerate(value, start=1):
+        if not isinstance(item, dict):
+            raise ApiError(
+                "invalid_feedback_images",
+                f"第 {index} 张图片格式不正确",
+                status_code=422,
+            )
+        url = _text(item.get("url"))
+        if not _is_supported_image_url(url):
+            raise ApiError(
+                "invalid_feedback_image_url",
+                "图片地址只支持 http(s) URL 或 data:image/...;base64,...",
+                status_code=422,
+            )
+        detail = (_text(item.get("detail")) or "auto").lower()
+        if detail not in SUPPORTED_IMAGE_DETAILS:
+            raise ApiError(
+                "invalid_feedback_images",
+                "图片 detail 只支持 auto、low、high",
+                status_code=422,
+            )
+        images.append(
+            {
+                "url": url,
+                "name": _text(item.get("name")),
+                "mimeType": _text(item.get("mimeType")),
+                "detail": detail,
+            }
+        )
+    return images
+
+
+def _feedback_images(feedback: dict[str, object]) -> list[dict[str, str]]:
+    images = feedback.get("images")
+    if not isinstance(images, list):
+        return []
+    return [image for image in images if isinstance(image, dict)]
+
+
+def _is_supported_image_url(url: str) -> bool:
+    normalized = url.lower()
+    return (
+        normalized.startswith("http://")
+        or normalized.startswith("https://")
+        or _is_data_image_url(url)
+    )
+
+
+def _is_data_image_url(url: str) -> bool:
+    return bool(_DATA_IMAGE_URL_RE.match(url))
+
+
+def _claude_image_source(url: str) -> dict[str, str]:
+    data_match = _DATA_IMAGE_URL_RE.match(url)
+    if data_match is None:
+        raise ApiError(
+            "feedback_image_unsupported",
+            "Claude 兼容模式第一版只支持 data URL 图片；请使用 OpenAI 兼容模型传图片 URL，"
+            "或传 data:image/...;base64,...",
+            status_code=422,
+        )
+    media_type = data_match.group(1).lower()
+    if media_type == "image/jpg":
+        media_type = "image/jpeg"
+    return {
+        "type": "base64",
+        "media_type": media_type,
+        "data": re.sub(r"\s+", "", data_match.group(2)),
+    }
 
 
 def _send_llm_request(request: Request) -> dict[str, object]:

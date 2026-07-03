@@ -18,17 +18,24 @@ def _public_headers(token: str = "dev-token") -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-def _bind_feedback_classifier(client: TestClient) -> str:
+def _bind_feedback_classifier(
+    client: TestClient,
+    *,
+    protocol: str = "openai_compatible",
+    base_url: str = "https://token-plan-cn.xiaomimimo.com/v1",
+    model: str = "mimo-v2.5-pro",
+    auth_header: str = "api-key",
+) -> str:
     create_response = client.post(
         "/admin/api/llm-config/profiles",
         headers=_admin_headers(),
         json={
             "name": "小米 MiMo",
-            "protocol": "openai_compatible",
-            "baseUrl": "https://token-plan-cn.xiaomimimo.com/v1",
-            "model": "mimo-v2.5-pro",
+            "protocol": protocol,
+            "baseUrl": base_url,
+            "model": model,
             "apiKey": "secret-123456",
-            "authHeader": "api-key",
+            "authHeader": auth_header,
         },
     )
     assert create_response.status_code == 200
@@ -151,6 +158,230 @@ def test_feedback_classification_calls_openai_compatible_llm(
     assert payload["priority"] == "p1"
     assert payload["routing"]["team"] == "client"
     assert payload["model"]["model"] == "mimo-v2.5-pro"
+
+
+def test_feedback_classification_sends_images_to_openai_compatible_llm(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    _bind_feedback_classifier(client)
+    captured: dict[str, Any] = {}
+
+    class FakeResponse:
+        def __enter__(self) -> FakeResponse:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return json.dumps(
+                {
+                    "choices": [
+                        {
+                            "message": {
+                                "content": json.dumps(
+                                    {
+                                        "feedbackId": "fb-image-1",
+                                        "category": "usability",
+                                        "categoryLabel": "体验问题",
+                                        "isBug": False,
+                                        "isSuggestion": True,
+                                        "severity": "medium",
+                                        "priority": "p2",
+                                        "confidence": 0.8,
+                                        "summary": "用户上传截图反馈按钮遮挡。",
+                                        "problem": "截图显示界面元素可能遮挡操作。",
+                                        "evidence": ["按钮挡住了内容"],
+                                        "suggestedAction": "请产品和客户端确认截图对应页面布局。",
+                                        "routing": {"team": "client", "labels": ["ui"]},
+                                        "needsHumanReview": False,
+                                    },
+                                    ensure_ascii=False,
+                                )
+                            }
+                        }
+                    ]
+                },
+                ensure_ascii=False,
+            ).encode("utf-8")
+
+    def fake_urlopen(request, timeout: int):  # noqa: ANN001, ARG001
+        captured["payload"] = json.loads(request.data.decode("utf-8"))
+        return FakeResponse()
+
+    monkeypatch.setattr(feedback_classification, "urlopen", fake_urlopen)
+
+    response = client.post(
+        "/v1/llm/feedback-classifications",
+        headers=_public_headers(),
+        json={
+            "feedbackId": "fb-image-1",
+            "images": [
+                {
+                    "url": "https://cdn.example.test/feedback/screen.png",
+                    "name": "用户截图",
+                    "mimeType": "image/png",
+                    "detail": "high",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    user_content = captured["payload"]["messages"][1]["content"]
+    assert isinstance(user_content, list)
+    assert user_content[0]["type"] == "text"
+    text_payload = json.loads(user_content[0]["text"])
+    assert text_payload["images"][0]["name"] == "用户截图"
+    assert text_payload["images"][0]["url"] == "https://cdn.example.test/feedback/screen.png"
+    assert user_content[1] == {
+        "type": "image_url",
+        "image_url": {
+            "url": "https://cdn.example.test/feedback/screen.png",
+            "detail": "high",
+        },
+    }
+
+
+def test_feedback_classification_sends_data_url_images_to_claude_compatible_llm(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    _bind_feedback_classifier(
+        client,
+        protocol="claude_compatible",
+        base_url="https://claude.example.test",
+        model="claude-test",
+        auth_header="x-api-key",
+    )
+    captured: dict[str, Any] = {}
+
+    class FakeResponse:
+        def __enter__(self) -> FakeResponse:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return json.dumps(
+                {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": json.dumps(
+                                {
+                                    "feedbackId": "fb-claude-image",
+                                    "category": "bug",
+                                    "categoryLabel": "缺陷",
+                                    "isBug": True,
+                                    "isSuggestion": False,
+                                    "severity": "medium",
+                                    "priority": "p2",
+                                    "confidence": 0.78,
+                                    "summary": "用户截图反馈页面异常。",
+                                    "problem": "页面显示异常。",
+                                    "evidence": ["截图显示异常"],
+                                    "suggestedAction": "请结合截图复现。",
+                                    "routing": {"team": "client", "labels": ["image"]},
+                                    "needsHumanReview": False,
+                                },
+                                ensure_ascii=False,
+                            ),
+                        }
+                    ]
+                },
+                ensure_ascii=False,
+            ).encode("utf-8")
+
+    def fake_urlopen(request, timeout: int):  # noqa: ANN001, ARG001
+        captured["url"] = request.full_url
+        captured["headers"] = dict(request.headers)
+        captured["payload"] = json.loads(request.data.decode("utf-8"))
+        return FakeResponse()
+
+    monkeypatch.setattr(feedback_classification, "urlopen", fake_urlopen)
+
+    response = client.post(
+        "/v1/llm/feedback-classifications",
+        headers=_public_headers(),
+        json={
+            "feedbackId": "fb-claude-image",
+            "content": "页面显示异常，看截图",
+            "images": [
+                {
+                    "url": "data:image/png;base64,aGVsbG8=",
+                    "name": "异常截图",
+                    "mimeType": "image/png",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["url"] == "https://claude.example.test/v1/messages"
+    captured_headers = {key.lower(): value for key, value in captured["headers"].items()}
+    assert captured_headers["x-api-key"] == "secret-123456"
+    user_content = captured["payload"]["messages"][0]["content"]
+    assert isinstance(user_content, list)
+    assert user_content[0]["type"] == "text"
+    text_payload = json.loads(user_content[0]["text"])
+    assert text_payload["images"][0]["url"] == "data-url:image/png"
+    assert user_content[1] == {
+        "type": "image",
+        "source": {
+            "type": "base64",
+            "media_type": "image/png",
+            "data": "aGVsbG8=",
+        },
+    }
+
+
+def test_feedback_classification_rejects_http_image_for_claude_compatible_llm(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    _bind_feedback_classifier(
+        client,
+        protocol="claude_compatible",
+        base_url="https://claude.example.test",
+        model="claude-test",
+        auth_header="x-api-key",
+    )
+
+    def fake_urlopen(request, timeout: int):  # noqa: ANN001, ARG001
+        raise AssertionError("Claude HTTP 图片应在请求 LLM 前被拦截")
+
+    monkeypatch.setattr(feedback_classification, "urlopen", fake_urlopen)
+
+    response = client.post(
+        "/v1/llm/feedback-classifications",
+        headers=_public_headers(),
+        json={
+            "content": "页面显示异常，看截图",
+            "images": [{"url": "https://cdn.example.test/feedback/screen.png"}],
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "feedback_image_unsupported"
+
+
+def test_feedback_classification_rejects_invalid_image_url(client: TestClient) -> None:
+    _bind_feedback_classifier(client)
+
+    response = client.post(
+        "/v1/llm/feedback-classifications",
+        headers=_public_headers(),
+        json={
+            "content": "页面显示异常，看截图",
+            "images": [{"url": "file:///tmp/screen.png"}],
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "invalid_feedback_image_url"
 
 
 def test_feedback_classification_rejects_invalid_llm_json(

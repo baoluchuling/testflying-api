@@ -7,7 +7,7 @@ from threading import Lock
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy.orm import Session
 
 from testflying_api.database import get_db_session
@@ -39,22 +39,49 @@ class FeedbackAppContext(CamelModel):
     version: str = ""
 
 
+class FeedbackImageInput(CamelModel):
+    url: str = Field(min_length=1)
+    name: str = ""
+    mime_type: str = Field(default="", alias="mimeType")
+    detail: str = "auto"
+
+    @field_validator("url")
+    @classmethod
+    def _url_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("图片地址不能为空")
+        return value.strip()
+
+    @field_validator("detail")
+    @classmethod
+    def _detail_supported(cls, value: str) -> str:
+        normalized = value.strip().lower() or "auto"
+        if normalized not in {"auto", "low", "high"}:
+            raise ValueError("图片 detail 只支持 auto、low、high")
+        return normalized
+
+
 class FeedbackClassificationRequest(CamelModel):
     feedback_id: str = Field(default="", alias="feedbackId")
-    content: str = Field(min_length=1, max_length=8000)
+    content: str = Field(default="", max_length=8000)
     title: str = ""
     source: str = "manual"
     platform: str = "unknown"
     app: FeedbackAppContext | None = None
     locale: str = "zh-CN"
     context: dict[str, Any] = Field(default_factory=dict)
+    images: list[FeedbackImageInput] = Field(default_factory=list, max_length=5)
 
     @field_validator("content")
     @classmethod
     def _content_not_blank(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("反馈内容不能为空")
-        return value
+        return value.strip()
+
+    @model_validator(mode="after")
+    def _content_or_images_required(self) -> FeedbackClassificationRequest:
+        if not self.content and not self.images:
+            raise ValueError("反馈内容或图片至少需要提供一个")
+        return self
 
 
 class FeedbackRouting(CamelModel):

@@ -834,13 +834,23 @@ Content-Type: application/json
 | 字段 | 必填 | 说明 |
 | --- | --- | --- |
 | `feedbackId` | 否 | 外部系统反馈 ID，会原样返回 |
-| `content` | 是 | 用户反馈原文，最多 8000 字 |
+| `content` | 否 | 用户反馈原文，最多 8000 字；和 `images` 至少提供一个 |
 | `title` | 否 | 反馈标题 |
 | `source` | 否 | 来源，例如 `app_store`、`google_play`、`in_app`、`support`、`manual` |
 | `platform` | 否 | 平台，例如 `ios`、`android`、`web`、`unknown` |
 | `app` | 否 | App 上下文，支持 `id`、`name`、`version` |
 | `locale` | 否 | 反馈语言，默认 `zh-CN` |
 | `context` | 否 | 额外上下文，例如评分、设备、系统版本、标签 |
+| `images` | 否 | 图片数组，最多 5 张。OpenAI 兼容模型支持 `http(s)` 图片 URL 或 `data:image/...;base64,...`；Claude 兼容模型第一版只支持 `data:image/...;base64,...` |
+
+图片字段：
+
+| 字段 | 必填 | 说明 |
+| --- | --- | --- |
+| `url` | 是 | 图片地址。中心后台不下载、不保存图片，URL 需要能被 LLM 服务访问 |
+| `name` | 否 | 图片名称，便于模型理解上下文 |
+| `mimeType` | 否 | 图片 MIME 类型，例如 `image/png` |
+| `detail` | 否 | 图片解析精度，`auto`、`low` 或 `high`，默认 `auto` |
 
 完整 curl：
 
@@ -862,7 +872,15 @@ curl -X POST "$BASE_URL/v1/llm/feedback-classifications" \
       "rating": 1,
       "device": "iPhone 15",
       "osVersion": "iOS 18"
-    }
+    },
+    "images": [
+      {
+        "url": "https://cdn.example.com/feedback/fb-1001-screen.png",
+        "name": "用户截图",
+        "mimeType": "image/png",
+        "detail": "high"
+      }
+    ]
   }'
 ```
 

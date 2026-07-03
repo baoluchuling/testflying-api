@@ -35,7 +35,7 @@ def test_admin_api_llm_config_creates_profile_and_binds_feature(
         json={
             "name": "小米 MiMo",
             "protocol": "openai_compatible",
-            "baseUrl": "https://api.xiaomimimo.com/v1",
+            "baseUrl": "https://token-plan-cn.xiaomimimo.com/v1",
             "model": "mimo-v2.5-pro",
             "apiKey": "secret-123456",
             "authHeader": "api-key",

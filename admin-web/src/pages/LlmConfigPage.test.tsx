@@ -26,7 +26,7 @@ const baseState: LlmConfigState = {
       key: 'xiaomi_mimo_openai',
       label: '小米 MiMo（OpenAI 兼容）',
       protocol: 'openai_compatible',
-      baseUrl: 'https://api.xiaomimimo.com/v1',
+      baseUrl: 'https://token-plan-cn.xiaomimimo.com/v1',
       model: 'mimo-v2.5-pro',
       authHeader: 'api-key'
     }
@@ -70,7 +70,7 @@ describe('LlmConfigPage', () => {
         body: JSON.stringify({
           name: '小米 MiMo（OpenAI 兼容）',
           protocol: 'openai_compatible',
-          baseUrl: 'https://api.xiaomimimo.com/v1',
+          baseUrl: 'https://token-plan-cn.xiaomimimo.com/v1',
           model: 'mimo-v2.5-pro',
           apiKey: 'secret-key',
           authHeader: 'api-key'
@@ -92,7 +92,7 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
       name: '小米 MiMo（OpenAI 兼容）',
       protocol: 'openai_compatible',
       protocolLabel: 'OpenAI 兼容',
-      baseUrl: 'https://api.xiaomimimo.com/v1',
+      baseUrl: 'https://token-plan-cn.xiaomimimo.com/v1',
       model: 'mimo-v2.5-pro',
       authHeader: 'api-key',
       authHeaderLabel: 'api-key',

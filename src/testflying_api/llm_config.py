@@ -49,7 +49,7 @@ LLM_PRESETS = (
         "key": "xiaomi_mimo_openai",
         "label": "小米 MiMo（OpenAI 兼容）",
         "protocol": "openai_compatible",
-        "baseUrl": "https://api.xiaomimimo.com/v1",
+        "baseUrl": "https://token-plan-cn.xiaomimimo.com/v1",
         "model": "mimo-v2.5-pro",
         "authHeader": "api-key",
     },

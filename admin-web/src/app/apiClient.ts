@@ -73,6 +73,8 @@ export type ReviewAnalysisIssue = {
   severity: string;
   count: number | null;
   focus: string;
+  evidence: string[];
+  suggestion: string;
   representativeReviewIds: string[];
 };
 

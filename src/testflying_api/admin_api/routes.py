@@ -3154,13 +3154,14 @@ def _analysis_run_item(run: StoreReviewAnalysisRun | None) -> ReviewAnalysisRunI
 
 def _analysis_issue_item(issue: dict[str, object]) -> ReviewAnalysisIssue:
     representative = issue.get("representativeReviewIds") or issue.get("representative_review_ids")
-    representative_ids = representative if isinstance(representative, list) else []
     return ReviewAnalysisIssue(
         title=str(issue.get("title") or "未命名关注点"),
         severity=str(issue.get("severity") or "medium"),
         count=_optional_int(issue.get("count")),
         focus=str(issue.get("focus") or "需要人工确认影响范围。"),
-        representative_review_ids=[str(item) for item in representative_ids],
+        evidence=_string_list(issue.get("evidence")),
+        suggestion=str(issue.get("suggestion") or "请结合代表评论和版本信息进一步确认。"),
+        representative_review_ids=_string_list(representative),
     )
 
 
@@ -3177,6 +3178,13 @@ def _optional_int(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _string_list(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    text = str(value or "").strip()
+    return [text] if text else []
 
 
 def _admin_api_error(error: ApiError) -> AdminApiError:

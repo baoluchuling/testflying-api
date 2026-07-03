@@ -202,13 +202,52 @@ export function StoreReviewsPage() {
         </div>
         {state?.latestAnalysis?.status === 'succeeded' ? (
           <>
-            <p className="analysis-summary">{state.latestAnalysis.summary}</p>
+            <section className="analysis-summary-card">
+              <span>分析摘要</span>
+              <p>{state.latestAnalysis.summary || '暂无摘要'}</p>
+              <small>
+                {state.latestAnalysis.reviewCount} 条评论 · {state.latestAnalysis.issueCount} 个关注点
+              </small>
+            </section>
             <div className="issue-list">
               {state.analysisIssues.map((issue) => (
                 <article className="issue-card" key={`${issue.title}:${issue.severity}`}>
-                  <strong>{issue.title}</strong>
-                  <span>{issue.focus}</span>
-                  <em>{issue.severity}</em>
+                  <header>
+                    <strong>{issue.title}</strong>
+                    <em className={`severity-badge ${severityClass(issue.severity)}`}>
+                      {severityLabel(issue.severity)}
+                    </em>
+                  </header>
+                  <dl className="issue-detail-list">
+                    <div>
+                      <dt>关注点</dt>
+                      <dd>{issue.focus || '需要人工确认影响范围。'}</dd>
+                    </div>
+                    <div>
+                      <dt>证据</dt>
+                      <dd>
+                        {issue.evidence.length ? (
+                          <ul>
+                            {issue.evidence.map((item) => (
+                              <li key={item}>{item}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          '暂无明确证据片段'
+                        )}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>建议</dt>
+                      <dd>{issue.suggestion || '请结合代表评论和版本信息进一步确认。'}</dd>
+                    </div>
+                  </dl>
+                  <footer>
+                    <span>{issue.count ?? 0} 条相关反馈</span>
+                    {issue.representativeReviewIds.length ? (
+                      <span>代表评论：{issue.representativeReviewIds.join('、')}</span>
+                    ) : null}
+                  </footer>
                 </article>
               ))}
             </div>
@@ -262,4 +301,17 @@ function formatDate(value: string): string {
     hour: '2-digit',
     minute: '2-digit'
   });
+}
+
+function severityLabel(value: string): string {
+  if (value === 'high') return '高优先级';
+  if (value === 'medium') return '中优先级';
+  if (value === 'low') return '低优先级';
+  return '待判断';
+}
+
+function severityClass(value: string): string {
+  if (value === 'high') return 'high';
+  if (value === 'low') return 'low';
+  return 'medium';
 }

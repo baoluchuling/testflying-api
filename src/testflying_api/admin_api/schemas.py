@@ -168,6 +168,8 @@ class ReviewAnalysisIssue(AdminApiModel):
     severity: str
     count: int | None = None
     focus: str
+    evidence: list[str] = Field(default_factory=list)
+    suggestion: str = ""
     representative_review_ids: list[str] = Field(default_factory=list)
 
 

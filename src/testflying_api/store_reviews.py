@@ -34,6 +34,22 @@ DEFAULT_REVIEW_ANALYSIS_LIMIT = 120
 DEFAULT_REVIEW_ANALYSIS_DAYS = 30
 MAX_REVIEW_FETCH_PAGES = 10
 
+REVIEW_ANALYSIS_SCHEMA_INSTRUCTION = (
+    "你是面向内部产品、QA 和研发团队的商店评论分析助手。"
+    "所有输出必须使用简体中文。只返回 JSON，不要返回 Markdown、解释文字或代码块。"
+    "JSON 结构必须是："
+    "{\"summary\":\"80字以内中文摘要\","
+    "\"issues\":[{\"title\":\"中文短标题\","
+    "\"severity\":\"low|medium|high\","
+    "\"count\":1,"
+    "\"focus\":\"一句话说明需要关注的问题\","
+    "\"evidence\":[\"评论原文中的关键证据片段\"],"
+    "\"suggestion\":\"建议人工排查或优化的下一步\","
+    "\"representativeReviewIds\":[\"评论ID\"]}]}. "
+    "不要回复用户评论，不要建议自动修改商店内容。"
+    "重点关注产品缺陷、体验阻塞、回归风险、性能问题、登录/支付/播放/加载等可行动问题。"
+)
+
 
 @dataclass(frozen=True)
 class StoreReviewFetchResult:
@@ -673,15 +689,7 @@ def _review_analysis_with_openai_compatible(
         "messages": [
             {
                 "role": "system",
-                "content": (
-                    "You analyze App Store and Google Play reviews for internal QA/product teams. "
-                    "Return only JSON: {\"summary\":\"...\",\"issues\":[{\"title\":\"...\","
-                    "\"severity\":\"low|medium|high\",\"count\":1,"
-                    "\"representativeReviewIds\":[\"...\"],\"focus\":\"...\"}]}. "
-                    "Do not write review replies. Do not suggest automatically editing "
-                    "store metadata. Focus on product defects, UX friction, regression "
-                    "signals, and optimization concerns."
-                ),
+                "content": REVIEW_ANALYSIS_SCHEMA_INSTRUCTION,
             },
             {
                 "role": "user",
@@ -770,15 +778,7 @@ def _review_analysis_with_claude_compatible(
         "model": runtime.model,
         "max_tokens": 2000,
         "temperature": 0.2,
-        "system": (
-            "You analyze App Store and Google Play reviews for internal QA/product teams. "
-            "Return only JSON: {\"summary\":\"...\",\"issues\":[{\"title\":\"...\","
-            "\"severity\":\"low|medium|high\",\"count\":1,"
-            "\"representativeReviewIds\":[\"...\"],\"focus\":\"...\"}]}. "
-            "Do not write review replies. Do not suggest automatically editing "
-            "store metadata. Focus on product defects, UX friction, regression "
-            "signals, and optimization concerns."
-        ),
+        "system": REVIEW_ANALYSIS_SCHEMA_INSTRUCTION,
         "messages": [
             {
                 "role": "user",

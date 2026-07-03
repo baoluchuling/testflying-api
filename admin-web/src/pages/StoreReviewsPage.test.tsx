@@ -124,6 +124,24 @@ describe('StoreReviewsPage', () => {
       })
     );
   });
+
+  it('renders llm analysis as structured Chinese sections', async () => {
+    const user = userEvent.setup();
+
+    render(<StoreReviewsPage />);
+    await screen.findByText('lookrva 评论');
+    await user.click(screen.getByRole('button', { name: 'LLM 分析' }));
+
+    expect(await screen.findByText('分析摘要')).toBeTruthy();
+    expect(screen.getByText('评论集中反馈登录失败，需要优先排查。')).toBeTruthy();
+    expect(screen.getByText('高优先级')).toBeTruthy();
+    expect(screen.getByText('关注点')).toBeTruthy();
+    expect(screen.getByText('证据')).toBeTruthy();
+    expect(screen.getByText('建议')).toBeTruthy();
+    expect(screen.getByText('登录后一直转圈')).toBeTruthy();
+    expect(screen.getByText('优先复测最新版本登录链路。')).toBeTruthy();
+    expect(screen.getByText('代表评论：store-review-1')).toBeTruthy();
+  });
 });
 
 function mockFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
@@ -155,6 +173,47 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
           finishedAt: '2026-06-30T10:01:00',
           errorSummary: ''
         }
+      }
+    };
+    return jsonResponse(action);
+  }
+
+  if (url.startsWith('/admin/api/store-reviews/analyze')) {
+    const action: StoreReviewActionResponse = {
+      message: '评论分析已完成',
+      result: {
+        id: 'analysis-run-1',
+        status: 'succeeded',
+        reviewCount: 2,
+        lowRatingCount: 1,
+        issueCount: 1,
+        summary: '评论集中反馈登录失败，需要优先排查。',
+        finishedAt: '2026-06-30T10:02:00',
+        errorSummary: ''
+      },
+      state: {
+        ...baseState,
+        latestAnalysis: {
+          id: 'analysis-run-1',
+          status: 'succeeded',
+          reviewCount: 2,
+          lowRatingCount: 1,
+          issueCount: 1,
+          summary: '评论集中反馈登录失败，需要优先排查。',
+          finishedAt: '2026-06-30T10:02:00',
+          errorSummary: ''
+        },
+        analysisIssues: [
+          {
+            title: '登录失败影响进入',
+            severity: 'high',
+            count: 1,
+            focus: '需要确认登录服务是否有回归。',
+            evidence: ['登录后一直转圈'],
+            suggestion: '优先复测最新版本登录链路。',
+            representativeReviewIds: ['store-review-1']
+          }
+        ]
       }
     };
     return jsonResponse(action);

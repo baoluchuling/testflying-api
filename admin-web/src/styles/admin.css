@@ -420,27 +420,100 @@ select {
   font-weight: 700;
 }
 
-.analysis-summary {
-  margin: 0 0 14px;
-  color: #35363b;
+.analysis-summary-card {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+  border: 1px solid #e0e2e7;
+  border-radius: 12px;
+  padding: 14px 16px;
+  background: #fafafa;
+}
+
+.analysis-summary-card span,
+.issue-detail-list dt {
+  color: #73757d;
+  font-size: 13px;
+  font-weight: 780;
+}
+
+.analysis-summary-card p {
+  margin: 0;
+  color: #171717;
   line-height: 1.6;
+  font-weight: 720;
+}
+
+.analysis-summary-card small,
+.issue-card footer {
+  color: #73757d;
   font-weight: 680;
 }
 
 .issue-card {
   display: grid;
-  gap: 6px;
+  gap: 12px;
 }
 
-.issue-card span {
-  color: #55565b;
-  line-height: 1.5;
+.issue-card header,
+.issue-card footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
-.issue-card em {
-  color: #73757d;
+.issue-card footer {
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+
+.severity-badge {
+  border-radius: 999px;
+  padding: 4px 9px;
   font-style: normal;
   font-weight: 760;
+  white-space: nowrap;
+}
+
+.severity-badge.high {
+  color: #991b1b;
+  background: #fee2e2;
+}
+
+.severity-badge.medium {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.severity-badge.low {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.issue-detail-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.issue-detail-list div {
+  display: grid;
+  gap: 4px;
+}
+
+.issue-detail-list dd {
+  margin: 0;
+  color: #35363b;
+  line-height: 1.55;
+  font-weight: 640;
+}
+
+.issue-detail-list ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
 }
 
 .boundary-list {

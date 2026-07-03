@@ -1,78 +1,49 @@
 from __future__ import annotations
 
-from base64 import b64encode
-
 from fastapi.testclient import TestClient
 
-
-def _admin_headers(password: str = "dev-token") -> dict[str, str]:
-    token = b64encode(f"admin:{password}".encode()).decode()
-    return {"Authorization": f"Basic {token}"}
+from tests.test_admin import _admin_headers, _assert_admin_spa_shell
 
 
-def test_admin_next_requires_basic_auth(client: TestClient) -> None:
-    response = client.get("/admin-next")
+def test_admin_spa_requires_basic_auth(client: TestClient) -> None:
+    response = client.get("/admin")
 
     assert response.status_code == 401
     assert response.headers["www-authenticate"] == "Basic"
 
 
-def test_admin_next_serves_react_shell(client: TestClient) -> None:
-    response = client.get("/admin-next", headers=_admin_headers())
+def test_admin_spa_serves_react_shell(client: TestClient) -> None:
+    response = client.get("/admin", headers=_admin_headers())
 
-    assert response.status_code == 200
-    assert "data-admin-app-root" in response.text
+    _assert_admin_spa_shell(response)
     assert "testflying" in response.text
 
 
-def test_admin_next_spa_fallback_serves_nested_routes(client: TestClient) -> None:
-    response = client.get("/admin-next/store-reviews", headers=_admin_headers())
+def test_admin_spa_fallback_serves_nested_routes(client: TestClient) -> None:
+    for path in (
+        "/admin/store-reviews",
+        "/admin/accounts",
+        "/admin/accounts/account-apple-enterprise",
+        "/admin/accounts/account-apple-enterprise/apps/app-insight-ios/store",
+        "/admin/accounts/account-apple-enterprise/apps/app-insight-ios/marketing",
+        "/admin/accounts/account-apple-enterprise/apps/app-insight-ios/connection",
+        "/admin/accounts/account-apple-enterprise/apps/app-insight-ios/release-notes",
+        "/admin/accounts/account-apple-enterprise/apps/app-insight-ios/marketing-pages/page-1",
+    ):
+        response = client.get(path, headers=_admin_headers())
 
-    assert response.status_code == 200
-    assert "data-admin-app-root" in response.text
+        _assert_admin_spa_shell(response)
 
 
-def test_legacy_admin_pages_redirect_to_spa(client: TestClient) -> None:
+def test_admin_next_redirects_to_canonical_admin(client: TestClient) -> None:
     expected = {
-        "/admin": "/admin-next",
-        "/admin/apps": "/admin-next/apps",
-        "/admin/uploads": "/admin-next/uploads",
-        "/admin/builds": "/admin-next/builds",
-        "/admin/devices": "/admin-next/devices",
-        "/admin/notifications": "/admin-next/notifications",
-        "/admin/app-logs": "/admin-next/app-logs",
-        "/admin/store-reviews": "/admin-next/store-reviews",
-        "/admin/api-docs": "/admin-next/api-docs",
-        "/admin/developer-accounts": "/admin-next/accounts",
-        "/admin/developer-accounts/new": "/admin-next/accounts/new",
-        "/admin/developer-accounts/account-apple-enterprise": (
-            "/admin-next/accounts/account-apple-enterprise"
-        ),
-        "/admin/developer-accounts/account-apple-enterprise/edit": (
-            "/admin-next/accounts/account-apple-enterprise/edit"
-        ),
-        "/admin/developer-accounts/account-apple-enterprise/apps/app-insight-ios/store": (
-            "/admin-next/accounts/account-apple-enterprise/apps/app-insight-ios/store"
-        ),
-        "/admin/developer-accounts/account-apple-enterprise/apps/app-insight-ios/store-metadata": (
-            "/admin-next/accounts/account-apple-enterprise/apps/app-insight-ios/store"
-        ),
-        "/admin/developer-accounts/account-apple-enterprise/apps/app-insight-ios/release-notes": (
-            "/admin-next/accounts/account-apple-enterprise/apps/app-insight-ios/release-notes"
-        ),
-        (
-            "/admin/developer-accounts/account-apple-enterprise/apps/app-insight-ios"
-            "/store/connection"
-        ): "/admin-next/accounts/account-apple-enterprise/apps/app-insight-ios/connection",
-        "/admin/developer-accounts/account-apple-enterprise/apps/app-insight-ios/store/marketing": (
-            "/admin-next/accounts/account-apple-enterprise/apps/app-insight-ios/marketing"
-        ),
-        (
-            "/admin/developer-accounts/account-apple-enterprise/apps/app-insight-ios"
-            "/store/marketing-pages/page-1"
-        ): (
-            "/admin-next/accounts/account-apple-enterprise/apps/app-insight-ios"
-            "/marketing-pages/page-1"
+        "/admin-next": "/admin",
+        "/admin-next/apps": "/admin/apps",
+        "/admin-next/uploads": "/admin/uploads",
+        "/admin-next/accounts": "/admin/accounts",
+        "/admin-next/accounts/account-apple-enterprise": "/admin/accounts/account-apple-enterprise",
+        "/admin-next/accounts/account-apple-enterprise/apps/app-insight-ios/store": (
+            "/admin/accounts/account-apple-enterprise/apps/app-insight-ios/store"
         ),
     }
 
@@ -83,28 +54,16 @@ def test_legacy_admin_pages_redirect_to_spa(client: TestClient) -> None:
         assert response.headers["location"] == target
 
 
-def test_legacy_admin_resource_routes_do_not_redirect(client: TestClient) -> None:
-    for path in (
-        "/admin/api-docs/store-management.md",
-        "/admin/app-logs/events",
-        "/admin/app-logs/qr.svg",
-    ):
+def test_admin_resource_routes_do_not_render_spa_shell(client: TestClient) -> None:
+    resources = {
+        "/admin/api-docs/store-management.md": "text/markdown",
+        "/admin/app-logs/events": "application/json",
+        "/admin/app-logs/qr.svg": "image/svg+xml",
+    }
+
+    for path, content_type in resources.items():
         response = client.get(path, headers=_admin_headers(), follow_redirects=False)
 
-        assert response.status_code != 307
-
-
-def test_admin_next_deep_routes_serve_spa_shell(client: TestClient) -> None:
-    for path in (
-        "/admin-next/accounts",
-        "/admin-next/accounts/account-apple-enterprise",
-        "/admin-next/accounts/account-apple-enterprise/apps/app-insight-ios/store",
-        "/admin-next/accounts/account-apple-enterprise/apps/app-insight-ios/marketing",
-        "/admin-next/accounts/account-apple-enterprise/apps/app-insight-ios/connection",
-        "/admin-next/accounts/account-apple-enterprise/apps/app-insight-ios/release-notes",
-        "/admin-next/accounts/account-apple-enterprise/apps/app-insight-ios/marketing-pages/page-1",
-    ):
-        response = client.get(path, headers=_admin_headers())
-
         assert response.status_code == 200
-        assert "data-admin-app-root" in response.text
+        assert response.headers["content-type"].startswith(content_type)
+        assert "data-admin-app-root" not in response.text

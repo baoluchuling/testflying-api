@@ -6,7 +6,7 @@ import { NotificationsPage } from './NotificationsPage';
 
 describe('ordinary admin pages', () => {
   beforeEach(() => {
-    history.replaceState(null, '', '/admin-next/notifications');
+    history.replaceState(null, '', '/admin/notifications');
     Element.prototype.scrollIntoView = vi.fn();
     vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
       const url = String(input);
@@ -34,7 +34,7 @@ describe('ordinary admin pages', () => {
     await screen.findByText('构建完成');
     await user.click(screen.getByRole('button', { name: /设备/ }));
 
-    expect(location.pathname).toBe('/admin-next/notifications');
+    expect(location.pathname).toBe('/admin/notifications');
     expect(location.search).toBe('?type=device');
     expect(await screen.findByText('设备登记')).toBeTruthy();
     expect(screen.queryByText('构建完成')).toBeNull();

@@ -40,15 +40,15 @@ export function DashboardPage() {
       </section>
 
       <section className="dashboard-actions">
-        <button type="button" className="quick-action" onClick={() => navigate('/admin-next/uploads')}>
+        <button type="button" className="quick-action" onClick={() => navigate('/admin/uploads')}>
           <strong>上传构建</strong>
           <span>上传 IPA / APK 并解析包信息</span>
         </button>
-        <button type="button" className="quick-action" onClick={() => navigate('/admin-next/apps')}>
+        <button type="button" className="quick-action" onClick={() => navigate('/admin/apps')}>
           <strong>商店管理</strong>
           <span>进入应用商店内容和账号连接</span>
         </button>
-        <button type="button" className="quick-action" onClick={() => navigate('/admin-next/app-logs')}>
+        <button type="button" className="quick-action" onClick={() => navigate('/admin/app-logs')}>
           <strong>App 日志</strong>
           <span>查看手机端实时日志流</span>
         </button>
@@ -58,7 +58,7 @@ export function DashboardPage() {
         <section className="panel table-panel">
           <div className="panel-head compact">
             <strong>最近构建</strong>
-            <button type="button" className="button" onClick={() => navigate('/admin-next/builds')}>
+            <button type="button" className="button" onClick={() => navigate('/admin/builds')}>
               全部构建
             </button>
           </div>
@@ -85,7 +85,7 @@ export function DashboardPage() {
             <button
               type="button"
               className="button"
-              onClick={() => navigate('/admin-next/notifications')}
+              onClick={() => navigate('/admin/notifications')}
             >
               全部通知
             </button>

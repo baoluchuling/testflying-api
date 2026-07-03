@@ -208,7 +208,7 @@ export function DeveloperAccountsPage() {
       {route.kind === 'new' ? (
         <AccountEditor
           title="新增开发者账号"
-          onCancel={() => navigate('/admin-next/accounts')}
+          onCancel={() => navigate('/admin/accounts')}
           onSubmit={(payload) => void submitAccount(payload)}
         />
       ) : null}
@@ -227,7 +227,7 @@ export function DeveloperAccountsPage() {
         <AccountEditor
           title="编辑开发者账号"
           account={detailState.account}
-          onCancel={() => navigate(`/admin-next/accounts/${detailState.account.id}`)}
+          onCancel={() => navigate(`/admin/accounts/${detailState.account.id}`)}
           onSubmit={(payload) => void submitAccount(payload, detailState.account.id)}
         />
       ) : null}
@@ -260,7 +260,7 @@ function AccountsList({
       <section className="panel accounts-table-panel">
         <div className="panel-head compact">
           <strong>开发者账号</strong>
-          <button className="button primary" type="button" onClick={() => onNavigate('/admin-next/accounts/new')}>
+          <button className="button primary" type="button" onClick={() => onNavigate('/admin/accounts/new')}>
             新增账号
           </button>
         </div>
@@ -335,7 +335,7 @@ function AccountDetail({
           <button
             className="button"
             type="button"
-            onClick={() => onNavigate(`/admin-next/accounts/${state.account.id}/edit`)}
+            onClick={() => onNavigate(`/admin/accounts/${state.account.id}/edit`)}
           >
             编辑账号
           </button>
@@ -664,7 +664,7 @@ function StoreWorkspace({
       if (response.workspace) setWorkspace(response.workspace);
       setMarketingPage(null);
       showWorkspaceNotice(response.message);
-      onNavigate(`/admin-next/accounts/${state.account.id}/apps/${appId}/marketing`);
+      onNavigate(`/admin/accounts/${state.account.id}/apps/${appId}/marketing`);
     } catch (requestError) {
       setWorkspaceError(errorMessage(requestError));
     } finally {
@@ -774,7 +774,7 @@ function StoreWorkspace({
         <button
           className="button"
           type="button"
-          onClick={() => onNavigate(`/admin-next/accounts/${state.account.id}`)}
+          onClick={() => onNavigate(`/admin/accounts/${state.account.id}`)}
         >
           返回账号
         </button>
@@ -786,7 +786,7 @@ function StoreWorkspace({
             key={item.key}
             className={item.key === section ? 'store-section-tab active' : 'store-section-tab'}
             type="button"
-            onClick={() => onNavigate(`/admin-next/accounts/${state.account.id}/apps/${app.id}/${item.key}`)}
+            onClick={() => onNavigate(`/admin/accounts/${state.account.id}/apps/${app.id}/${item.key}`)}
           >
             <strong>{item.label}</strong>
             <span>{item.description}</span>
@@ -832,7 +832,7 @@ function StoreWorkspace({
             <MarketingPageDetailPanel
               detail={marketingPage}
               busy={workspaceBusy}
-              onBack={() => onNavigate(`/admin-next/accounts/${state.account.id}/apps/${app.id}/marketing`)}
+              onBack={() => onNavigate(`/admin/accounts/${state.account.id}/apps/${app.id}/marketing`)}
               onSave={saveMarketing}
               onCheck={checkMarketing}
               onSync={syncMarketing}
@@ -1094,7 +1094,7 @@ function BoundAppCard({
           解绑
         </button>
       </div>
-      <BoundAppSettings app={{ ...app, connectionPath: `/admin-next/accounts/${accountId}/apps/${app.id}/connection` }} onSave={onSave} />
+      <BoundAppSettings app={{ ...app, connectionPath: `/admin/accounts/${accountId}/apps/${app.id}/connection` }} onSave={onSave} />
     </article>
   );
 }
@@ -1770,7 +1770,7 @@ function Metric({ label, value }: { label: string; value: number | string }) {
 }
 
 function parseAccountRoute(pathname: string): AccountRoute {
-  const parts = pathname.replace(/^\/admin-next\/?/, '').split('/').filter(Boolean);
+  const parts = pathname.replace(/^\/admin\/?/, '').split('/').filter(Boolean);
   if (parts[0] !== 'accounts') return { kind: 'list' };
   if (!parts[1]) return { kind: 'list' };
   if (parts[1] === 'new') return { kind: 'new' };

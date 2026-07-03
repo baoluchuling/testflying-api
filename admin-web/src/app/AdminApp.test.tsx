@@ -7,23 +7,23 @@ import type { BuildsState, DashboardState, StoreReviewsState } from './apiClient
 const bootstrapPayload = {
   appName: 'testflying',
   navItems: [
-    { key: 'dashboard', label: '总览', path: '/admin-next' },
-    { key: 'uploads', label: '上传', path: '/admin-next/uploads' },
-    { key: 'apps', label: '商店管理', path: '/admin-next/apps' },
-    { key: 'store-reviews', label: '商店评论', path: '/admin-next/store-reviews' },
-    { key: 'llm-config', label: 'LLM 配置', path: '/admin-next/llm-config' },
-    { key: 'api-docs', label: '接口文档', path: '/admin-next/api-docs' },
-    { key: 'builds', label: '构建', path: '/admin-next/builds' },
-    { key: 'devices', label: '设备', path: '/admin-next/devices' },
-    { key: 'app-logs', label: 'App 日志', path: '/admin-next/app-logs' },
-    { key: 'notifications', label: '通知', path: '/admin-next/notifications' }
+    { key: 'dashboard', label: '总览', path: '/admin' },
+    { key: 'uploads', label: '上传', path: '/admin/uploads' },
+    { key: 'apps', label: '商店管理', path: '/admin/apps' },
+    { key: 'store-reviews', label: '商店评论', path: '/admin/store-reviews' },
+    { key: 'llm-config', label: 'LLM 配置', path: '/admin/llm-config' },
+    { key: 'api-docs', label: '接口文档', path: '/admin/api-docs' },
+    { key: 'builds', label: '构建', path: '/admin/builds' },
+    { key: 'devices', label: '设备', path: '/admin/devices' },
+    { key: 'app-logs', label: 'App 日志', path: '/admin/app-logs' },
+    { key: 'notifications', label: '通知', path: '/admin/notifications' }
   ],
   health: { state: 'idle', label: '未检查' }
 };
 
 describe('AdminApp', () => {
   beforeEach(() => {
-    history.replaceState(null, '', '/admin-next');
+    history.replaceState(null, '', '/admin');
     vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
       const url = String(input);
       if (url === '/admin/api/bootstrap') {
@@ -57,9 +57,9 @@ describe('AdminApp', () => {
     expect(pushState).toHaveBeenCalledWith(
       { adminRoute: 'store-reviews' },
       '',
-      '/admin-next/store-reviews'
+      '/admin/store-reviews'
     );
-    expect(location.pathname).toBe('/admin-next/store-reviews');
+    expect(location.pathname).toBe('/admin/store-reviews');
     expect(screen.getByRole('heading', { name: '商店评论' })).toBeTruthy();
   });
 
@@ -70,7 +70,7 @@ describe('AdminApp', () => {
     await screen.findByText('最近构建');
     await user.click(screen.getByRole('button', { name: '构建' }));
 
-    expect(location.pathname).toBe('/admin-next/builds');
+    expect(location.pathname).toBe('/admin/builds');
     expect(await screen.findByText('构建列表')).toBeTruthy();
     expect(screen.queryByText('新后台重构中')).toBeNull();
   });

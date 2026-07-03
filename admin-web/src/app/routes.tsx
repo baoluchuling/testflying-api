@@ -70,7 +70,7 @@ export const routeTitles: Record<AdminRouteKey, { eyebrow: string; title: string
 };
 
 export function routeKeyFromPath(pathname: string): AdminRouteKey {
-  const relative = pathname.replace(/^\/admin-next\/?/, '').replace(/^\/+/, '');
+  const relative = pathname.replace(/^\/admin\/?/, '').replace(/^\/+/, '');
   const first = relative.split('/')[0] || 'dashboard';
   if (first === 'store-reviews') return 'store-reviews';
   if (first === 'llm-config') return 'llm-config';
@@ -90,7 +90,7 @@ export function routeKeyFromPath(pathname: string): AdminRouteKey {
 }
 
 export function navKeyFromPath(pathname: string): AdminRouteKey {
-  if (/^\/admin-next\/accounts\/[^/]+\/apps\/[^/]+\//.test(pathname)) {
+  if (/^\/admin\/accounts\/[^/]+\/apps\/[^/]+\//.test(pathname)) {
     return 'apps';
   }
   return routeKeyFromPath(pathname);

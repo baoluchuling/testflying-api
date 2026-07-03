@@ -26,7 +26,7 @@ def test_admin_api_developer_accounts_lists_accounts(
     payload = response.json()
     assert payload["stats"]["total"] == 1
     assert payload["accounts"][0]["id"] == "account-apple-enterprise"
-    assert payload["accounts"][0]["detailPath"] == "/admin-next/accounts/account-apple-enterprise"
+    assert payload["accounts"][0]["detailPath"] == "/admin/accounts/account-apple-enterprise"
     assert "/admin/developer-accounts" not in response.text
 
 
@@ -51,16 +51,16 @@ def test_admin_api_developer_account_detail_exposes_spa_app_routes(
     ]
     insight = payload["apps"][1]
     assert insight["storePath"] == (
-        "/admin-next/accounts/account-apple-enterprise/apps/app-insight-ios/store"
+        "/admin/accounts/account-apple-enterprise/apps/app-insight-ios/store"
     )
     assert insight["marketingPath"] == (
-        "/admin-next/accounts/account-apple-enterprise/apps/app-insight-ios/marketing"
+        "/admin/accounts/account-apple-enterprise/apps/app-insight-ios/marketing"
     )
     assert insight["releaseNotesPath"] == (
-        "/admin-next/accounts/account-apple-enterprise/apps/app-insight-ios/release-notes"
+        "/admin/accounts/account-apple-enterprise/apps/app-insight-ios/release-notes"
     )
     assert insight["connectionPath"] == (
-        "/admin-next/accounts/account-apple-enterprise/apps/app-insight-ios/connection"
+        "/admin/accounts/account-apple-enterprise/apps/app-insight-ios/connection"
     )
     assert "/admin/developer-accounts" not in response.text
 
@@ -106,7 +106,7 @@ def test_admin_api_developer_account_workspace_loads_store_state(
     assert payload["supportedLocales"]
     assert payload["localizedMetadata"]
     assert payload["app"]["connectionPath"] == (
-        "/admin-next/accounts/account-apple-enterprise/apps/app-insight-ios/connection"
+        "/admin/accounts/account-apple-enterprise/apps/app-insight-ios/connection"
     )
 
 

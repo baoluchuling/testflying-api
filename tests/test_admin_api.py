@@ -25,14 +25,14 @@ def test_admin_api_bootstrap_returns_shell_metadata(client: TestClient) -> None:
     assert payload["appName"] == "testflying"
     assert payload["health"] == {"state": "idle", "label": "未检查"}
     assert payload["navItems"] == [
-        {"key": "dashboard", "label": "总览", "path": "/admin-next"},
-        {"key": "uploads", "label": "上传", "path": "/admin-next/uploads"},
-        {"key": "apps", "label": "商店管理", "path": "/admin-next/apps"},
-        {"key": "store-reviews", "label": "商店评论", "path": "/admin-next/store-reviews"},
-        {"key": "llm-config", "label": "LLM 配置", "path": "/admin-next/llm-config"},
-        {"key": "api-docs", "label": "接口文档", "path": "/admin-next/api-docs"},
-        {"key": "builds", "label": "构建", "path": "/admin-next/builds"},
-        {"key": "devices", "label": "设备", "path": "/admin-next/devices"},
-        {"key": "app-logs", "label": "App 日志", "path": "/admin-next/app-logs"},
-        {"key": "notifications", "label": "通知", "path": "/admin-next/notifications"},
+        {"key": "dashboard", "label": "总览", "path": "/admin"},
+        {"key": "uploads", "label": "上传", "path": "/admin/uploads"},
+        {"key": "apps", "label": "商店管理", "path": "/admin/apps"},
+        {"key": "store-reviews", "label": "商店评论", "path": "/admin/store-reviews"},
+        {"key": "llm-config", "label": "LLM 配置", "path": "/admin/llm-config"},
+        {"key": "api-docs", "label": "接口文档", "path": "/admin/api-docs"},
+        {"key": "builds", "label": "构建", "path": "/admin/builds"},
+        {"key": "devices", "label": "设备", "path": "/admin/devices"},
+        {"key": "app-logs", "label": "App 日志", "path": "/admin/app-logs"},
+        {"key": "notifications", "label": "通知", "path": "/admin/notifications"},
     ]

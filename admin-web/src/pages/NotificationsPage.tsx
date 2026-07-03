@@ -33,7 +33,7 @@ export function NotificationsPage() {
     history.pushState(
       { adminRoute: 'notifications', type },
       '',
-      query ? `/admin-next/notifications?${query}` : '/admin-next/notifications'
+      query ? `/admin/notifications?${query}` : '/admin/notifications'
     );
     await loadFromLocation();
   }

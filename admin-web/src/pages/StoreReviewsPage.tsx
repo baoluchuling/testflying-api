@@ -283,7 +283,7 @@ function reviewPath({
 }) {
   const params = new URLSearchParams({ accountId, appId });
   if (rating) params.set('rating', String(rating));
-  return `/admin-next/store-reviews?${params.toString()}`;
+  return `/admin/store-reviews?${params.toString()}`;
 }
 
 function errorMessage(error: unknown): string {

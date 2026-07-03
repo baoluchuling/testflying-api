@@ -13,16 +13,16 @@ const port = Number(process.env.CDP_PORT || "9337");
 const authHeader = `Basic ${Buffer.from(`${adminUser}:${adminToken}`).toString("base64")}`;
 
 const staticPages = [
-  ["dashboard", "/admin-next"],
-  ["uploads", "/admin-next/uploads"],
-  ["apps", "/admin-next/apps"],
-  ["accounts", "/admin-next/accounts"],
-  ["store-reviews", "/admin-next/store-reviews"],
-  ["api-docs", "/admin-next/api-docs"],
-  ["builds", "/admin-next/builds"],
-  ["devices", "/admin-next/devices"],
-  ["app-logs", "/admin-next/app-logs"],
-  ["notifications", "/admin-next/notifications"],
+  ["dashboard", "/admin"],
+  ["uploads", "/admin/uploads"],
+  ["apps", "/admin/apps"],
+  ["accounts", "/admin/accounts"],
+  ["store-reviews", "/admin/store-reviews"],
+  ["api-docs", "/admin/api-docs"],
+  ["builds", "/admin/builds"],
+  ["devices", "/admin/devices"],
+  ["app-logs", "/admin/app-logs"],
+  ["notifications", "/admin/notifications"],
 ];
 
 function absoluteUrl(path) {
@@ -40,9 +40,9 @@ async function fetchAdminJson(path) {
 }
 
 async function discoverPages() {
-  let accountPath = "/admin-next/accounts";
-  let storePath = "/admin-next/apps";
-  let reviewsPath = "/admin-next/store-reviews";
+  let accountPath = "/admin/accounts";
+  let storePath = "/admin/apps";
+  let reviewsPath = "/admin/store-reviews";
 
   try {
     const payload = await fetchAdminJson("/admin/api/developer-accounts");
@@ -68,7 +68,7 @@ async function discoverPages() {
 
   const marketingPath = storePath.endsWith("/store")
     ? storePath.replace(/\/store$/, "/marketing")
-    : "/admin-next/apps";
+    : "/admin/apps";
   const connectionPath = storePath.endsWith("/store")
     ? storePath.replace(/\/store$/, "/connection")
     : accountPath;

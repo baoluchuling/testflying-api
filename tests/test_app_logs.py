@@ -112,19 +112,6 @@ def test_admin_app_logs_page_and_qr_render(client: TestClient) -> None:
     assert qr.headers["content-type"].startswith("image/svg+xml")
 
 
-def test_admin_app_logs_connected_layout_styles(client: TestClient) -> None:
-    response = client.get("/static/admin/admin.css")
-
-    assert response.status_code == 200
-    assert ".app-log-connect-panel.is-connected" in response.text
-    assert ".app-log-connect-panel.is-compact" in response.text
-    assert "position: sticky" in response.text
-    assert "--app-log-sticky-offset" in response.text
-    assert "grid-template-columns: minmax(220px, 1fr) auto" in response.text
-    assert "grid-template-columns: 240px minmax(0, 1fr)" in response.text
-    assert "min-height: calc(100vh - 188px)" in response.text
-
-
 def test_app_log_mobile_connect_page_is_public_and_opens_app_scheme(client: TestClient) -> None:
     page = client.get("/app-logs/connect?host=192.168.1.23&port=18080&name=Mac")
 

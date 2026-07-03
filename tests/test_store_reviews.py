@@ -144,15 +144,15 @@ def test_admin_store_reviews_page_fetches_initial_reviews(
         headers=_admin_headers(),
     )
     response = client.post(
-        "/admin/store-reviews/fetch",
+        "/admin/api/store-reviews/fetch",
         headers=_admin_headers(),
-        data={"accountId": "account-apple-enterprise", "appId": "app-aurora-ios"},
+        json={"accountId": "account-apple-enterprise", "appId": "app-aurora-ios"},
     )
 
     stored_count = db_session.scalar(select(func.count(StoreReview.id)))
     _assert_admin_spa_shell(page)
     assert response.status_code == 200
-    assert "最新评论已拉取" in response.text
+    assert response.json()["message"] == "最新评论已拉取"
     assert stored_count == 2
 
 
@@ -162,20 +162,20 @@ def test_admin_store_reviews_analysis_shows_config_error(
 ) -> None:
     seed_demo_catalog(db_session)
     client.post(
-        "/admin/store-reviews/fetch",
+        "/admin/api/store-reviews/fetch",
         headers=_admin_headers(),
-        data={"accountId": "account-apple-enterprise", "appId": "app-aurora-ios"},
+        json={"accountId": "account-apple-enterprise", "appId": "app-aurora-ios"},
     )
 
     response = client.post(
-        "/admin/store-reviews/analyze",
+        "/admin/api/store-reviews/analyze",
         headers=_admin_headers(),
-        data={"accountId": "account-apple-enterprise", "appId": "app-aurora-ios"},
+        json={"accountId": "account-apple-enterprise", "appId": "app-aurora-ios"},
     )
 
     assert response.status_code == 200
-    assert "分析失败" in response.text
-    assert "评论分析 LLM 服务未配置" in response.text
+    assert response.json()["message"] == "评论分析失败"
+    assert response.json()["error"]["message"] == "评论分析 LLM 服务未配置"
 
 
 def _review(review_id: str, created_at: str) -> dict[str, object]:

@@ -102,8 +102,8 @@ export function StoreAppsPage() {
               <strong>账号与连接</strong>
               <a
                 className="button"
-                href="/admin-next/accounts"
-                onClick={(event) => openInternalPath(event, '/admin-next/accounts')}
+                href="/admin/accounts"
+                onClick={(event) => openInternalPath(event, '/admin/accounts')}
               >
                 打开账号
               </a>
@@ -167,15 +167,15 @@ export function StoreAppsPage() {
                   ) : (
                     <a
                       className="button"
-                      href="/admin-next/accounts"
-                      onClick={(event) => openInternalPath(event, '/admin-next/accounts')}
+                      href="/admin/accounts"
+                      onClick={(event) => openInternalPath(event, '/admin/accounts')}
                     >
                       绑定账号
                     </a>
                   )}
                   <a
                     className="button"
-                    href={app.reviewsPath || '/admin-next/store-reviews'}
+                    href={app.reviewsPath || '/admin/store-reviews'}
                     aria-disabled={!app.reviewsPath}
                     onClick={(event) => {
                       event.preventDefault();
@@ -214,7 +214,7 @@ function storeAppsPath({ filter, appId }: { filter: string; appId: string }) {
   if (filter && filter !== 'all') params.set('filter', filter);
   if (appId) params.set('appId', appId);
   const query = params.toString();
-  return query ? `/admin-next/apps?${query}` : '/admin-next/apps';
+  return query ? `/admin/apps?${query}` : '/admin/apps';
 }
 
 function platformLabel(platform: string) {

@@ -189,16 +189,16 @@ def admin_bootstrap(_: AdminDep) -> AdminBootstrapResponse:
     return AdminBootstrapResponse(
         app_name="testflying",
         nav_items=[
-            AdminNavItem(key="dashboard", label="总览", path="/admin-next"),
-            AdminNavItem(key="uploads", label="上传", path="/admin-next/uploads"),
-            AdminNavItem(key="apps", label="商店管理", path="/admin-next/apps"),
-            AdminNavItem(key="store-reviews", label="商店评论", path="/admin-next/store-reviews"),
-            AdminNavItem(key="llm-config", label="LLM 配置", path="/admin-next/llm-config"),
-            AdminNavItem(key="api-docs", label="接口文档", path="/admin-next/api-docs"),
-            AdminNavItem(key="builds", label="构建", path="/admin-next/builds"),
-            AdminNavItem(key="devices", label="设备", path="/admin-next/devices"),
-            AdminNavItem(key="app-logs", label="App 日志", path="/admin-next/app-logs"),
-            AdminNavItem(key="notifications", label="通知", path="/admin-next/notifications"),
+            AdminNavItem(key="dashboard", label="总览", path="/admin"),
+            AdminNavItem(key="uploads", label="上传", path="/admin/uploads"),
+            AdminNavItem(key="apps", label="商店管理", path="/admin/apps"),
+            AdminNavItem(key="store-reviews", label="商店评论", path="/admin/store-reviews"),
+            AdminNavItem(key="llm-config", label="LLM 配置", path="/admin/llm-config"),
+            AdminNavItem(key="api-docs", label="接口文档", path="/admin/api-docs"),
+            AdminNavItem(key="builds", label="构建", path="/admin/builds"),
+            AdminNavItem(key="devices", label="设备", path="/admin/devices"),
+            AdminNavItem(key="app-logs", label="App 日志", path="/admin/app-logs"),
+            AdminNavItem(key="notifications", label="通知", path="/admin/notifications"),
         ],
         health=AdminHealthState(state="idle", label="未检查"),
     )
@@ -1931,10 +1931,10 @@ def _store_app_item(app: App, *, selected_app_id: str) -> StoreAppItem:
         ),
         selected=app.id == selected_app_id,
         store_management_path=(
-            f"/admin-next/accounts/{account.id}/apps/{app.id}/store" if account else ""
+            f"/admin/accounts/{account.id}/apps/{app.id}/store" if account else ""
         ),
         reviews_path=(
-            f"/admin-next/store-reviews?accountId={account.id}&appId={app.id}" if account else ""
+            f"/admin/store-reviews?accountId={account.id}&appId={app.id}" if account else ""
         ),
     )
 
@@ -2042,7 +2042,7 @@ def _developer_account_summary(row: dict[str, object]) -> DeveloperAccountSummar
         ),
         latest_sync_status=str(getattr(latest_sync, "status", "") or "无"),
         latest_sync_at_label=format_datetime(getattr(latest_sync, "started_at", None)),
-        detail_path=f"/admin-next/accounts/{account.id}",
+        detail_path=f"/admin/accounts/{account.id}",
     )
 
 
@@ -2134,10 +2134,10 @@ def _account_app_item(item: dict[str, object], *, account_id: str) -> AccountApp
         store_app_id=app.store_app_id or "",
         store_package_name=app.store_package_name or "",
         latest_version_label=_latest_build_label(latest_build),
-        store_path=f"/admin-next/accounts/{account_id}/apps/{app.id}/store",
-        marketing_path=f"/admin-next/accounts/{account_id}/apps/{app.id}/marketing",
-        release_notes_path=f"/admin-next/accounts/{account_id}/apps/{app.id}/release-notes",
-        connection_path=f"/admin-next/accounts/{account_id}/apps/{app.id}/connection",
+        store_path=f"/admin/accounts/{account_id}/apps/{app.id}/store",
+        marketing_path=f"/admin/accounts/{account_id}/apps/{app.id}/marketing",
+        release_notes_path=f"/admin/accounts/{account_id}/apps/{app.id}/release-notes",
+        connection_path=f"/admin/accounts/{account_id}/apps/{app.id}/connection",
     )
 
 
@@ -3028,7 +3028,7 @@ def _store_marketing_page_summary(
         ),
         asset_count=int(item.get("asset_count") or 0) if isinstance(item, dict) else 0,
         detail_path=(
-            f"/admin-next/accounts/{account_id}/apps/{app_id}/marketing-pages/{page_id}"
+            f"/admin/accounts/{account_id}/apps/{app_id}/marketing-pages/{page_id}"
         ),
     )
 

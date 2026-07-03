@@ -37,8 +37,8 @@ const baseState: StoreAppsState = {
       statusLabel: '可同步',
       latestBuild: { version: '1.0', buildNumber: '1', environment: 'production', uploadedAt: '2026-06-30T11:00:00' },
       selected: false,
-      storeManagementPath: '/admin-next/accounts/account-ios/apps/app-ios/store',
-      reviewsPath: '/admin-next/store-reviews?accountId=account-ios&appId=app-ios'
+      storeManagementPath: '/admin/accounts/account-ios/apps/app-ios/store',
+      reviewsPath: '/admin/store-reviews?accountId=account-ios&appId=app-ios'
     }
   ],
   selectedApp: null,
@@ -55,7 +55,7 @@ const baseState: StoreAppsState = {
 
 describe('StoreAppsPage', () => {
   beforeEach(() => {
-    history.replaceState(null, '', '/admin-next/apps');
+    history.replaceState(null, '', '/admin/apps');
     vi.spyOn(globalThis, 'fetch').mockImplementation(mockFetch);
   });
 
@@ -83,7 +83,7 @@ describe('StoreAppsPage', () => {
     expect(pushState).toHaveBeenCalledWith(
       { adminRoute: 'apps', filter: 'ios' },
       '',
-      '/admin-next/apps?filter=ios'
+      '/admin/apps?filter=ios'
     );
     expect((await screen.findAllByText('lookrva')).length).toBeGreaterThan(0);
     expect(fetch).toHaveBeenCalledWith(
@@ -103,7 +103,7 @@ describe('StoreAppsPage', () => {
     expect(pushState).toHaveBeenCalledWith(
       { adminRoute: 'apps', appId: 'app-ios' },
       '',
-      '/admin-next/apps?appId=app-ios'
+      '/admin/apps?appId=app-ios'
     );
     expect((await screen.findAllByText('测试账号')).length).toBeGreaterThan(0);
   });
@@ -117,7 +117,7 @@ describe('StoreAppsPage', () => {
     const reviewLinks = await screen.findAllByRole('link', { name: '评论分析' });
     await user.click(reviewLinks[1]);
 
-    expect(location.pathname).toBe('/admin-next/store-reviews');
+    expect(location.pathname).toBe('/admin/store-reviews');
     expect(location.search).toBe('?accountId=account-ios&appId=app-ios');
   });
 
@@ -131,7 +131,7 @@ describe('StoreAppsPage', () => {
     const storeLink = await screen.findByRole('link', { name: '商店管理' });
     const accountLinks = screen.getAllByRole('link', { name: /账号|绑定/ });
 
-    expect(storeLink.getAttribute('href')).toBe('/admin-next/accounts/account-ios/apps/app-ios/store');
+    expect(storeLink.getAttribute('href')).toBe('/admin/accounts/account-ios/apps/app-ios/store');
     for (const link of accountLinks) {
       expect(link.getAttribute('href') ?? '').not.toContain('/admin/developer-accounts');
     }

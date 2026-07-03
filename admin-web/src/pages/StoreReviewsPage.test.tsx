@@ -55,7 +55,7 @@ const baseState: StoreReviewsState = {
 
 describe('StoreReviewsPage', () => {
   beforeEach(() => {
-    history.replaceState(null, '', '/admin-next/store-reviews');
+    history.replaceState(null, '', '/admin/store-reviews');
     vi.spyOn(globalThis, 'fetch').mockImplementation(mockFetch);
   });
 
@@ -81,7 +81,7 @@ describe('StoreReviewsPage', () => {
     expect(pushState).toHaveBeenCalledWith(
       { adminRoute: 'store-reviews', accountId: 'account-google', appId: 'app-android' },
       '',
-      '/admin-next/store-reviews?accountId=account-google&appId=app-android'
+      '/admin/store-reviews?accountId=account-google&appId=app-android'
     );
     expect(await screen.findByText('Readink 评论')).toBeTruthy();
     expect(fetch).toHaveBeenCalledWith(
@@ -101,7 +101,7 @@ describe('StoreReviewsPage', () => {
     expect(pushState).toHaveBeenCalledWith(
       { adminRoute: 'store-reviews', rating: 3 },
       '',
-      '/admin-next/store-reviews?accountId=account-ios&appId=app-ios&rating=3'
+      '/admin/store-reviews?accountId=account-ios&appId=app-ios&rating=3'
     );
     expect(await screen.findByText('3 星卡顿')).toBeTruthy();
   });

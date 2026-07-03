@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -33,19 +34,20 @@ DEFAULT_REVIEW_PAGE_SIZE = 20
 DEFAULT_REVIEW_ANALYSIS_LIMIT = 120
 DEFAULT_REVIEW_ANALYSIS_DAYS = 30
 MAX_REVIEW_FETCH_PAGES = 10
+REVIEW_ANALYSIS_SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2}
 
 REVIEW_ANALYSIS_SCHEMA_INSTRUCTION = (
     "你是面向内部产品、QA 和研发团队的商店评论分析助手。"
     "所有输出必须使用简体中文。只返回 JSON，不要返回 Markdown、解释文字或代码块。"
     "JSON 结构必须是："
-    "{\"summary\":\"80字以内中文摘要\","
-    "\"issues\":[{\"title\":\"中文短标题\","
-    "\"severity\":\"low|medium|high\","
-    "\"count\":1,"
-    "\"focus\":\"一句话说明需要关注的问题\","
-    "\"evidence\":[\"评论原文中的关键证据片段\"],"
-    "\"suggestion\":\"建议人工排查或优化的下一步\","
-    "\"representativeReviewIds\":[\"评论ID\"]}]}. "
+    '{"summary":"80字以内中文摘要",'
+    '"issues":[{"title":"中文短标题",'
+    '"severity":"low|medium|high",'
+    '"count":1,'
+    '"focus":"一句话说明需要关注的问题",'
+    '"evidence":["评论原文中的关键证据片段"],'
+    '"suggestion":"建议人工排查或优化的下一步",'
+    '"representativeReviewIds":["评论ID"]}]}. '
     "不要回复用户评论，不要建议自动修改商店内容。"
     "重点关注产品缺陷、体验阻塞、回归风险、性能问题、登录/支付/播放/加载等可行动问题。"
 )
@@ -129,12 +131,15 @@ def fetch_store_reviews_incremental(
 ) -> StoreReviewFetchResult:
     account, app, connector = _review_scope(session, account_id=account_id, app_id=app_id)
     started_at = datetime.now(UTC)
-    existing_total = session.scalar(
-        select(func.count(StoreReview.id)).where(
-            StoreReview.developer_account_id == account.id,
-            StoreReview.app_id == app.id,
+    existing_total = (
+        session.scalar(
+            select(func.count(StoreReview.id)).where(
+                StoreReview.developer_account_id == account.id,
+                StoreReview.app_id == app.id,
+            )
         )
-    ) or 0
+        or 0
+    )
     # 第一次只拉最近一页，避免把历史评论一次性灌满本地库。
     effective_max_pages = 1 if existing_total == 0 else max(1, max_pages)
     effective_page_size = _clamp_page_size(page_size)
@@ -439,8 +444,9 @@ def _review_apps(session: Session) -> list[dict[str, object]]:
     review_counts = {
         (account_id, app_id): int(count or 0)
         for account_id, app_id, count in session.execute(
-            select(StoreReview.developer_account_id, StoreReview.app_id, func.count(StoreReview.id))
-            .group_by(StoreReview.developer_account_id, StoreReview.app_id)
+            select(
+                StoreReview.developer_account_id, StoreReview.app_id, func.count(StoreReview.id)
+            ).group_by(StoreReview.developer_account_id, StoreReview.app_id)
         )
     }
     items: list[dict[str, object]] = []
@@ -611,7 +617,84 @@ def _analysis_issues(latest_analysis: StoreReviewAnalysisRun | None) -> list[dic
     issues = latest_analysis.analysis_json.get("issues") if latest_analysis.analysis_json else []
     if not isinstance(issues, list):
         return []
-    return [issue for issue in issues if isinstance(issue, dict)]
+    return _sort_review_analysis_issues([issue for issue in issues if isinstance(issue, dict)])
+
+
+def _decode_review_analysis_content(content: str) -> dict[str, object]:
+    for candidate in _review_analysis_json_candidates(content):
+        try:
+            decoded: object = json.loads(candidate)
+            if isinstance(decoded, str):
+                decoded = json.loads(decoded)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(decoded, dict):
+            return _normalize_review_analysis(decoded)
+    raise ValueError("review analysis response is not a JSON object")
+
+
+def _review_analysis_json_candidates(content: str) -> list[str]:
+    stripped = content.strip()
+    candidates = [stripped] if stripped else []
+    fenced_matches = re.findall(
+        r"```(?:json)?\s*(.*?)```", stripped, flags=re.IGNORECASE | re.DOTALL
+    )
+    candidates.extend(match.strip() for match in fenced_matches if match.strip())
+    start = stripped.find("{")
+    end = stripped.rfind("}")
+    if start >= 0 and end > start:
+        candidates.append(stripped[start : end + 1])
+    return candidates
+
+
+def _normalize_review_analysis(analysis: dict[str, object]) -> dict[str, object]:
+    raw_issues = analysis.get("issues")
+    issues: list[dict[str, object]] = []
+    if isinstance(raw_issues, list):
+        for raw_issue in raw_issues:
+            if not isinstance(raw_issue, dict):
+                continue
+            severity = str(raw_issue.get("severity") or "medium").strip().lower()
+            if severity not in REVIEW_ANALYSIS_SEVERITY_ORDER:
+                severity = "medium"
+            representative = raw_issue.get("representativeReviewIds") or raw_issue.get(
+                "representative_review_ids"
+            )
+            issues.append(
+                {
+                    "title": _text(raw_issue.get("title")) or "未命名关注点",
+                    "severity": severity,
+                    "count": _safe_int(raw_issue.get("count")) or 0,
+                    "focus": _text(raw_issue.get("focus")) or "需要人工确认影响范围。",
+                    "evidence": _string_list(raw_issue.get("evidence")),
+                    "suggestion": _text(raw_issue.get("suggestion"))
+                    or "请结合代表评论和版本信息进一步确认。",
+                    "representativeReviewIds": _string_list(representative),
+                }
+            )
+    return {
+        "summary": _text(analysis.get("summary")),
+        "issues": _sort_review_analysis_issues(issues),
+    }
+
+
+def _sort_review_analysis_issues(issues: list[dict[str, object]]) -> list[dict[str, object]]:
+    return sorted(
+        issues,
+        key=lambda issue: (
+            REVIEW_ANALYSIS_SEVERITY_ORDER.get(str(issue.get("severity") or "").lower(), 1),
+            -(_safe_int(issue.get("count")) or 0),
+            _text(issue.get("title")),
+        ),
+    )
+
+
+def _string_list(value: object) -> list[str]:
+    if isinstance(value, list):
+        return [_text(item) for item in value if _text(item)]
+    if isinstance(value, str) and value.strip():
+        return [value.strip()]
+    return []
 
 
 def _analyze_reviews_with_provider(
@@ -746,20 +829,13 @@ def _review_analysis_with_openai_compatible(
         ) from error
     content = _response_content(response_payload)
     try:
-        decoded = json.loads(content)
-    except json.JSONDecodeError as error:
+        return _decode_review_analysis_content(content)
+    except ValueError as error:
         raise ApiError(
             "review_analysis_failed",
             "评论分析服务返回格式不正确",
             status_code=502,
         ) from error
-    if not isinstance(decoded, dict):
-        raise ApiError(
-            "review_analysis_failed",
-            "评论分析服务返回格式不正确",
-            status_code=502,
-        )
-    return decoded
 
 
 def _review_analysis_with_claude_compatible(
@@ -836,20 +912,13 @@ def _review_analysis_with_claude_compatible(
         ) from error
     content = _response_content(response_payload)
     try:
-        decoded = json.loads(content)
-    except json.JSONDecodeError as error:
+        return _decode_review_analysis_content(content)
+    except ValueError as error:
         raise ApiError(
             "review_analysis_failed",
             "评论分析服务返回格式不正确",
             status_code=502,
         ) from error
-    if not isinstance(decoded, dict):
-        raise ApiError(
-            "review_analysis_failed",
-            "评论分析服务返回格式不正确",
-            status_code=502,
-        )
-    return decoded
 
 
 def _response_content(response_payload: dict[str, object]) -> str:

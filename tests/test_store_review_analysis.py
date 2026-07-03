@@ -77,6 +77,73 @@ def test_openai_review_analysis_requests_chinese_structured_json(monkeypatch) ->
     assert result["issues"][0]["evidence"] == ["登录后一直转圈"]
 
 
+def test_openai_review_analysis_extracts_fenced_json_and_sorts_issues(monkeypatch) -> None:
+    class FakeResponse:
+        def __enter__(self) -> FakeResponse:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            content = (
+                "分析结果如下：\n"
+                "```json\n"
+                + json.dumps(
+                    {
+                        "summary": "需要优先处理登录失败。",
+                        "issues": [
+                            {
+                                "title": "轻微文案问题",
+                                "severity": "low",
+                                "count": 20,
+                                "focus": "部分用户觉得文案不清楚。",
+                            },
+                            {
+                                "title": "登录失败",
+                                "severity": "high",
+                                "count": 2,
+                                "focus": "用户无法进入应用。",
+                            },
+                            {
+                                "title": "加载慢",
+                                "severity": "medium",
+                                "count": 5,
+                                "focus": "启动后加载时间较长。",
+                            },
+                        ],
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n```"
+            )
+            return json.dumps(
+                {"choices": [{"message": {"content": content}}]}, ensure_ascii=False
+            ).encode("utf-8")
+
+    def fake_urlopen(request, timeout: int):  # noqa: ANN001, ARG001
+        return FakeResponse()
+
+    monkeypatch.setattr(store_reviews, "urlopen", fake_urlopen)
+
+    result = store_reviews._review_analysis_with_openai_compatible(
+        LlmRuntimeConfig(
+            provider="configured",
+            protocol="openai_compatible",
+            base_url="https://llm.example.test/v1",
+            model="test-model",
+            api_key="secret",
+            auth_header="authorization_bearer",
+        ),
+        app=_app(),
+        reviews=[_review()],
+    )
+
+    assert result["summary"] == "需要优先处理登录失败。"
+    assert [issue["severity"] for issue in result["issues"]] == ["high", "medium", "low"]
+    assert [issue["title"] for issue in result["issues"]] == ["登录失败", "加载慢", "轻微文案问题"]
+
+
 def test_claude_review_analysis_requests_chinese_structured_json(monkeypatch) -> None:
     captured: dict[str, Any] = {}
 

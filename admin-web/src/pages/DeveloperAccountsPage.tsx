@@ -1171,10 +1171,14 @@ function StoreDefaultPanel({
   const current = rows.find((item) => item.locale === currentLocale) ?? rows[0] ?? null;
   const payload = serializeStoreRows(rows);
 
-  function updateField(field: 'promotionalText' | 'description', value: string) {
+  function updateField(
+    field: 'promotionalText' | 'description',
+    value: string,
+    locale = currentLocale
+  ) {
     setRows((currentRows) =>
       currentRows.map((item) =>
-        item.locale === currentLocale ? { ...item, [field]: value } : item
+        item.locale === locale ? { ...item, [field]: value } : item
       )
     );
   }
@@ -1212,6 +1216,7 @@ function StoreDefaultPanel({
         locales={rows}
         field="promotionalText"
         onChange={(value) => updateField('promotionalText', value)}
+        onLocaleChange={(locale, value) => updateField('promotionalText', value, locale)}
       />
       <EditableFieldCard
         title="描述"
@@ -1220,6 +1225,7 @@ function StoreDefaultPanel({
         locales={rows}
         field="description"
         onChange={(value) => updateField('description', value)}
+        onLocaleChange={(locale, value) => updateField('description', value, locale)}
       />
       <ImageOverview
         locales={rows}
@@ -1254,10 +1260,10 @@ function ReleaseNotesPanel({
   const current = rows.find((item) => item.locale === currentLocale) ?? rows[0] ?? null;
   const payload = serializeStoreRows(rows);
 
-  function updateReleaseNotes(value: string) {
+  function updateReleaseNotes(value: string, locale = currentLocale) {
     setRows((currentRows) =>
       currentRows.map((item) =>
-        item.locale === currentLocale ? { ...item, releaseNotes: value } : item
+        item.locale === locale ? { ...item, releaseNotes: value } : item
       )
     );
   }
@@ -1295,6 +1301,7 @@ function ReleaseNotesPanel({
         locales={rows}
         field="releaseNotes"
         onChange={updateReleaseNotes}
+        onLocaleChange={(locale, value) => updateReleaseNotes(value, locale)}
       />
     </div>
   );
@@ -1413,10 +1420,10 @@ function MarketingPageDetailPanel({
   const current = rows.find((item) => item.locale === currentLocale) ?? rows[0] ?? null;
   const payload = marketingPayloadFromRows(detail, pageName, deepLinkUrl, rows);
 
-  function updatePromotionalText(value: string) {
+  function updatePromotionalText(value: string, locale = currentLocale) {
     setRows((currentRows) =>
       currentRows.map((item) =>
-        item.locale === currentLocale ? { ...item, promotionalText: value } : item
+        item.locale === locale ? { ...item, promotionalText: value } : item
       )
     );
   }
@@ -1483,6 +1490,7 @@ function MarketingPageDetailPanel({
         value={current?.promotionalText || ''}
         locales={rows}
         onChange={updatePromotionalText}
+        onLocaleChange={(locale, value) => updatePromotionalText(value, locale)}
       />
       <MarketingImageOverview
         locales={rows}
@@ -1498,12 +1506,14 @@ function MarketingTextCard({
   title,
   value,
   locales,
-  onChange
+  onChange,
+  onLocaleChange
 }: {
   title: string;
   value: string;
   locales: MarketingPageLocaleContent[];
   onChange: (value: string) => void;
+  onLocaleChange: (locale: string, value: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   return (
@@ -1513,11 +1523,17 @@ function MarketingTextCard({
           <strong>{title}</strong>
           <span>{locales.length} 个语言</span>
         </div>
-        <button className="button" type="button" onClick={() => setExpanded((current) => !current)}>
+        <button
+          aria-label={expanded ? `收起${title}多语言` : `展开${title}多语言`}
+          className="button"
+          type="button"
+          onClick={() => setExpanded((current) => !current)}
+        >
           {expanded ? '收起多语言' : '展开多语言'}
         </button>
       </header>
       <textarea
+        aria-label={`${title} 当前语言`}
         value={value}
         placeholder="App Store Connect promotional text"
         onChange={(event) => onChange(event.target.value)}
@@ -1530,7 +1546,12 @@ function MarketingTextCard({
               <span className={locale.isSource ? 'tag ok' : 'tag'}>
                 {locale.isSource ? '源文案' : '翻译'}
               </span>
-              <p>{locale.promotionalText || '未填写'}</p>
+              <textarea
+                aria-label={`${locale.locale} ${title}`}
+                value={locale.promotionalText}
+                placeholder="未填写"
+                onChange={(event) => onLocaleChange(locale.locale, event.target.value)}
+              />
             </div>
           ))}
         </div>
@@ -1609,7 +1630,8 @@ function EditableFieldCard({
   locales,
   field,
   placeholder,
-  onChange
+  onChange,
+  onLocaleChange
 }: {
   title: string;
   value: string;
@@ -1617,6 +1639,7 @@ function EditableFieldCard({
   field: 'promotionalText' | 'description' | 'releaseNotes';
   placeholder: string;
   onChange: (value: string) => void;
+  onLocaleChange: (locale: string, value: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   return (
@@ -1626,11 +1649,21 @@ function EditableFieldCard({
           <strong>{title}</strong>
           <span>{locales.length} 个语言</span>
         </div>
-        <button className="button" type="button" onClick={() => setExpanded((current) => !current)}>
+        <button
+          aria-label={expanded ? `收起${title}多语言` : `展开${title}多语言`}
+          className="button"
+          type="button"
+          onClick={() => setExpanded((current) => !current)}
+        >
           {expanded ? '收起多语言' : '展开多语言'}
         </button>
       </header>
-      <textarea value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />
+      <textarea
+        aria-label={`${title} 当前语言`}
+        value={value}
+        placeholder={placeholder}
+        onChange={(event) => onChange(event.target.value)}
+      />
       {expanded ? (
         <div className="locale-content-list">
           {locales.map((locale) => (
@@ -1639,7 +1672,12 @@ function EditableFieldCard({
               <span className={locale.isSource ? 'tag ok' : 'tag'}>
                 {locale.isSource ? '源文案' : '翻译'}
               </span>
-              <p>{locale[field] || '未填写'}</p>
+              <textarea
+                aria-label={`${locale.locale} ${title}`}
+                value={locale[field]}
+                placeholder={placeholder}
+                onChange={(event) => onLocaleChange(locale.locale, event.target.value)}
+              />
             </div>
           ))}
         </div>

@@ -2002,6 +2002,19 @@ select {
   white-space: nowrap;
 }
 
+.locale-content-row textarea {
+  min-height: 92px;
+  width: 100%;
+  border: 1px solid #d1d5db;
+  border-radius: 9px;
+  padding: 10px 12px;
+  color: #171717;
+  background: white;
+  font-weight: 650;
+  line-height: 1.5;
+  resize: vertical;
+}
+
 .store-image-assets {
   display: flex;
   flex-wrap: wrap;

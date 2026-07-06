@@ -653,11 +653,14 @@ def supported_locales_for_app(
     app_id: str,
     version: str,
     fallback_locale: str = DEFAULT_LOCALE,
+    fallback_locales: list[str] | None = None,
     client: StoreConnectorClient | None = None,
 ) -> list[str]:
     app = scoped_app(session, account_id, app_id)
     connector = account_connector(session, account_id)
-    fallback = _normalize_locales([fallback_locale])
+    fallback = _normalize_locales(
+        fallback_locales if fallback_locales is not None else [fallback_locale]
+    )
     if app is None or connector is None or not version:
         return fallback
     connector_client = client or StoreConnectorClient()

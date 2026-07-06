@@ -285,13 +285,14 @@ def store_metadata_context(
         image_suite_locales_by_locale=image_suite_locales_by_locale,
     )
     supported_locales = local_locales
-    if app and target_version and connector and connector.base_url.startswith("mock://"):
+    if app and target_version and connector:
         supported_locales = supported_locales_for_app(
             session,
             account_id=account_id,
             app_id=app_id,
             version=target_version,
             fallback_locale=locale,
+            fallback_locales=local_locales,
         )
     source_locale = _source_locale(supported_locales)
     active_locale = locale if locale in supported_locales else source_locale

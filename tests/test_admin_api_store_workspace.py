@@ -5,7 +5,7 @@ from base64 import b64encode
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from testflying_api.schema import StoreAppMetadataDraft, StoreSyncRun
+from testflying_api.schema import StoreAppMetadataDraft, StoreConnector, StoreSyncRun
 from testflying_api.seed import seed_demo_catalog
 
 
@@ -74,6 +74,40 @@ def test_admin_api_store_workspace_saves_metadata_and_release_notes(
     assert draft.version == "__current__"
     assert draft.locale == "en-US"
     assert draft.description.startswith("Insight Desk")
+
+
+def test_admin_api_store_workspace_uses_connector_supported_locales_for_live_connector(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch,
+) -> None:
+    seed_demo_catalog(db_session)
+    connector = db_session.get(StoreConnector, "connector-apple-enterprise")
+    assert connector is not None
+    connector.base_url = "active://account-apple-enterprise"
+    db_session.commit()
+
+    def fake_supported_locales_for_app(*args, **kwargs):  # noqa: ANN002, ANN003, ARG001
+        return ["en-US", "zh-Hant", "fr-FR"]
+
+    monkeypatch.setattr(
+        "testflying_api.admin.view_models.supported_locales_for_app",
+        fake_supported_locales_for_app,
+    )
+
+    response = client.get(
+        "/admin/api/developer-accounts/account-apple-enterprise/apps/app-insight-ios/workspace",
+        headers=_admin_headers(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["supportedLocales"] == ["en-US", "zh-Hant", "fr-FR"]
+    assert [item["locale"] for item in payload["localizedMetadata"]] == [
+        "en-US",
+        "zh-Hant",
+        "fr-FR",
+    ]
 
 
 def test_admin_api_store_workspace_sync_requires_scope(

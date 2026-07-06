@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DeveloperAccountsPage } from './DeveloperAccountsPage';
@@ -13,6 +13,8 @@ import type {
 describe('DeveloperAccountsPage store workspace', () => {
   beforeEach(() => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(mockFetch);
+    holdSyncResponse = false;
+    releaseSyncResponse = null;
   });
 
   afterEach(() => {
@@ -123,7 +125,35 @@ describe('DeveloperAccountsPage store workspace', () => {
       expect(frenchText.value).toBe('Texte promotionnel');
     });
   });
+
+  it('shows a friendly confirmation dialog and loading state before syncing release notes', async () => {
+    const user = userEvent.setup();
+    holdSyncResponse = true;
+    history.replaceState(null, '', '/admin/accounts/account-ios/apps/app-ios/release-notes');
+
+    render(<DeveloperAccountsPage />);
+
+    await screen.findByText('当前商店最新版本：1.0');
+    await user.click(screen.getByRole('button', { name: '同步版本说明' }));
+
+    const dialog = screen.getByRole('dialog', { name: '同步版本说明' });
+    expect(dialog).not.toBeNull();
+    expect(within(dialog).getByText('版本说明')).not.toBeNull();
+    expect(within(dialog).getByText('en-US、zh-Hant、fr-FR')).not.toBeNull();
+
+    await user.click(screen.getByRole('button', { name: '确认同步' }));
+
+    expect(screen.getAllByRole('button', { name: '同步中...' }).length).toBeGreaterThan(0);
+
+    releaseSyncResponse?.();
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: '同步版本说明' })).toBeNull();
+    });
+  });
 });
+
+let holdSyncResponse = false;
+let releaseSyncResponse: (() => void) | null = null;
 
 const accountDetail: DeveloperAccountDetailState = {
   account: {
@@ -268,6 +298,19 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
     };
     return jsonResponse(response);
   }
+  if (url.endsWith('/workspace/metadata/sync')) {
+    const response: StoreWorkspaceActionResponse = {
+      message: '已同步',
+      state: workspaceState,
+      syncRuns: []
+    };
+    if (holdSyncResponse) {
+      return new Promise((resolve) => {
+        releaseSyncResponse = () => resolve(makeJsonResponse(response));
+      });
+    }
+    return jsonResponse(response);
+  }
   if (url === '/admin/api/store-translation') {
     const payload = init?.body ? JSON.parse(String(init.body)) : {};
     if (payload.field === 'description') {
@@ -313,10 +356,12 @@ function lastJsonPayload(urlPart: string): Record<string, unknown> | null {
 }
 
 function jsonResponse(payload: unknown): Promise<Response> {
-  return Promise.resolve(
-    new Response(JSON.stringify(payload), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
-    })
-  );
+  return Promise.resolve(makeJsonResponse(payload));
+}
+
+function makeJsonResponse(payload: unknown): Response {
+  return new Response(JSON.stringify(payload), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' }
+  });
 }

@@ -1949,6 +1949,14 @@ select {
   gap: 12px;
 }
 
+.field-card-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .field-card header > div {
   display: grid;
   gap: 3px;
@@ -1983,25 +1991,81 @@ select {
   gap: 10px;
 }
 
-.locale-translation-toolbar {
+.notice.compact {
+  padding: 10px 12px;
+}
+
+.modal-backdrop {
+  position: fixed;
+  z-index: 60;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.32);
+}
+
+.sync-confirm-dialog {
+  display: grid;
+  gap: 16px;
+  width: min(560px, 100%);
+  border: 1px solid #d9dde5;
+  border-radius: 16px;
+  padding: 20px;
+  color: #171717;
+  background: white;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
+}
+
+.sync-confirm-dialog header,
+.sync-confirm-dialog footer {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sync-confirm-dialog h3 {
+  margin: 2px 0 0;
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.sync-confirm-summary {
+  margin: 0;
+  color: #5f626b;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.6;
+}
+
+.sync-confirm-meta {
+  display: grid;
   gap: 10px;
+  margin: 0;
+}
+
+.sync-confirm-meta div {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr);
+  gap: 12px;
   border: 1px solid #e5e7eb;
   border-radius: 10px;
   padding: 10px 12px;
   background: #fbfbfc;
 }
 
-.locale-translation-toolbar span {
+.sync-confirm-meta dt {
   color: #73757d;
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 760;
 }
 
-.notice.compact {
-  padding: 10px 12px;
+.sync-confirm-meta dd {
+  margin: 0;
+  color: #171717;
+  font-weight: 760;
+  line-height: 1.5;
 }
 
 .locale-content-row,

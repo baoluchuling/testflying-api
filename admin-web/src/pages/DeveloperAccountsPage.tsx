@@ -44,6 +44,27 @@ import {
 
 type StoreImageUploadRequest = { locale: string; slotKey: string; files: File[] };
 type StoreTextField = 'promotionalText' | 'description' | 'releaseNotes';
+type PendingSyncConfirmation =
+  | {
+      kind: 'workspace';
+      title: string;
+      targetLabel: string;
+      versionLabel: string;
+      scopeLabels: string[];
+      localeLabels: string[];
+      locales: StoreLocaleContentInput[];
+      syncScopes: string[];
+    }
+  | {
+      kind: 'marketing';
+      title: string;
+      targetLabel: string;
+      versionLabel: string;
+      scopeLabels: string[];
+      localeLabels: string[];
+      pageId: string;
+      payload: MarketingPagePayload;
+    };
 
 type AccountRoute =
   | { kind: 'list' }
@@ -67,6 +88,13 @@ const storeSections: Array<{ key: StoreSection; label: string; description: stri
   { key: 'release-notes', label: '版本说明', description: '最新商店版本的 Release Notes' },
   { key: 'connection', label: '商店连接', description: 'Connector、商店标识和连接检查' }
 ];
+
+const syncScopeLabels: Record<string, string> = {
+  metadata: '宣传文本和描述',
+  store_images: '商店图',
+  release_notes: '版本说明',
+  marketing_text: '营销页文案'
+};
 
 export function DeveloperAccountsPage() {
   const [route, setRoute] = useState<AccountRoute>(() => parseAccountRoute(location.pathname));
@@ -438,12 +466,17 @@ function StoreWorkspace({
   const [workspaceError, setWorkspaceError] = useState('');
   const [workspaceNotice, setWorkspaceNotice] = useState('');
   const [workspaceBusy, setWorkspaceBusy] = useState(false);
+  const [syncBusy, setSyncBusy] = useState(false);
+  const [syncConfirmation, setSyncConfirmation] = useState<PendingSyncConfirmation | null>(null);
+  const [syncConfirmationError, setSyncConfirmationError] = useState('');
 
   useEffect(() => {
     let active = true;
     setWorkspaceError('');
     setWorkspace(null);
     setMarketingPage(null);
+    setSyncConfirmation(null);
+    setSyncConfirmationError('');
     loadStoreWorkspace(state.account.id, appId, section)
       .then((payload) => {
         if (active) setWorkspace(payload);
@@ -537,25 +570,55 @@ function StoreWorkspace({
 
   async function syncWorkspace(locales: StoreLocaleContentInput[], syncScopes: string[]) {
     if (!workspace) return;
-    const scopeLabel = syncScopes.join('、');
-    if (!window.confirm(`确认同步到商店？\n范围：${scopeLabel}\n语言：${locales.map((item) => item.locale).join('、')}`)) {
-      return;
-    }
+    setSyncConfirmationError('');
+    setSyncConfirmation({
+      kind: 'workspace',
+      title: syncScopes.includes('release_notes') ? '同步版本说明' : '同步商店页',
+      targetLabel: app?.name ?? appId,
+      versionLabel: workspace.version || '未确认',
+      scopeLabels: syncScopes.map(syncScopeLabel),
+      localeLabels: locales.map((item) => item.locale),
+      locales,
+      syncScopes
+    });
+  }
+
+  async function confirmSync() {
+    if (!syncConfirmation) return;
     setWorkspaceBusy(true);
+    setSyncBusy(true);
     setWorkspaceError('');
+    setSyncConfirmationError('');
     try {
-      const response = await syncStoreWorkspaceMetadata(state.account.id, appId, {
-        version: workspace.version,
-        locale: workspace.locale || workspace.sourceLocale,
-        syncScopes,
-        locales
-      });
-      setWorkspace(response.state);
-      showWorkspaceNotice(response.message);
+      if (syncConfirmation.kind === 'workspace') {
+        if (!workspace) return;
+        const response = await syncStoreWorkspaceMetadata(state.account.id, appId, {
+          version: workspace.version,
+          locale: workspace.locale || workspace.sourceLocale,
+          syncScopes: syncConfirmation.syncScopes,
+          locales: syncConfirmation.locales
+        });
+        setWorkspace(response.state);
+        showWorkspaceNotice(response.message);
+      } else {
+        const response = await syncMarketingPage(
+          state.account.id,
+          appId,
+          syncConfirmation.pageId,
+          syncConfirmation.payload
+        );
+        if (response.workspace) setWorkspace(response.workspace);
+        if (response.state) setMarketingPage(response.state);
+        showWorkspaceNotice(response.message);
+      }
+      setSyncConfirmation(null);
     } catch (requestError) {
-      setWorkspaceError(errorMessage(requestError));
+      const message = errorMessage(requestError);
+      setWorkspaceError(message);
+      setSyncConfirmationError(message);
     } finally {
       setWorkspaceBusy(false);
+      setSyncBusy(false);
     }
   }
 
@@ -696,27 +759,17 @@ function StoreWorkspace({
 
   async function syncMarketing(payload: MarketingPagePayload) {
     if (!marketingPage) return;
-    const scopes = payload.syncScopes?.join('、') || '未选择';
-    if (!window.confirm(`确认同步营销页面？\n范围：${scopes}\n页面：${marketingPage.page.pageName}`)) {
-      return;
-    }
-    setWorkspaceBusy(true);
-    setWorkspaceError('');
-    try {
-      const response = await syncMarketingPage(
-        state.account.id,
-        appId,
-        marketingPage.page.pageId,
-        payload
-      );
-      if (response.workspace) setWorkspace(response.workspace);
-      if (response.state) setMarketingPage(response.state);
-      showWorkspaceNotice(response.message);
-    } catch (requestError) {
-      setWorkspaceError(errorMessage(requestError));
-    } finally {
-      setWorkspaceBusy(false);
-    }
+    setSyncConfirmationError('');
+    setSyncConfirmation({
+      kind: 'marketing',
+      title: '同步营销页面',
+      targetLabel: marketingPage.page.pageName,
+      versionLabel: marketingPage.page.applePageIdLabel || '未同步',
+      scopeLabels: (payload.syncScopes ?? []).map(syncScopeLabel),
+      localeLabels: payload.locales.map((item) => item.locale),
+      pageId: marketingPage.page.pageId,
+      payload
+    });
   }
 
   async function deleteMarketingImage(payload: { locale: string; slotKey: string; storageKey: string }) {
@@ -822,6 +875,7 @@ function StoreWorkspace({
           <StoreDefaultPanel
             workspace={workspace}
             busy={workspaceBusy}
+            syncing={syncBusy}
             onSave={saveMetadata}
             onCheck={checkPreflight}
             onSync={syncWorkspace}
@@ -834,6 +888,7 @@ function StoreWorkspace({
             <MarketingPageDetailPanel
               detail={marketingPage}
               busy={workspaceBusy}
+              syncing={syncBusy}
               onBack={() => onNavigate(`/admin/accounts/${state.account.id}/apps/${app.id}/marketing`)}
               onSave={saveMarketing}
               onCheck={checkMarketing}
@@ -856,11 +911,90 @@ function StoreWorkspace({
           <ReleaseNotesPanel
             workspace={workspace}
             busy={workspaceBusy}
+            syncing={syncBusy}
             onSave={saveReleaseNotes}
             onCheck={checkPreflight}
             onSync={syncWorkspace}
           />
         ) : null}
+        {syncConfirmation ? (
+          <SyncConfirmDialog
+            confirmation={syncConfirmation}
+            busy={syncBusy}
+            error={syncConfirmationError}
+            onCancel={() => {
+              if (syncBusy) return;
+              setSyncConfirmation(null);
+              setSyncConfirmationError('');
+            }}
+            onConfirm={() => void confirmSync()}
+          />
+        ) : null}
+      </section>
+    </div>
+  );
+}
+
+function SyncConfirmDialog({
+  confirmation,
+  busy,
+  error,
+  onCancel,
+  onConfirm
+}: {
+  confirmation: PendingSyncConfirmation;
+  busy: boolean;
+  error: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section
+        aria-labelledby="sync-confirm-title"
+        aria-modal="true"
+        className="sync-confirm-dialog"
+        role="dialog"
+      >
+        <header>
+          <div>
+            <p className="eyebrow">同步确认</p>
+            <h3 id="sync-confirm-title">{confirmation.title}</h3>
+          </div>
+          <button className="button slim" type="button" onClick={onCancel} disabled={busy}>
+            关闭
+          </button>
+        </header>
+        <p className="sync-confirm-summary">
+          确认后会把当前中心后台草稿提交到对应商店后台。同步过程中请不要关闭页面。
+        </p>
+        <dl className="sync-confirm-meta">
+          <div>
+            <dt>目标</dt>
+            <dd>{confirmation.targetLabel}</dd>
+          </div>
+          <div>
+            <dt>{confirmation.kind === 'marketing' ? '页面 ID' : '版本'}</dt>
+            <dd>{confirmation.versionLabel}</dd>
+          </div>
+          <div>
+            <dt>同步范围</dt>
+            <dd>{confirmation.scopeLabels.join('、') || '未选择'}</dd>
+          </div>
+          <div>
+            <dt>语言</dt>
+            <dd>{confirmation.localeLabels.join('、') || '无'}</dd>
+          </div>
+        </dl>
+        {error ? <div className="notice error compact">{error}</div> : null}
+        <footer>
+          <button className="button" type="button" onClick={onCancel} disabled={busy}>
+            取消
+          </button>
+          <button className="button primary" type="button" onClick={onConfirm} disabled={busy}>
+            {busy ? '同步中...' : '确认同步'}
+          </button>
+        </footer>
       </section>
     </div>
   );
@@ -1149,6 +1283,7 @@ function BoundAppSettings({
 function StoreDefaultPanel({
   workspace,
   busy,
+  syncing,
   onSave,
   onCheck,
   onSync,
@@ -1157,6 +1292,7 @@ function StoreDefaultPanel({
 }: {
   workspace: StoreWorkspaceState;
   busy: boolean;
+  syncing: boolean;
   onSave: (locales: StoreLocaleContentInput[]) => void;
   onCheck: (locales: StoreLocaleContentInput[], syncScopes: string[]) => void;
   onSync: (locales: StoreLocaleContentInput[], syncScopes: string[]) => void;
@@ -1252,7 +1388,7 @@ function StoreDefaultPanel({
           onClick={() => onSync(payload, ['metadata', 'store_images'])}
           disabled={busy}
         >
-          同步商店页
+          {syncing ? '同步中...' : '同步商店页'}
         </button>
       </section>
       <EditableFieldCard
@@ -1294,12 +1430,14 @@ function StoreDefaultPanel({
 function ReleaseNotesPanel({
   workspace,
   busy,
+  syncing,
   onSave,
   onCheck,
   onSync
 }: {
   workspace: StoreWorkspaceState;
   busy: boolean;
+  syncing: boolean;
   onSave: (locales: StoreLocaleContentInput[]) => void;
   onCheck: (locales: StoreLocaleContentInput[], syncScopes: string[]) => void;
   onSync: (locales: StoreLocaleContentInput[], syncScopes: string[]) => void;
@@ -1386,7 +1524,7 @@ function ReleaseNotesPanel({
           onClick={() => onSync(payload, ['release_notes'])}
           disabled={busy}
         >
-          同步版本说明
+          {syncing ? '同步中...' : '同步版本说明'}
         </button>
       </section>
       <EditableFieldCard
@@ -1480,6 +1618,7 @@ function MarketingPagesPanel({
 function MarketingPageDetailPanel({
   detail,
   busy,
+  syncing,
   onBack,
   onSave,
   onCheck,
@@ -1491,6 +1630,7 @@ function MarketingPageDetailPanel({
 }: {
   detail: MarketingPageDetailState | null;
   busy: boolean;
+  syncing: boolean;
   onBack: () => void;
   onSave: (payload: MarketingPagePayload) => void;
   onCheck: (payload: MarketingPagePayload) => void;
@@ -1593,7 +1733,7 @@ function MarketingPageDetailPanel({
           onClick={() => onSync({ ...payload, syncScopes: ['marketing_text', 'store_images'] })}
           disabled={busy}
         >
-          同步营销页
+          {syncing ? '同步中...' : '同步营销页'}
         </button>
       </section>
 
@@ -1671,14 +1811,27 @@ function MarketingTextCard({
           <strong>{title}</strong>
           <span>{locales.length} 个语言</span>
         </div>
-        <button
-          aria-label={expanded ? `收起${title}多语言` : `展开${title}多语言`}
-          className="button"
-          type="button"
-          onClick={() => setExpanded((current) => !current)}
-        >
-          {expanded ? '收起多语言' : '展开多语言'}
-        </button>
+        <div className="field-card-actions">
+          {expanded ? (
+            <button
+              aria-label={`翻译${title}到其他语言`}
+              className="button slim"
+              type="button"
+              onClick={onTranslate}
+              disabled={translateBusy}
+            >
+              {translateBusy ? '翻译中...' : '翻译'}
+            </button>
+          ) : null}
+          <button
+            aria-label={expanded ? `收起${title}多语言` : `展开${title}多语言`}
+            className="button"
+            type="button"
+            onClick={() => setExpanded((current) => !current)}
+          >
+            {expanded ? '收起多语言' : '展开多语言'}
+          </button>
+        </div>
       </header>
       <textarea
         aria-label={`${title} 当前语言`}
@@ -1688,17 +1841,6 @@ function MarketingTextCard({
       />
       {expanded ? (
         <div className="locale-expanded-block">
-          <div className="locale-translation-toolbar">
-            <button
-              className="button slim"
-              type="button"
-              onClick={onTranslate}
-              disabled={translateBusy}
-            >
-              {translateBusy ? '翻译中...' : `翻译${title}到其他语言`}
-            </button>
-            <span>使用源文案生成其他语言草稿，生成后仍可手动修改。</span>
-          </div>
           {translateError ? <div className="notice error compact">{translateError}</div> : null}
           <div className="locale-content-list">
             {locales.map((locale) => (
@@ -1817,14 +1959,27 @@ function EditableFieldCard({
           <strong>{title}</strong>
           <span>{locales.length} 个语言</span>
         </div>
-        <button
-          aria-label={expanded ? `收起${title}多语言` : `展开${title}多语言`}
-          className="button"
-          type="button"
-          onClick={() => setExpanded((current) => !current)}
-        >
-          {expanded ? '收起多语言' : '展开多语言'}
-        </button>
+        <div className="field-card-actions">
+          {expanded ? (
+            <button
+              aria-label={`翻译${title}到其他语言`}
+              className="button slim"
+              type="button"
+              onClick={onTranslate}
+              disabled={translateBusy}
+            >
+              {translateBusy ? '翻译中...' : '翻译'}
+            </button>
+          ) : null}
+          <button
+            aria-label={expanded ? `收起${title}多语言` : `展开${title}多语言`}
+            className="button"
+            type="button"
+            onClick={() => setExpanded((current) => !current)}
+          >
+            {expanded ? '收起多语言' : '展开多语言'}
+          </button>
+        </div>
       </header>
       <textarea
         aria-label={`${title} 当前语言`}
@@ -1834,17 +1989,6 @@ function EditableFieldCard({
       />
       {expanded ? (
         <div className="locale-expanded-block">
-          <div className="locale-translation-toolbar">
-            <button
-              className="button slim"
-              type="button"
-              onClick={onTranslate}
-              disabled={translateBusy}
-            >
-              {translateBusy ? '翻译中...' : `翻译${title}到其他语言`}
-            </button>
-            <span>使用源文案生成其他语言草稿，生成后仍可手动修改。</span>
-          </div>
           {translateError ? <div className="notice error compact">{translateError}</div> : null}
           <div className="locale-content-list">
             {locales.map((locale) => (
@@ -2013,6 +2157,10 @@ function parseAccountRoute(pathname: string): AccountRoute {
 
 function isStoreSection(value: string | undefined): value is StoreSection {
   return value === 'store' || value === 'marketing' || value === 'release-notes' || value === 'connection';
+}
+
+function syncScopeLabel(value: string) {
+  return syncScopeLabels[value] ?? value;
 }
 
 function toDateTimeInput(value: string) {

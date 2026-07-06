@@ -1812,17 +1812,15 @@ function MarketingTextCard({
           <span>{locales.length} 个语言</span>
         </div>
         <div className="field-card-actions">
-          {expanded ? (
-            <button
-              aria-label={`翻译${title}到其他语言`}
-              className="button slim"
-              type="button"
-              onClick={onTranslate}
-              disabled={translateBusy}
-            >
-              {translateBusy ? '翻译中...' : '翻译'}
-            </button>
-          ) : null}
+          <button
+            aria-label={`翻译${title}到其他语言`}
+            className="button slim"
+            type="button"
+            onClick={onTranslate}
+            disabled={translateBusy}
+          >
+            {translateBusy ? '翻译中...' : '翻译'}
+          </button>
           <button
             aria-label={expanded ? `收起${title}多语言` : `展开${title}多语言`}
             className="button"
@@ -1960,17 +1958,15 @@ function EditableFieldCard({
           <span>{locales.length} 个语言</span>
         </div>
         <div className="field-card-actions">
-          {expanded ? (
-            <button
-              aria-label={`翻译${title}到其他语言`}
-              className="button slim"
-              type="button"
-              onClick={onTranslate}
-              disabled={translateBusy}
-            >
-              {translateBusy ? '翻译中...' : '翻译'}
-            </button>
-          ) : null}
+          <button
+            aria-label={`翻译${title}到其他语言`}
+            className="button slim"
+            type="button"
+            onClick={onTranslate}
+            disabled={translateBusy}
+          >
+            {translateBusy ? '翻译中...' : '翻译'}
+          </button>
           <button
             aria-label={expanded ? `收起${title}多语言` : `展开${title}多语言`}
             className="button"

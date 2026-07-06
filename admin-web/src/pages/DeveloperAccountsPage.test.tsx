@@ -67,6 +67,62 @@ describe('DeveloperAccountsPage store workspace', () => {
       );
     });
   });
+
+  it('translates a store page field from source text into other locale inputs', async () => {
+    const user = userEvent.setup();
+    history.replaceState(null, '', '/admin/accounts/account-ios/apps/app-ios/store');
+
+    render(<DeveloperAccountsPage />);
+
+    await screen.findByRole('heading', { name: 'lookrva' });
+    await screen.findByText('当前商店最新版本：1.0');
+    await user.click(screen.getByRole('button', { name: '展开描述多语言' }));
+    await user.click(screen.getByRole('button', { name: '翻译描述到其他语言' }));
+
+    const hantDescription = (await screen.findByRole('textbox', {
+      name: 'zh-Hant 描述'
+    })) as HTMLTextAreaElement;
+    const frenchDescription = (await screen.findByRole('textbox', {
+      name: 'fr-FR 描述'
+    })) as HTMLTextAreaElement;
+    await waitFor(() => {
+      expect(hantDescription.value).toBe('繁體描述');
+      expect(frenchDescription.value).toBe('Description française');
+    });
+
+    await user.click(screen.getByRole('button', { name: '保存草稿' }));
+
+    await waitFor(() => {
+      expect(lastJsonPayload('/workspace/metadata')?.locales).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ locale: 'zh-Hant', description: '繁體描述' }),
+          expect.objectContaining({ locale: 'fr-FR', description: 'Description française' })
+        ])
+      );
+    });
+  });
+
+  it('translates marketing page text from source text into other locale inputs', async () => {
+    const user = userEvent.setup();
+    history.replaceState(
+      null,
+      '',
+      '/admin/accounts/account-ios/apps/app-ios/marketing-pages/page-1'
+    );
+
+    render(<DeveloperAccountsPage />);
+
+    await screen.findByDisplayValue('测试自定义产品页');
+    await user.click(screen.getByRole('button', { name: '展开宣传文本多语言' }));
+    await user.click(screen.getByRole('button', { name: '翻译宣传文本到其他语言' }));
+
+    const frenchText = (await screen.findByRole('textbox', {
+      name: 'fr-FR 宣传文本'
+    })) as HTMLTextAreaElement;
+    await waitFor(() => {
+      expect(frenchText.value).toBe('Texte promotionnel');
+    });
+  });
 });
 
 const accountDetail: DeveloperAccountDetailState = {
@@ -211,6 +267,26 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
       syncRuns: []
     };
     return jsonResponse(response);
+  }
+  if (url === '/admin/api/store-translation') {
+    const payload = init?.body ? JSON.parse(String(init.body)) : {};
+    if (payload.field === 'description') {
+      return jsonResponse({
+        translations: {
+          'zh-Hant': '繁體描述',
+          'fr-FR': 'Description française'
+        }
+      });
+    }
+    if (payload.field === 'promotionalText') {
+      return jsonResponse({
+        translations: {
+          'zh-Hant': '繁體宣傳文本',
+          'fr-FR': 'Texte promotionnel'
+        }
+      });
+    }
+    return jsonResponse({ translations: {} });
   }
   if (url.endsWith('/workspace/marketing-pages/page-1') && init?.method === 'PUT') {
     const response: MarketingPageActionResponse = {

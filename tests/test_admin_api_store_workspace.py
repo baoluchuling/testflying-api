@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from base64 import b64encode
+from dataclasses import replace
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -108,6 +109,32 @@ def test_admin_api_store_workspace_uses_connector_supported_locales_for_live_con
         "zh-Hant",
         "fr-FR",
     ]
+
+
+def test_admin_api_store_translation_returns_target_translations(client: TestClient) -> None:
+    client.app.state.settings = replace(
+        client.app.state.settings,
+        translation_provider="mock",
+    )
+
+    response = client.post(
+        "/admin/api/store-translation",
+        headers=_admin_headers(),
+        json={
+            "sourceLocale": "en-US",
+            "targetLocales": ["en-US", "zh-Hant", "fr-FR"],
+            "field": "description",
+            "text": "Read anywhere.",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "translations": {
+            "zh-Hant": "Read anywhere. [zh-Hant]",
+            "fr-FR": "Read anywhere. [fr-FR]",
+        }
+    }
 
 
 def test_admin_api_store_workspace_sync_requires_scope(

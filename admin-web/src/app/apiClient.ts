@@ -384,6 +384,17 @@ export type StoreWorkspaceActionResponse = {
   syncRuns: SyncRunSummary[];
 };
 
+export type StoreTranslationRequest = {
+  sourceLocale: string;
+  targetLocales: string[];
+  field: string;
+  text: string;
+};
+
+export type StoreTranslationResponse = {
+  translations: Record<string, string>;
+};
+
 export type MarketingPageLocaleContent = {
   locale: string;
   isSource: boolean;
@@ -923,6 +934,12 @@ export function saveStoreWorkspaceReleaseNotes(
     `/admin/api/developer-accounts/${accountId}/apps/${appId}/workspace/release-notes`,
     payload
   );
+}
+
+export function translateStoreText(
+  payload: StoreTranslationRequest
+): Promise<StoreTranslationResponse> {
+  return postJson<StoreTranslationResponse>('/admin/api/store-translation', payload);
 }
 
 export function checkStoreWorkspacePreflight(

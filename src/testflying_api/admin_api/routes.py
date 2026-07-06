@@ -106,6 +106,8 @@ from testflying_api.admin_api.schemas import (
     StoreReviewAnalysisResponse,
     StoreReviewFetchResponse,
     StoreReviewsState,
+    StoreTranslationRequest,
+    StoreTranslationResponse,
     StoreWorkspaceActionResponse,
     StoreWorkspaceSaveRequest,
     StoreWorkspaceState,
@@ -174,6 +176,7 @@ from testflying_api.store_sync import (
     sync_marketing_page,
     sync_release_notes,
 )
+from testflying_api.translation import translate_store_metadata_text
 from testflying_api.upload_service import create_package_upload
 
 router = APIRouter(prefix="/admin/api", tags=["admin-api"])
@@ -502,6 +505,31 @@ def developer_account_app_workspace_state(
         section=section,
         locale=locale,
     )
+
+
+@router.post(
+    "/store-translation",
+    response_model=StoreTranslationResponse,
+    response_model_by_alias=True,
+)
+def translate_store_workspace_text(
+    payload: StoreTranslationRequest,
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+) -> StoreTranslationResponse:
+    try:
+        translations = translate_store_metadata_text(
+            request.app.state.settings,
+            session=session,
+            source_locale=payload.source_locale,
+            target_locales=payload.target_locales,
+            field=payload.field,
+            text=payload.text,
+        )
+    except ApiError as error:
+        raise _admin_api_error(error) from error
+    return StoreTranslationResponse(translations=translations)
 
 
 @router.put(

@@ -503,6 +503,17 @@ class StoreWorkspaceActionResponse(AdminApiModel):
     sync_runs: list[SyncRunSummary] = Field(default_factory=list)
 
 
+class StoreTranslationRequest(AdminApiModel):
+    source_locale: str
+    target_locales: list[str]
+    field: str
+    text: str
+
+
+class StoreTranslationResponse(AdminApiModel):
+    translations: dict[str, str]
+
+
 class UploadAccountOption(AdminApiModel):
     id: str
     team_name: str

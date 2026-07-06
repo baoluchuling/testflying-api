@@ -1978,6 +1978,32 @@ select {
   gap: 10px;
 }
 
+.locale-expanded-block {
+  display: grid;
+  gap: 10px;
+}
+
+.locale-translation-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #fbfbfc;
+}
+
+.locale-translation-toolbar span {
+  color: #73757d;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.notice.compact {
+  padding: 10px 12px;
+}
+
 .locale-content-row,
 .marketing-page-row {
   display: grid;

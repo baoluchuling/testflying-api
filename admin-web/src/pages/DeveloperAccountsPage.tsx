@@ -21,6 +21,7 @@ import {
   saveStoreWorkspaceReleaseNotes,
   syncMarketingPage,
   syncStoreWorkspaceMetadata,
+  translateStoreText,
   unbindAccountApp,
   updateAccountAppSettings,
   updateDeveloperAccount,
@@ -42,6 +43,7 @@ import {
 } from '../app/apiClient';
 
 type StoreImageUploadRequest = { locale: string; slotKey: string; files: File[] };
+type StoreTextField = 'promotionalText' | 'description' | 'releaseNotes';
 
 type AccountRoute =
   | { kind: 'list' }
@@ -1162,9 +1164,16 @@ function StoreDefaultPanel({
   onUploadImages: (payload: StoreImageUploadRequest) => void;
 }) {
   const [rows, setRows] = useState<StoreLocaleContent[]>(workspace.localizedMetadata);
+  const [translatingField, setTranslatingField] = useState<StoreTextField | null>(null);
+  const [translationError, setTranslationError] = useState<{
+    field: StoreTextField | null;
+    message: string;
+  }>({ field: null, message: '' });
 
   useEffect(() => {
     setRows(workspace.localizedMetadata);
+    setTranslationError({ field: null, message: '' });
+    setTranslatingField(null);
   }, [workspace]);
 
   const currentLocale = workspace.locale || workspace.sourceLocale || rows[0]?.locale || '';
@@ -1181,6 +1190,43 @@ function StoreDefaultPanel({
         item.locale === locale ? { ...item, [field]: value } : item
       )
     );
+  }
+
+  async function translateField(field: StoreTextField) {
+    const source = rows.find((item) => item.isSource) ?? current;
+    const sourceLocale = source?.locale || currentLocale;
+    const sourceText = String(source?.[field] || '').trim();
+    const targetLocales = rows
+      .filter((item) => item.locale !== sourceLocale)
+      .map((item) => item.locale);
+    if (!sourceText) {
+      setTranslationError({ field, message: '源文案为空，无法翻译。' });
+      return;
+    }
+    if (!targetLocales.length) {
+      setTranslationError({ field, message: '没有需要翻译的目标语言。' });
+      return;
+    }
+    setTranslatingField(field);
+    setTranslationError({ field: null, message: '' });
+    try {
+      const response = await translateStoreText({
+        sourceLocale,
+        targetLocales,
+        field,
+        text: sourceText
+      });
+      setRows((currentRows) =>
+        currentRows.map((item) => {
+          const translated = response.translations[item.locale];
+          return translated ? { ...item, [field]: translated } : item;
+        })
+      );
+    } catch (requestError) {
+      setTranslationError({ field, message: errorMessage(requestError) });
+    } finally {
+      setTranslatingField(null);
+    }
   }
 
   return (
@@ -1217,6 +1263,11 @@ function StoreDefaultPanel({
         field="promotionalText"
         onChange={(value) => updateField('promotionalText', value)}
         onLocaleChange={(locale, value) => updateField('promotionalText', value, locale)}
+        onTranslate={() => translateField('promotionalText')}
+        translateBusy={translatingField === 'promotionalText'}
+        translateError={
+          translationError.field === 'promotionalText' ? translationError.message : ''
+        }
       />
       <EditableFieldCard
         title="描述"
@@ -1226,6 +1277,9 @@ function StoreDefaultPanel({
         field="description"
         onChange={(value) => updateField('description', value)}
         onLocaleChange={(locale, value) => updateField('description', value, locale)}
+        onTranslate={() => translateField('description')}
+        translateBusy={translatingField === 'description'}
+        translateError={translationError.field === 'description' ? translationError.message : ''}
       />
       <ImageOverview
         locales={rows}
@@ -1251,9 +1305,13 @@ function ReleaseNotesPanel({
   onSync: (locales: StoreLocaleContentInput[], syncScopes: string[]) => void;
 }) {
   const [rows, setRows] = useState<StoreLocaleContent[]>(workspace.localizedMetadata);
+  const [translating, setTranslating] = useState(false);
+  const [translationError, setTranslationError] = useState('');
 
   useEffect(() => {
     setRows(workspace.localizedMetadata);
+    setTranslationError('');
+    setTranslating(false);
   }, [workspace]);
 
   const currentLocale = workspace.locale || workspace.sourceLocale || rows[0]?.locale || '';
@@ -1266,6 +1324,43 @@ function ReleaseNotesPanel({
         item.locale === locale ? { ...item, releaseNotes: value } : item
       )
     );
+  }
+
+  async function translateReleaseNotes() {
+    const source = rows.find((item) => item.isSource) ?? current;
+    const sourceLocale = source?.locale || currentLocale;
+    const sourceText = String(source?.releaseNotes || '').trim();
+    const targetLocales = rows
+      .filter((item) => item.locale !== sourceLocale)
+      .map((item) => item.locale);
+    if (!sourceText) {
+      setTranslationError('源文案为空，无法翻译。');
+      return;
+    }
+    if (!targetLocales.length) {
+      setTranslationError('没有需要翻译的目标语言。');
+      return;
+    }
+    setTranslating(true);
+    setTranslationError('');
+    try {
+      const response = await translateStoreText({
+        sourceLocale,
+        targetLocales,
+        field: 'releaseNotes',
+        text: sourceText
+      });
+      setRows((currentRows) =>
+        currentRows.map((item) => {
+          const translated = response.translations[item.locale];
+          return translated ? { ...item, releaseNotes: translated } : item;
+        })
+      );
+    } catch (requestError) {
+      setTranslationError(errorMessage(requestError));
+    } finally {
+      setTranslating(false);
+    }
   }
 
   return (
@@ -1302,6 +1397,9 @@ function ReleaseNotesPanel({
         field="releaseNotes"
         onChange={updateReleaseNotes}
         onLocaleChange={(locale, value) => updateReleaseNotes(value, locale)}
+        onTranslate={translateReleaseNotes}
+        translateBusy={translating}
+        translateError={translationError}
       />
     </div>
   );
@@ -1405,11 +1503,15 @@ function MarketingPageDetailPanel({
   const [pageName, setPageName] = useState('');
   const [deepLinkUrl, setDeepLinkUrl] = useState('');
   const [rows, setRows] = useState<MarketingPageLocaleContent[]>([]);
+  const [translating, setTranslating] = useState(false);
+  const [translationError, setTranslationError] = useState('');
 
   useEffect(() => {
     setPageName(detail?.page.pageName ?? '');
     setDeepLinkUrl(detail?.page.deepLinkUrl ?? '');
     setRows(detail?.localizedPage ?? []);
+    setTranslationError('');
+    setTranslating(false);
   }, [detail]);
 
   if (!detail) {
@@ -1426,6 +1528,43 @@ function MarketingPageDetailPanel({
         item.locale === locale ? { ...item, promotionalText: value } : item
       )
     );
+  }
+
+  async function translatePromotionalText() {
+    const source = rows.find((item) => item.isSource) ?? current;
+    const sourceLocale = source?.locale || currentLocale;
+    const sourceText = String(source?.promotionalText || '').trim();
+    const targetLocales = rows
+      .filter((item) => item.locale !== sourceLocale)
+      .map((item) => item.locale);
+    if (!sourceText) {
+      setTranslationError('源文案为空，无法翻译。');
+      return;
+    }
+    if (!targetLocales.length) {
+      setTranslationError('没有需要翻译的目标语言。');
+      return;
+    }
+    setTranslating(true);
+    setTranslationError('');
+    try {
+      const response = await translateStoreText({
+        sourceLocale,
+        targetLocales,
+        field: 'promotionalText',
+        text: sourceText
+      });
+      setRows((currentRows) =>
+        currentRows.map((item) => {
+          const translated = response.translations[item.locale];
+          return translated ? { ...item, promotionalText: translated } : item;
+        })
+      );
+    } catch (requestError) {
+      setTranslationError(errorMessage(requestError));
+    } finally {
+      setTranslating(false);
+    }
   }
 
   return (
@@ -1491,6 +1630,9 @@ function MarketingPageDetailPanel({
         locales={rows}
         onChange={updatePromotionalText}
         onLocaleChange={(locale, value) => updatePromotionalText(value, locale)}
+        onTranslate={translatePromotionalText}
+        translateBusy={translating}
+        translateError={translationError}
       />
       <MarketingImageOverview
         locales={rows}
@@ -1507,13 +1649,19 @@ function MarketingTextCard({
   value,
   locales,
   onChange,
-  onLocaleChange
+  onLocaleChange,
+  onTranslate,
+  translateBusy,
+  translateError
 }: {
   title: string;
   value: string;
   locales: MarketingPageLocaleContent[];
   onChange: (value: string) => void;
   onLocaleChange: (locale: string, value: string) => void;
+  onTranslate: () => void;
+  translateBusy: boolean;
+  translateError: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   return (
@@ -1539,21 +1687,35 @@ function MarketingTextCard({
         onChange={(event) => onChange(event.target.value)}
       />
       {expanded ? (
-        <div className="locale-content-list">
-          {locales.map((locale) => (
-            <div key={locale.locale} className="locale-content-row">
-              <strong>{locale.locale}</strong>
-              <span className={locale.isSource ? 'tag ok' : 'tag'}>
-                {locale.isSource ? '源文案' : '翻译'}
-              </span>
-              <textarea
-                aria-label={`${locale.locale} ${title}`}
-                value={locale.promotionalText}
-                placeholder="未填写"
-                onChange={(event) => onLocaleChange(locale.locale, event.target.value)}
-              />
-            </div>
-          ))}
+        <div className="locale-expanded-block">
+          <div className="locale-translation-toolbar">
+            <button
+              className="button slim"
+              type="button"
+              onClick={onTranslate}
+              disabled={translateBusy}
+            >
+              {translateBusy ? '翻译中...' : `翻译${title}到其他语言`}
+            </button>
+            <span>使用源文案生成其他语言草稿，生成后仍可手动修改。</span>
+          </div>
+          {translateError ? <div className="notice error compact">{translateError}</div> : null}
+          <div className="locale-content-list">
+            {locales.map((locale) => (
+              <div key={locale.locale} className="locale-content-row">
+                <strong>{locale.locale}</strong>
+                <span className={locale.isSource ? 'tag ok' : 'tag'}>
+                  {locale.isSource ? '源文案' : '翻译'}
+                </span>
+                <textarea
+                  aria-label={`${locale.locale} ${title}`}
+                  value={locale.promotionalText}
+                  placeholder="未填写"
+                  onChange={(event) => onLocaleChange(locale.locale, event.target.value)}
+                />
+              </div>
+            ))}
+          </div>
         </div>
       ) : null}
     </article>
@@ -1631,15 +1793,21 @@ function EditableFieldCard({
   field,
   placeholder,
   onChange,
-  onLocaleChange
+  onLocaleChange,
+  onTranslate,
+  translateBusy,
+  translateError
 }: {
   title: string;
   value: string;
   locales: StoreLocaleContent[];
-  field: 'promotionalText' | 'description' | 'releaseNotes';
+  field: StoreTextField;
   placeholder: string;
   onChange: (value: string) => void;
   onLocaleChange: (locale: string, value: string) => void;
+  onTranslate: () => void;
+  translateBusy: boolean;
+  translateError: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   return (
@@ -1665,21 +1833,35 @@ function EditableFieldCard({
         onChange={(event) => onChange(event.target.value)}
       />
       {expanded ? (
-        <div className="locale-content-list">
-          {locales.map((locale) => (
-            <div key={locale.locale} className="locale-content-row">
-              <strong>{locale.locale}</strong>
-              <span className={locale.isSource ? 'tag ok' : 'tag'}>
-                {locale.isSource ? '源文案' : '翻译'}
-              </span>
-              <textarea
-                aria-label={`${locale.locale} ${title}`}
-                value={locale[field]}
-                placeholder={placeholder}
-                onChange={(event) => onLocaleChange(locale.locale, event.target.value)}
-              />
-            </div>
-          ))}
+        <div className="locale-expanded-block">
+          <div className="locale-translation-toolbar">
+            <button
+              className="button slim"
+              type="button"
+              onClick={onTranslate}
+              disabled={translateBusy}
+            >
+              {translateBusy ? '翻译中...' : `翻译${title}到其他语言`}
+            </button>
+            <span>使用源文案生成其他语言草稿，生成后仍可手动修改。</span>
+          </div>
+          {translateError ? <div className="notice error compact">{translateError}</div> : null}
+          <div className="locale-content-list">
+            {locales.map((locale) => (
+              <div key={locale.locale} className="locale-content-row">
+                <strong>{locale.locale}</strong>
+                <span className={locale.isSource ? 'tag ok' : 'tag'}>
+                  {locale.isSource ? '源文案' : '翻译'}
+                </span>
+                <textarea
+                  aria-label={`${locale.locale} ${title}`}
+                  value={locale[field]}
+                  placeholder={placeholder}
+                  onChange={(event) => onLocaleChange(locale.locale, event.target.value)}
+                />
+              </div>
+            ))}
+          </div>
         </div>
       ) : null}
     </article>

@@ -819,104 +819,137 @@ function StoreWorkspace({
   }
 
   return (
-    <div className="store-workspace-page">
-      <section className="panel store-workspace-head">
-        <div>
-          <p className="eyebrow">{state.account.teamName}</p>
+    <div className="compact-page compact-store-editor store-workspace-page">
+      <div className="compact-context">
+        <div className="compact-title">
+          <strong>Store Content</strong>
+          <h1>应用商店管理</h1>
           <h2>{app.name}</h2>
-          <p className="muted">{app.bundleIdentifier}</p>
+          <span>
+            {app.bundleIdentifier} · {app.platformLabel} · 当前草稿 · {workspace?.supportedLocales.length ?? 0} 个语言 · 当前商店最新版本（含未发布）：{workspace?.version || app.latestVersionLabel || '未确认'} · {workspace?.preflightLabel || '等待检查'}
+          </span>
         </div>
-        <button
-          className="button"
-          type="button"
-          onClick={() => onNavigate(`/admin/accounts/${state.account.id}`)}
-        >
-          返回账号
-        </button>
-      </section>
-
-      <section className="store-section-tabs" aria-label="商店工作区">
-        {storeSections.map((item) => (
-          <button
-            key={item.key}
-            className={item.key === section ? 'store-section-tab active' : 'store-section-tab'}
-            type="button"
-            onClick={() => onNavigate(`/admin/accounts/${state.account.id}/apps/${app.id}/${item.key}`)}
-          >
-            <strong>{item.label}</strong>
-            <span>{item.description}</span>
+        <div className="compact-actions">
+          <button className="button" type="button" onClick={() => onNavigate('/admin/apps')}>
+            商店应用
           </button>
-        ))}
-      </section>
-
-      <section className="panel">
-        <div className="panel-head compact">
-          <strong>{sectionLabel}</strong>
-          <span>{app.platformLabel} / {app.latestVersionLabel}</span>
-        </div>
-
-        {section === 'connection' ? (
-          <div className="connection-workspace">
-            <ConnectorForm connector={state.connector} onSubmit={onSaveConnector} />
-            <button className="button" type="button" onClick={onCheckConnector}>
+          <button className="button" type="button" onClick={() => onNavigate(`/admin/accounts/${state.account.id}`)}>
+            返回账号
+          </button>
+          {section === 'connection' ? (
+            <button className="button primary" type="button" onClick={onCheckConnector}>
               检查连接
             </button>
-            <BoundAppSettings app={app} onSave={(payload) => onSaveAppSettings(app, payload)} />
-          </div>
-        ) : null}
+          ) : null}
+        </div>
+      </div>
 
-        {workspaceError ? <div className="notice error">{workspaceError}</div> : null}
-        {workspaceNotice ? <div className="notice ok">{workspaceNotice}</div> : null}
-        {!workspace && !workspaceError && section !== 'connection' ? (
-          <div className="empty-state">正在加载商店工作区...</div>
-        ) : null}
+      <div className="compact-body">
+        <div className="compact-editor-grid">
+          <aside className="module-nav compact-editor-nav" aria-label="应用商店模块">
+            <div className="module-head">
+              <strong>应用模块</strong>
+              <span>只保留当前应用相关操作</span>
+            </div>
+            <div className="module-list">
+              {storeSections.map((item) => (
+                <button
+                  key={item.key}
+                  className={item.key === section ? 'module-link active' : 'module-link'}
+                  type="button"
+                  onClick={() => onNavigate(`/admin/accounts/${state.account.id}/apps/${app.id}/${item.key}`)}
+                >
+                  <span>{item.label}</span>
+                </button>
+              ))}
+            </div>
+          </aside>
 
-        {workspace && section === 'store' ? (
-          <StoreDefaultPanel
+          <section className="content compact-editor-content">
+            <div className="content-head">
+              <div>
+                <h2>{sectionLabel}</h2>
+                <p>{storeSections.find((item) => item.key === section)?.description}</p>
+              </div>
+              <div className="compact-editor-meta">
+                <span>当前语言：<strong>{workspace?.locale || workspace?.sourceLocale || '-'}</strong></span>
+                <span>{workspace?.supportedLocales.length ?? 0} 个语言</span>
+              </div>
+            </div>
+
+            <div className="compact-editor-panel">
+              {section === 'connection' ? (
+                <div className="connection-workspace">
+                  <ConnectorForm connector={state.connector} onSubmit={onSaveConnector} />
+                  <BoundAppSettings app={app} onSave={(payload) => onSaveAppSettings(app, payload)} />
+                </div>
+              ) : null}
+
+              {workspaceError ? <div className="notice error">{workspaceError}</div> : null}
+              {workspaceNotice ? <div className="notice ok">{workspaceNotice}</div> : null}
+              {!workspace && !workspaceError && section !== 'connection' ? (
+                <div className="empty-state">正在加载商店工作区...</div>
+              ) : null}
+
+              {workspace && section === 'store' ? (
+                <StoreDefaultPanel
+                  workspace={workspace}
+                  busy={workspaceBusy}
+                  syncing={syncBusy}
+                  onSave={saveMetadata}
+                  onCheck={checkPreflight}
+                  onSync={syncWorkspace}
+                  onDeleteImage={deleteImage}
+                  onUploadImages={uploadImages}
+                />
+              ) : null}
+              {workspace && section === 'marketing' ? (
+                pageId ? (
+                  <MarketingPageDetailPanel
+                    detail={marketingPage}
+                    busy={workspaceBusy}
+                    syncing={syncBusy}
+                    onBack={() => onNavigate(`/admin/accounts/${state.account.id}/apps/${app.id}/marketing`)}
+                    onSave={saveMarketing}
+                    onCheck={checkMarketing}
+                    onSync={syncMarketing}
+                    onCopy={() => void copyMarketing()}
+                    onDelete={() => void removeMarketing()}
+                    onDeleteImage={deleteMarketingImage}
+                    onUploadImages={uploadMarketingImages}
+                  />
+                ) : (
+                  <MarketingPagesPanel
+                    workspace={workspace}
+                    busy={workspaceBusy}
+                    onNavigate={onNavigate}
+                    onCreate={createMarketing}
+                  />
+                )
+              ) : null}
+              {workspace && section === 'release-notes' ? (
+                <ReleaseNotesPanel
+                  workspace={workspace}
+                  busy={workspaceBusy}
+                  syncing={syncBusy}
+                  onSave={saveReleaseNotes}
+                  onCheck={checkPreflight}
+                  onSync={syncWorkspace}
+                />
+              ) : null}
+            </div>
+          </section>
+
+          <StoreWorkspaceSide
+            account={state.account}
+            app={app}
+            connector={state.connector}
             workspace={workspace}
-            busy={workspaceBusy}
-            syncing={syncBusy}
-            onSave={saveMetadata}
-            onCheck={checkPreflight}
-            onSync={syncWorkspace}
-            onDeleteImage={deleteImage}
-            onUploadImages={uploadImages}
+            marketingPage={marketingPage}
+            section={section}
           />
-        ) : null}
-        {workspace && section === 'marketing' ? (
-          pageId ? (
-            <MarketingPageDetailPanel
-              detail={marketingPage}
-              busy={workspaceBusy}
-              syncing={syncBusy}
-              onBack={() => onNavigate(`/admin/accounts/${state.account.id}/apps/${app.id}/marketing`)}
-              onSave={saveMarketing}
-              onCheck={checkMarketing}
-              onSync={syncMarketing}
-              onCopy={() => void copyMarketing()}
-              onDelete={() => void removeMarketing()}
-              onDeleteImage={deleteMarketingImage}
-              onUploadImages={uploadMarketingImages}
-            />
-          ) : (
-            <MarketingPagesPanel
-              workspace={workspace}
-              busy={workspaceBusy}
-              onNavigate={onNavigate}
-              onCreate={createMarketing}
-            />
-          )
-        ) : null}
-        {workspace && section === 'release-notes' ? (
-          <ReleaseNotesPanel
-            workspace={workspace}
-            busy={workspaceBusy}
-            syncing={syncBusy}
-            onSave={saveReleaseNotes}
-            onCheck={checkPreflight}
-            onSync={syncWorkspace}
-          />
-        ) : null}
+        </div>
+
         {syncConfirmation ? (
           <SyncConfirmDialog
             confirmation={syncConfirmation}
@@ -930,8 +963,70 @@ function StoreWorkspace({
             onConfirm={() => void confirmSync()}
           />
         ) : null}
-      </section>
+      </div>
     </div>
+  );
+}
+
+function StoreWorkspaceSide({
+  account,
+  app,
+  connector,
+  workspace,
+  marketingPage,
+  section
+}: {
+  account: DeveloperAccountSummary;
+  app: AccountAppItem;
+  connector: DeveloperAccountDetailState['connector'];
+  workspace: StoreWorkspaceState | null;
+  marketingPage: MarketingPageDetailState | null;
+  section: StoreSection;
+}) {
+  const preflightLabel = section === 'marketing'
+    ? marketingPage?.preflightLabel || workspace?.preflightLabel
+    : workspace?.preflightLabel;
+  const preflightStatus = section === 'marketing'
+    ? marketingPage?.preflightStatus || workspace?.preflightStatus
+    : workspace?.preflightStatus;
+  const connectorOk = connector?.status === 'ok';
+  return (
+    <aside className="compact-editor-side">
+      <div className="compact-column-head">
+        <strong>{section === 'connection' ? '连接状态' : '同步前检查'}</strong>
+        <span className={`tag ${preflightStatus === 'ok' ? 'ok' : 'warn'}`}>
+          {preflightLabel || '等待检查'}
+        </span>
+      </div>
+      <div className="compact-side-list">
+        <div className="compact-side-card">
+          <strong>开发者账号</strong>
+          <span>{account.teamName} · {account.statusLabel}</span>
+          <span>{account.expiresAtLabel}</span>
+        </div>
+        <div className="compact-side-card">
+          <strong>商店标识</strong>
+          <span>{app.platform === 'ios' ? `App ID：${app.storeAppId || '未填写'}` : `Package：${app.storePackageName || app.bundleIdentifier}`}</span>
+        </div>
+        <div className="compact-side-card">
+          <strong>Connector 连接</strong>
+          <span>{connector?.name || '未配置'}{connector?.checkedAtLabel ? ` · ${connector.checkedAtLabel}` : ''}</span>
+          <span className={`tag ${connectorOk ? 'ok' : 'warn'}`}>{connector?.statusLabel || '未检查'}</span>
+        </div>
+        {section !== 'connection' ? (
+          <>
+            <div className="compact-side-card">
+              <strong>当前商店版本</strong>
+              <span>当前商店最新版本（含未发布）：{workspace?.version || app.latestVersionLabel || '未确认'}</span>
+            </div>
+            <div className="compact-side-card">
+              <strong>语言来源</strong>
+              <span>{workspace?.supportedLocales.length ? workspace.supportedLocales.join('、') : '等待从商店接口同步'}</span>
+            </div>
+          </>
+        ) : null}
+      </div>
+    </aside>
   );
 }
 
@@ -1885,7 +1980,7 @@ function MarketingImageOverview({
         {locales.map((locale) => {
           const assets = imageAssets(locale.storeImages);
           return (
-            <div key={locale.locale} className="locale-content-row">
+            <div key={locale.locale} className="locale-content-row image-locale-row">
               <strong>{locale.locale}</strong>
               <span>{assets.length} 张</span>
               <ImageUploadActions
@@ -2032,7 +2127,7 @@ function ImageOverview({
           const assets = imageAssets(locale.storeImages);
           const count = assets.length;
           return (
-            <div key={locale.locale} className="locale-content-row">
+            <div key={locale.locale} className="locale-content-row image-locale-row">
               <strong>{locale.locale}</strong>
               <span>{count} 张</span>
               <ImageUploadActions

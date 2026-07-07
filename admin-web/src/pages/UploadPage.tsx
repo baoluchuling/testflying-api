@@ -108,117 +108,133 @@ export function UploadPage() {
   }
 
   return (
-    <div className="upload-page" data-upload-page>
-      <form className="panel upload-panel" noValidate onSubmit={(event) => void submitUpload(event)}>
-        <div className="panel-head compact">
-          <strong>上传 IPA / APK</strong>
-          <div className="inline-actions">
-            <span className="tag">{view.status === 'uploading' ? '上传中' : view.status === 'done' ? '已完成' : '等待选择'}</span>
-            <button className="button" type="reset" disabled={view.status === 'uploading'}>
-              清空
-            </button>
-            <button className="button primary" type="submit" disabled={view.status === 'uploading'}>
-              {view.status === 'uploading' ? `${view.progress}%` : '开始上传'}
-            </button>
-          </div>
+    <div className="compact-page compact-upload-page upload-page" data-upload-page>
+      <div className="compact-context">
+        <div className="compact-title">
+          <strong>Package Intake</strong>
+          <h1>上传</h1>
+          <span>自动解析包信息，支持 iOS / Android，不会提交到商店。</span>
         </div>
+        <div className="compact-actions">
+          <span className="tag">
+            {view.status === 'uploading' ? '上传中' : view.status === 'done' ? '已完成' : '等待选择'}
+          </span>
+        </div>
+      </div>
 
-        <label className="upload-drop-zone">
-          <input
-            aria-label="选择安装包"
-            name="file"
-            type="file"
-            accept=".ipa,.apk,application/vnd.android.package-archive,application/octet-stream"
-            required
-            disabled={view.status === 'uploading'}
-            onChange={(event) => {
-              updateUploadView({ fileName: event.currentTarget.files?.[0]?.name ?? '' });
-            }}
-          />
-          <span>选择安装包</span>
-          <strong>{view.fileName || '还没有选择文件'}</strong>
-        </label>
+      <div className="compact-body">
+        <div className="compact-upload-grid">
+          <form className="panel upload-panel" noValidate onSubmit={(event) => void submitUpload(event)}>
+            <div className="panel-head compact">
+              <strong>上传 IPA / APK</strong>
+              <div className="inline-actions">
+                <button className="button" type="reset" disabled={view.status === 'uploading'}>
+                  清空
+                </button>
+                <button className="button primary" type="submit" disabled={view.status === 'uploading'}>
+                  {view.status === 'uploading' ? `${view.progress}%` : '开始上传'}
+                </button>
+              </div>
+            </div>
 
-        <details className="upload-config">
-          <summary>上传配置</summary>
-          <div className="form-grid two">
-            <label>
-              <span>平台</span>
-              <select
-                name="platform"
-                value={platform}
-                onChange={(event) => setPlatform(event.currentTarget.value)}
+            <label className="upload-drop-zone">
+              <input
+                aria-label="选择安装包"
+                name="file"
+                type="file"
+                accept=".ipa,.apk,application/vnd.android.package-archive,application/octet-stream"
+                required
                 disabled={view.status === 'uploading'}
-              >
-                <option value="ios">iOS</option>
-                <option value="android">Android</option>
-              </select>
+                onChange={(event) => {
+                  updateUploadView({ fileName: event.currentTarget.files?.[0]?.name ?? '' });
+                }}
+              />
+              <span>选择安装包</span>
+              <strong>{view.fileName || '还没有选择文件'}</strong>
             </label>
-            <label>
-              <span>环境</span>
-              <select name="environment" defaultValue="development" disabled={view.status === 'uploading'}>
-                <option value="development">开发环境</option>
-                <option value="production">线上环境</option>
-              </select>
-            </label>
-          </div>
 
-          <div className="form-grid two">
-            <label>
-              <span>开发者账号</span>
-              <select name="developerAccountId" disabled={view.status === 'uploading'}>
-                <option value="">不绑定账号</option>
-                {state?.accounts.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.teamName}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {platform === 'ios' ? (
+            <details className="upload-config">
+              <summary>上传配置</summary>
+              <div className="form-grid two">
+                <label>
+                  <span>平台</span>
+                  <select
+                    name="platform"
+                    value={platform}
+                    onChange={(event) => setPlatform(event.currentTarget.value)}
+                    disabled={view.status === 'uploading'}
+                  >
+                    <option value="ios">iOS</option>
+                    <option value="android">Android</option>
+                  </select>
+                </label>
+                <label>
+                  <span>环境</span>
+                  <select name="environment" defaultValue="development" disabled={view.status === 'uploading'}>
+                    <option value="development">开发环境</option>
+                    <option value="production">线上环境</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className="form-grid two">
+                <label>
+                  <span>开发者账号</span>
+                  <select name="developerAccountId" disabled={view.status === 'uploading'}>
+                    <option value="">不绑定账号</option>
+                    {state?.accounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.teamName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {platform === 'ios' ? (
+                  <label>
+                    <span>App Store Connect App ID</span>
+                    <input
+                      name="storeAppId"
+                      placeholder="可选，数字 ID"
+                      disabled={view.status === 'uploading'}
+                    />
+                  </label>
+                ) : (
+                  <label>
+                    <span>Google Play package name</span>
+                    <input
+                      name="storePackageName"
+                      placeholder="默认使用 APK package"
+                      disabled={view.status === 'uploading'}
+                    />
+                  </label>
+                )}
+              </div>
+
               <label>
-                <span>App Store Connect App ID</span>
-                <input
-                  name="storeAppId"
-                  placeholder="可选，数字 ID"
+                <span>更新说明</span>
+                <textarea
+                  name="changelog"
+                  rows={4}
+                  placeholder="本次构建变更、验证重点或风险说明"
                   disabled={view.status === 'uploading'}
                 />
               </label>
-            ) : (
-              <label>
-                <span>Google Play package name</span>
-                <input
-                  name="storePackageName"
-                  placeholder="默认使用 APK package"
-                  disabled={view.status === 'uploading'}
-                />
-              </label>
-            )}
-          </div>
+            </details>
 
-          <label>
-            <span>更新说明</span>
-            <textarea
-              name="changelog"
-              rows={4}
-              placeholder="本次构建变更、验证重点或风险说明"
-              disabled={view.status === 'uploading'}
-            />
-          </label>
-        </details>
+            {view.status === 'uploading' ? (
+              <div className="upload-progress" aria-label="上传进度">
+                <span style={{ width: `${view.progress}%` }} />
+              </div>
+            ) : null}
+          </form>
 
-        {view.status === 'uploading' ? (
-          <div className="upload-progress" aria-label="上传进度">
-            <span style={{ width: `${view.progress}%` }} />
-          </div>
-        ) : null}
-      </form>
-
-      <aside className="upload-side">
-        {view.error ? <div className="notice error">{view.error}</div> : null}
-        {view.notice && !view.error ? <div className="notice ok">{view.notice}</div> : null}
-        {view.result ? <UploadResultPanel result={view.result} /> : <UploadEmptyPanel />}
-      </aside>
+          <aside className="upload-side">
+            {view.error ? <div className="notice error">{view.error}</div> : null}
+            {view.notice && !view.error ? <div className="notice ok">{view.notice}</div> : null}
+            {view.result ? <UploadResultPanel result={view.result} /> : <UploadEmptyPanel />}
+          </aside>
+        </div>
+      </div>
     </div>
   );
 }

@@ -847,7 +847,7 @@ function StoreWorkspace({
       <div className="compact-context">
         <div className="compact-title">
           <strong>Store Content</strong>
-          <h1>应用商店管理</h1>
+          <h2>应用商店管理</h2>
           <span>
             {app.name} · {app.bundleIdentifier} · {app.platformLabel} · 当前草稿 · {workspace?.supportedLocales.length ?? 0} 个语言 · 当前商店最新版本（含未发布）：{workspace?.version || app.latestVersionLabel || '未确认'} · {workspace?.preflightLabel || '等待检查'}
           </span>

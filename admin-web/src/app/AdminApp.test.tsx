@@ -60,7 +60,7 @@ describe('AdminApp', () => {
       '/admin/store-reviews'
     );
     expect(location.pathname).toBe('/admin/store-reviews');
-    expect(screen.getByRole('heading', { name: '商店评论' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: '商店评论' })).toBeTruthy();
   });
 
   it('renders ordinary pages inside the React shell', async () => {

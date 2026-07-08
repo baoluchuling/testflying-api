@@ -112,7 +112,7 @@ export function UploadPage() {
       <div className="compact-context">
         <div className="compact-title">
           <strong>Package Intake</strong>
-          <h1>上传</h1>
+          <h2>上传</h2>
           <span>自动解析包信息，支持 iOS / Android，不会提交到商店。</span>
         </div>
         <div className="compact-actions">

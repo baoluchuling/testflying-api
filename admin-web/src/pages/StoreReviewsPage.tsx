@@ -106,7 +106,7 @@ export function StoreReviewsPage() {
       <div className="compact-context">
         <div className="compact-title">
           <strong>Store Review Intelligence</strong>
-          <h1>商店评论</h1>
+          <h2>商店评论</h2>
           <span>
             {selectedApp ? selectedApp.appName : '未选择应用'} · {selectedApp?.platform ?? '全部平台'} · 本地 {state?.stats.total ?? 0} 条 · 低分 {state?.stats.low ?? 0} 条 · 只做分析不回复
           </span>

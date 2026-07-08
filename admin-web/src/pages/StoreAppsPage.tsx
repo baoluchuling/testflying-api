@@ -73,7 +73,7 @@ export function StoreAppsPage() {
       <div className="compact-context">
         <div className="compact-title">
           <strong>Store Operations</strong>
-          <h1>商店管理</h1>
+          <h2>商店管理</h2>
           <span>
             从应用直接进入商店内容 · 账号配置只是辅助入口 · {state?.stats.total ?? 0} 个应用 · {state?.stats.ready ?? 0} 个可同步 · {state?.stats.needs ?? 0} 个需处理
           </span>

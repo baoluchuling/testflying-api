@@ -73,7 +73,7 @@ type AccountRoute =
   | { kind: 'edit'; accountId: string }
   | { kind: 'app'; accountId: string; appId: string; section: StoreSection; pageId?: string };
 
-type StoreSection = 'store' | 'marketing' | 'release-notes' | 'connection';
+type StoreSection = 'store' | 'marketing' | 'connection';
 
 const accountStatuses = [
   { value: 'ok', label: '正常' },
@@ -83,9 +83,8 @@ const accountStatuses = [
 ];
 
 const storeSections: Array<{ key: StoreSection; label: string; description: string }> = [
-  { key: 'store', label: '默认商店页', description: '宣传文本、描述、商店图和版本说明' },
+  { key: 'store', label: '默认商店页', description: '编辑当前商店页的版本说明、宣传文本、描述和截图。同步前再选择本次提交范围。' },
   { key: 'marketing', label: '营销页面', description: '自定义产品页面和产品页面优化' },
-  { key: 'release-notes', label: '版本说明', description: '最新商店版本的 Release Notes' },
   { key: 'connection', label: '商店连接', description: 'Connector、商店标识和连接检查' }
 ];
 
@@ -548,6 +547,30 @@ function StoreWorkspace({
     }
   }
 
+  async function saveDefaultStore(locales: StoreLocaleContentInput[]) {
+    if (!workspace) return;
+    setWorkspaceBusy(true);
+    setWorkspaceError('');
+    try {
+      await saveStoreWorkspaceMetadata(state.account.id, appId, {
+        version: workspace.version,
+        locale: workspace.locale || workspace.sourceLocale,
+        locales
+      });
+      const response = await saveStoreWorkspaceReleaseNotes(state.account.id, appId, {
+        version: workspace.version,
+        locale: workspace.locale || workspace.sourceLocale,
+        locales
+      });
+      setWorkspace(response.state);
+      showWorkspaceNotice(response.message);
+    } catch (requestError) {
+      setWorkspaceError(errorMessage(requestError));
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  }
+
   async function checkPreflight(locales: StoreLocaleContentInput[], syncScopes: string[]) {
     if (!workspace) return;
     setWorkspaceBusy(true);
@@ -571,9 +594,10 @@ function StoreWorkspace({
   async function syncWorkspace(locales: StoreLocaleContentInput[], syncScopes: string[]) {
     if (!workspace) return;
     setSyncConfirmationError('');
+    const onlyReleaseNotes = syncScopes.length === 1 && syncScopes[0] === 'release_notes';
     setSyncConfirmation({
       kind: 'workspace',
-      title: syncScopes.includes('release_notes') ? '同步版本说明' : '同步商店页',
+      title: onlyReleaseNotes ? '同步版本说明' : '同步商店页',
       targetLabel: app?.name ?? appId,
       versionLabel: workspace.version || '未确认',
       scopeLabels: syncScopes.map(syncScopeLabel),
@@ -824,18 +848,21 @@ function StoreWorkspace({
         <div className="compact-title">
           <strong>Store Content</strong>
           <h1>应用商店管理</h1>
-          <h2>{app.name}</h2>
           <span>
-            {app.bundleIdentifier} · {app.platformLabel} · 当前草稿 · {workspace?.supportedLocales.length ?? 0} 个语言 · 当前商店最新版本（含未发布）：{workspace?.version || app.latestVersionLabel || '未确认'} · {workspace?.preflightLabel || '等待检查'}
+            {app.name} · {app.bundleIdentifier} · {app.platformLabel} · 当前草稿 · {workspace?.supportedLocales.length ?? 0} 个语言 · 当前商店最新版本（含未发布）：{workspace?.version || app.latestVersionLabel || '未确认'} · {workspace?.preflightLabel || '等待检查'}
           </span>
         </div>
         <div className="compact-actions">
-          <button className="button" type="button" onClick={() => onNavigate('/admin/apps')}>
-            商店应用
-          </button>
-          <button className="button" type="button" onClick={() => onNavigate(`/admin/accounts/${state.account.id}`)}>
-            返回账号
-          </button>
+          {section !== 'store' ? (
+            <button className="button" type="button" onClick={() => onNavigate('/admin/apps')}>
+              商店应用
+            </button>
+          ) : null}
+          {section === 'connection' ? (
+            <button className="button" type="button" onClick={() => onNavigate(`/admin/accounts/${state.account.id}`)}>
+              返回账号
+            </button>
+          ) : null}
           {section === 'connection' ? (
             <button className="button primary" type="button" onClick={onCheckConnector}>
               检查连接
@@ -859,6 +886,7 @@ function StoreWorkspace({
                   type="button"
                   onClick={() => onNavigate(`/admin/accounts/${state.account.id}/apps/${app.id}/${item.key}`)}
                 >
+                  {storeModuleIcon(item.key)}
                   <span>{item.label}</span>
                 </button>
               ))}
@@ -896,7 +924,8 @@ function StoreWorkspace({
                   workspace={workspace}
                   busy={workspaceBusy}
                   syncing={syncBusy}
-                  onSave={saveMetadata}
+                  onBackToApps={() => onNavigate('/admin/apps')}
+                  onSave={saveDefaultStore}
                   onCheck={checkPreflight}
                   onSync={syncWorkspace}
                   onDeleteImage={deleteImage}
@@ -926,16 +955,6 @@ function StoreWorkspace({
                     onCreate={createMarketing}
                   />
                 )
-              ) : null}
-              {workspace && section === 'release-notes' ? (
-                <ReleaseNotesPanel
-                  workspace={workspace}
-                  busy={workspaceBusy}
-                  syncing={syncBusy}
-                  onSave={saveReleaseNotes}
-                  onCheck={checkPreflight}
-                  onSync={syncWorkspace}
-                />
               ) : null}
             </div>
           </section>
@@ -990,6 +1009,9 @@ function StoreWorkspaceSide({
     ? marketingPage?.preflightStatus || workspace?.preflightStatus
     : workspace?.preflightStatus;
   const connectorOk = connector?.status === 'ok';
+  const syncScopeSummary = section === 'marketing'
+    ? '默认勾选文案和商店图；点击同步时可在确认清单里调整。'
+    : '默认勾选版本说明、宣传文本、描述和商店图；点击同步时可在确认清单里调整。';
   return (
     <aside className="compact-editor-side">
       <div className="compact-column-head">
@@ -999,32 +1021,51 @@ function StoreWorkspaceSide({
         </span>
       </div>
       <div className="compact-side-list">
-        <div className="compact-side-card">
-          <strong>开发者账号</strong>
-          <span>{account.teamName} · {account.statusLabel}</span>
-          <span>{account.expiresAtLabel}</span>
-        </div>
-        <div className="compact-side-card">
-          <strong>商店标识</strong>
-          <span>{app.platform === 'ios' ? `App ID：${app.storeAppId || '未填写'}` : `Package：${app.storePackageName || app.bundleIdentifier}`}</span>
-        </div>
-        <div className="compact-side-card">
-          <strong>Connector 连接</strong>
-          <span>{connector?.name || '未配置'}{connector?.checkedAtLabel ? ` · ${connector.checkedAtLabel}` : ''}</span>
-          <span className={`tag ${connectorOk ? 'ok' : 'warn'}`}>{connector?.statusLabel || '未检查'}</span>
-        </div>
-        {section !== 'connection' ? (
+        {section === 'connection' ? (
           <>
             <div className="compact-side-card">
-              <strong>当前商店版本</strong>
-              <span>当前商店最新版本（含未发布）：{workspace?.version || app.latestVersionLabel || '未确认'}</span>
+              <strong>开发者账号</strong>
+              <span>{account.teamName} · {account.statusLabel}</span>
+              <span>{account.expiresAtLabel}</span>
+            </div>
+            <div className="compact-side-card">
+              <strong>商店标识</strong>
+              <span>{app.platform === 'ios' ? `App ID：${app.storeAppId || '未填写'}` : `Package：${app.storePackageName || app.bundleIdentifier}`}</span>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="compact-side-card">
+              <strong>商店版本</strong>
+              <span>
+                {preflightStatus === 'ok'
+                  ? `当前商店最新版本（含未发布）：${workspace?.version || app.latestVersionLabel || '未确认'}。`
+                  : '商店版本还没有创建，暂时不能同步。点击同步时会再次弹出确认清单。'}
+              </span>
+              <span className={`tag ${preflightStatus === 'ok' ? 'ok' : 'warn'}`}>
+                {preflightStatus === 'ok' ? '可同步' : '阻断'}
+              </span>
+            </div>
+            <div className="compact-side-card">
+              <strong>Connector 连接</strong>
+              <span>
+                {connector?.name || '未配置'}
+                {connector?.checkedAtLabel ? ` · ${connector.checkedAtLabel}` : ''}
+              </span>
+              <span className={`tag ${connectorOk ? 'ok' : 'warn'}`}>
+                {connector?.statusLabel || '未检查'}
+              </span>
+            </div>
+            <div className="compact-side-card">
+              <strong>本次同步范围</strong>
+              <span>{syncScopeSummary}</span>
             </div>
             <div className="compact-side-card">
               <strong>语言来源</strong>
               <span>{workspace?.supportedLocales.length ? workspace.supportedLocales.join('、') : '等待从商店接口同步'}</span>
             </div>
           </>
-        ) : null}
+        )}
       </div>
     </aside>
   );
@@ -1379,6 +1420,7 @@ function StoreDefaultPanel({
   workspace,
   busy,
   syncing,
+  onBackToApps,
   onSave,
   onCheck,
   onSync,
@@ -1388,6 +1430,7 @@ function StoreDefaultPanel({
   workspace: StoreWorkspaceState;
   busy: boolean;
   syncing: boolean;
+  onBackToApps: () => void;
   onSave: (locales: StoreLocaleContentInput[]) => void;
   onCheck: (locales: StoreLocaleContentInput[], syncScopes: string[]) => void;
   onSync: (locales: StoreLocaleContentInput[], syncScopes: string[]) => void;
@@ -1411,11 +1454,7 @@ function StoreDefaultPanel({
   const current = rows.find((item) => item.locale === currentLocale) ?? rows[0] ?? null;
   const payload = serializeStoreRows(rows);
 
-  function updateField(
-    field: 'promotionalText' | 'description',
-    value: string,
-    locale = currentLocale
-  ) {
+  function updateField(field: StoreTextField, value: string, locale = currentLocale) {
     setRows((currentRows) =>
       currentRows.map((item) =>
         item.locale === locale ? { ...item, [field]: value } : item
@@ -1462,32 +1501,50 @@ function StoreDefaultPanel({
 
   return (
     <div className="workspace-content-grid">
-      <section className="store-summary-strip">
-        <span>当前商店最新版本：{workspace.version || '未确认'}</span>
-        <span>{workspace.supportedLocales.length} 个语言</span>
-        <span>{workspace.preflightLabel}</span>
+      <section className="store-summary-strip store-page-actions">
+        <button className="button" type="button" onClick={onBackToApps}>
+          商店应用
+        </button>
         <button className="button" type="button" onClick={() => onSave(payload)} disabled={busy}>
           保存草稿
         </button>
         <button
+          className="button primary"
+          type="button"
+          onClick={() => onSync(payload, ['release_notes', 'metadata', 'store_images'])}
+          disabled={busy}
+        >
+          {syncing ? '同步中...' : '同步到商店'}
+        </button>
+        <button
           className="button"
           type="button"
-          onClick={() => onCheck(payload, ['metadata', 'store_images'])}
+          onClick={() => onCheck(payload, ['release_notes', 'metadata', 'store_images'])}
           disabled={busy}
         >
           实时查询
         </button>
-        <button
-          className="button primary"
-          type="button"
-          onClick={() => onSync(payload, ['metadata', 'store_images'])}
-          disabled={busy}
-        >
-          {syncing ? '同步中...' : '同步商店页'}
-        </button>
       </section>
-      <EditableFieldCard
+      <StoreTextSection
+        title="版本说明"
+        subtitle="Release Notes"
+        meta="跟随当前商店最新版本"
+        icon="release"
+        value={current?.releaseNotes || ''}
+        placeholder="fix bugs"
+        locales={rows}
+        field="releaseNotes"
+        onChange={(value) => updateField('releaseNotes', value)}
+        onLocaleChange={(locale, value) => updateField('releaseNotes', value, locale)}
+        onTranslate={() => translateField('releaseNotes')}
+        translateBusy={translatingField === 'releaseNotes'}
+        translateError={translationError.field === 'releaseNotes' ? translationError.message : ''}
+      />
+      <StoreTextSection
         title="宣传文本"
+        subtitle="Promotional Text"
+        meta={`当前语言：${currentLocale}`}
+        icon="promo"
         value={current?.promotionalText || ''}
         placeholder="App Store Connect promotional text"
         locales={rows}
@@ -1500,8 +1557,11 @@ function StoreDefaultPanel({
           translationError.field === 'promotionalText' ? translationError.message : ''
         }
       />
-      <EditableFieldCard
+      <StoreTextSection
         title="描述"
+        subtitle="Description"
+        meta={`当前语言：${currentLocale}`}
+        icon="description"
         value={current?.description || ''}
         placeholder="App Store Connect description"
         locales={rows}
@@ -1514,125 +1574,10 @@ function StoreDefaultPanel({
       />
       <ImageOverview
         locales={rows}
+        currentLocale={currentLocale}
         busy={busy}
         onDeleteImage={onDeleteImage}
         onUploadImages={onUploadImages}
-      />
-    </div>
-  );
-}
-
-function ReleaseNotesPanel({
-  workspace,
-  busy,
-  syncing,
-  onSave,
-  onCheck,
-  onSync
-}: {
-  workspace: StoreWorkspaceState;
-  busy: boolean;
-  syncing: boolean;
-  onSave: (locales: StoreLocaleContentInput[]) => void;
-  onCheck: (locales: StoreLocaleContentInput[], syncScopes: string[]) => void;
-  onSync: (locales: StoreLocaleContentInput[], syncScopes: string[]) => void;
-}) {
-  const [rows, setRows] = useState<StoreLocaleContent[]>(workspace.localizedMetadata);
-  const [translating, setTranslating] = useState(false);
-  const [translationError, setTranslationError] = useState('');
-
-  useEffect(() => {
-    setRows(workspace.localizedMetadata);
-    setTranslationError('');
-    setTranslating(false);
-  }, [workspace]);
-
-  const currentLocale = workspace.locale || workspace.sourceLocale || rows[0]?.locale || '';
-  const current = rows.find((item) => item.locale === currentLocale) ?? rows[0] ?? null;
-  const payload = serializeStoreRows(rows);
-
-  function updateReleaseNotes(value: string, locale = currentLocale) {
-    setRows((currentRows) =>
-      currentRows.map((item) =>
-        item.locale === locale ? { ...item, releaseNotes: value } : item
-      )
-    );
-  }
-
-  async function translateReleaseNotes() {
-    const source = rows.find((item) => item.isSource) ?? current;
-    const sourceLocale = source?.locale || currentLocale;
-    const sourceText = String(source?.releaseNotes || '').trim();
-    const targetLocales = rows
-      .filter((item) => item.locale !== sourceLocale)
-      .map((item) => item.locale);
-    if (!sourceText) {
-      setTranslationError('源文案为空，无法翻译。');
-      return;
-    }
-    if (!targetLocales.length) {
-      setTranslationError('没有需要翻译的目标语言。');
-      return;
-    }
-    setTranslating(true);
-    setTranslationError('');
-    try {
-      const response = await translateStoreText({
-        sourceLocale,
-        targetLocales,
-        field: 'releaseNotes',
-        text: sourceText
-      });
-      setRows((currentRows) =>
-        currentRows.map((item) => {
-          const translated = response.translations[item.locale];
-          return translated ? { ...item, releaseNotes: translated } : item;
-        })
-      );
-    } catch (requestError) {
-      setTranslationError(errorMessage(requestError));
-    } finally {
-      setTranslating(false);
-    }
-  }
-
-  return (
-    <div className="workspace-content-grid">
-      <section className="store-summary-strip">
-        <span>当前商店最新版本：{workspace.version || '未确认'}</span>
-        <span>{workspace.supportedLocales.length} 个语言</span>
-        <span>{workspace.preflightLabel}</span>
-        <button className="button" type="button" onClick={() => onSave(payload)} disabled={busy}>
-          保存草稿
-        </button>
-        <button
-          className="button"
-          type="button"
-          onClick={() => onCheck(payload, ['release_notes'])}
-          disabled={busy}
-        >
-          实时查询
-        </button>
-        <button
-          className="button primary"
-          type="button"
-          onClick={() => onSync(payload, ['release_notes'])}
-          disabled={busy}
-        >
-          {syncing ? '同步中...' : '同步版本说明'}
-        </button>
-      </section>
-      <EditableFieldCard
-        title="版本说明"
-        value={current?.releaseNotes || ''}
-        placeholder="Release Notes"
-        locales={rows}
-        field="releaseNotes"
-        onChange={updateReleaseNotes}
-        onLocaleChange={(locale, value) => updateReleaseNotes(value, locale)}
-        onTranslate={translateReleaseNotes}
-        translateBusy={translating}
-        translateError={translationError}
       />
     </div>
   );
@@ -2021,6 +1966,171 @@ function MarketingImageOverview({
   );
 }
 
+function StoreTextSection({
+  title,
+  subtitle,
+  meta,
+  icon,
+  value,
+  locales,
+  field,
+  placeholder,
+  onChange,
+  onLocaleChange,
+  onTranslate,
+  translateBusy,
+  translateError
+}: {
+  title: string;
+  subtitle: string;
+  meta: string;
+  icon: 'release' | 'promo' | 'description';
+  value: string;
+  locales: StoreLocaleContent[];
+  field: StoreTextField;
+  placeholder: string;
+  onChange: (value: string) => void;
+  onLocaleChange: (locale: string, value: string) => void;
+  onTranslate: () => void;
+  translateBusy: boolean;
+  translateError: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const filledCount = locales.filter((locale) => String(locale[field] || '').trim()).length;
+  return (
+    <section className="section" data-section={field}>
+      <div className="section-head">
+        <div className="section-title">
+          <span className="title-icon">{storeSectionIcon(icon)}</span>
+          <div>
+            <h3>{title}</h3>
+            <p className="meta">
+              <span>{subtitle}</span>
+              <span>{meta}</span>
+            </p>
+          </div>
+        </div>
+        <div className="section-tools">
+          <span className="pill">
+            <span className="dot" />
+            {filledCount}/{locales.length} 已填写
+          </span>
+          <button
+            aria-label={`翻译${title}到其他语言`}
+            className="button"
+            type="button"
+            onClick={onTranslate}
+            disabled={translateBusy}
+          >
+            {translateBusy ? '翻译中...' : '翻译'}
+          </button>
+          <button
+            aria-label={expanded ? `收起${title}多语言` : `展开${title}多语言`}
+            className="button"
+            type="button"
+            onClick={() => setExpanded((current) => !current)}
+          >
+            {expanded ? '收起多语言' : '展开多语言'}
+          </button>
+        </div>
+      </div>
+      <textarea
+        aria-label={`${title} 当前语言`}
+        value={value}
+        placeholder={placeholder}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      {expanded ? (
+        <div className="item-language-panel">
+          <div className="item-language-panel-title">
+            <span>{title}的所有语言（{locales.length}）</span>
+            <span>{filledCount}/{locales.length} 已填写</span>
+          </div>
+          {translateError ? <div className="notice error compact">{translateError}</div> : null}
+          <div className="language-list">
+            {locales.map((locale) => {
+              const filled = String(locale[field] || '').trim();
+              return (
+                <div key={locale.locale} className="language-row language-edit-row">
+                  <span className="drag">⋮</span>
+                  <span className="lang">{locale.locale}</span>
+                  <span className={locale.isSource ? 'status source' : 'status'}>
+                    {locale.isSource ? '源文案' : filled ? '已填写' : '待填写'}
+                  </span>
+                  <textarea
+                    aria-label={`${locale.locale} ${title}`}
+                    value={locale[field]}
+                    placeholder={placeholder}
+                    onChange={(event) => onLocaleChange(locale.locale, event.target.value)}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function storeSectionIcon(icon: 'release' | 'promo' | 'description' | 'image') {
+  if (icon === 'release') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M6 20h12" />
+        <path d="M8 4h8v16H8z" />
+        <path d="M10 8h4" />
+      </svg>
+    );
+  }
+  if (icon === 'promo') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M3 11v2h4l10 5V6L7 11z" />
+        <path d="M17 9.5a3 3 0 0 1 0 5" />
+      </svg>
+    );
+  }
+  if (icon === 'image') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="3" y="5" width="18" height="14" rx="2" />
+        <path d="m3 16 5-5 4 4 3-3 6 6" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M6 3h9l3 3v15H6z" />
+      <path d="M14 3v4h4" />
+    </svg>
+  );
+}
+
+function storeModuleIcon(section: StoreSection) {
+  if (section === 'marketing') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 18V6l8 6 8-6v12" />
+      </svg>
+    );
+  }
+  if (section === 'connection') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1" />
+        <path d="M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M6 3h9l3 3v15H6z" />
+      <path d="M14 3v4h4" />
+    </svg>
+  );
+}
+
 function EditableFieldCard({
   title,
   value,
@@ -2105,66 +2215,136 @@ function EditableFieldCard({
 
 function ImageOverview({
   locales,
+  currentLocale,
   busy,
   onDeleteImage,
   onUploadImages
 }: {
   locales: StoreLocaleContent[];
+  currentLocale: string;
+  busy: boolean;
+  onDeleteImage: (payload: { locale: string; slotKey: string; storageKey: string }) => void;
+  onUploadImages: (payload: StoreImageUploadRequest) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const current = locales.find((locale) => locale.locale === currentLocale) ?? locales[0] ?? null;
+  const currentAssets = current ? imageAssets(current.storeImages) : [];
+  const phoneCount = locales.reduce(
+    (total, locale) =>
+      total +
+      imageAssets(locale.storeImages).filter((asset) => asset.slotKey === 'phone_screenshots').length,
+    0
+  );
+  const tabletCount = locales.reduce(
+    (total, locale) =>
+      total +
+      imageAssets(locale.storeImages).filter((asset) => asset.slotKey === 'tablet_screenshots').length,
+    0
+  );
+
+  return (
+    <section className="section" data-section="screenshots">
+      <div className="section-head">
+        <div className="section-title">
+          <span className="title-icon">{storeSectionIcon('image')}</span>
+          <div>
+            <h3>商店图</h3>
+            <p className="meta">
+              <span>手机截图 {phoneCount}/{locales.length}</span>
+              <span>平板截图 {tabletCount}/{locales.length}</span>
+            </p>
+          </div>
+        </div>
+        <div className="section-tools">
+          <button
+            aria-label={expanded ? '收起商店图多语言' : '展开商店图多语言'}
+            className="button"
+            type="button"
+            onClick={() => setExpanded((value) => !value)}
+          >
+            {expanded ? '收起多语言' : '展开多语言'}
+          </button>
+        </div>
+      </div>
+      <div className="shot-list">
+        {current ? (
+          <StoreImageLocaleRow
+            locale={current}
+            assets={currentAssets}
+            busy={busy}
+            onDeleteImage={onDeleteImage}
+            onUploadImages={onUploadImages}
+          />
+        ) : null}
+      </div>
+      {expanded ? (
+        <div className="item-language-panel">
+          <div className="item-language-panel-title">
+            <span>商店图的所有语言（{locales.length}）</span>
+            <span>只删除中心后台草稿图片</span>
+          </div>
+          <div className="shot-list">
+            {locales.map((locale) => (
+              <StoreImageLocaleRow
+                key={locale.locale}
+                locale={locale}
+                assets={imageAssets(locale.storeImages)}
+                busy={busy}
+                onDeleteImage={onDeleteImage}
+                onUploadImages={onUploadImages}
+              />
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function StoreImageLocaleRow({
+  locale,
+  assets,
+  busy,
+  onDeleteImage,
+  onUploadImages
+}: {
+  locale: StoreLocaleContent;
+  assets: Array<{
+    slotKey: string;
+    storageKey: string;
+    downloadUrl: string;
+    fileName: string;
+  }>;
   busy: boolean;
   onDeleteImage: (payload: { locale: string; slotKey: string; storageKey: string }) => void;
   onUploadImages: (payload: StoreImageUploadRequest) => void;
 }) {
   return (
-    <article className="field-card">
-      <header>
-        <div>
-          <strong>商店图</strong>
-          <span>{locales.length} 个语言</span>
-        </div>
-      </header>
-      <div className="locale-content-list">
-        {locales.map((locale) => {
-          const assets = imageAssets(locale.storeImages);
-          const count = assets.length;
-          return (
-            <div key={locale.locale} className="locale-content-row image-locale-row">
-              <strong>{locale.locale}</strong>
-              <span>{count} 张</span>
-              <ImageUploadActions
-                locale={locale.locale}
-                busy={busy}
-                onUploadImages={onUploadImages}
-              />
-              <div className="store-image-assets">
-                {assets.length ? (
-                  assets.map((asset) => (
-                    <div key={asset.storageKey} className="store-image-asset-row">
-                      {asset.downloadUrl ? <img src={asset.downloadUrl} alt={`${locale.locale} 商店图`} /> : null}
-                      <span>{asset.fileName || asset.storageKey}</span>
-                      <button
-                        className="button slim"
-                        type="button"
-                        onClick={() =>
-                          onDeleteImage({
-                            locale: locale.locale,
-                            slotKey: asset.slotKey,
-                            storageKey: asset.storageKey
-                          })
-                        }
-                      >
-                        删除
-                      </button>
-                    </div>
-                  ))
-                ) : (
-                  <p>还没有上传图片</p>
-                )}
-              </div>
-            </div>
-          );
-        })}
+    <div className="shot-row">
+      <div className="shot-lang">{locale.locale}</div>
+      <div className="shot-strip">
+        {assets.map((asset) => (
+          <div key={asset.storageKey} className="shot uploaded">
+            {asset.downloadUrl ? <img src={asset.downloadUrl} alt={`${locale.locale} 商店图`} /> : null}
+            <button
+              className="shot-delete"
+              type="button"
+              onClick={() =>
+                onDeleteImage({
+                  locale: locale.locale,
+                  slotKey: asset.slotKey,
+                  storageKey: asset.storageKey
+                })
+              }
+            >
+              删除
+            </button>
+          </div>
+        ))}
+        <div className="shot empty">+</div>
       </div>
-    </article>
+      <ImageUploadActions locale={locale.locale} busy={busy} onUploadImages={onUploadImages} />
+    </div>
   );
 }
 
@@ -2240,14 +2420,14 @@ function parseAccountRoute(pathname: string): AccountRoute {
         pageId: parts[5]
       };
     }
-    const section = isStoreSection(parts[4]) ? parts[4] : 'store';
+    const section = parts[4] === 'release-notes' ? 'store' : isStoreSection(parts[4]) ? parts[4] : 'store';
     return { kind: 'app', accountId: parts[1], appId: parts[3], section };
   }
   return { kind: 'detail', accountId: parts[1] };
 }
 
 function isStoreSection(value: string | undefined): value is StoreSection {
-  return value === 'store' || value === 'marketing' || value === 'release-notes' || value === 'connection';
+  return value === 'store' || value === 'marketing' || value === 'connection';
 }
 
 function syncScopeLabel(value: string) {

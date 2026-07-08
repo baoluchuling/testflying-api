@@ -27,8 +27,8 @@ describe('DeveloperAccountsPage store workspace', () => {
 
     render(<DeveloperAccountsPage />);
 
-    await screen.findByRole('heading', { name: 'lookrva' });
-    await screen.findByText('当前商店最新版本：1.0');
+    await screen.findByText(/lookrva · com\.example\.lookrva/);
+    await screen.findAllByText(/当前商店最新版本（含未发布）：1\.0/);
     await user.click(screen.getByRole('button', { name: '展开描述多语言' }));
     const hantDescription = await screen.findByRole('textbox', { name: 'zh-Hant 描述' });
     await user.clear(hantDescription);
@@ -76,8 +76,8 @@ describe('DeveloperAccountsPage store workspace', () => {
 
     render(<DeveloperAccountsPage />);
 
-    await screen.findByRole('heading', { name: 'lookrva' });
-    await screen.findByText('当前商店最新版本：1.0');
+    await screen.findByText(/lookrva · com\.example\.lookrva/);
+    await screen.findAllByText(/当前商店最新版本（含未发布）：1\.0/);
     await user.click(screen.getByRole('button', { name: '翻译描述到其他语言' }));
     await user.click(screen.getByRole('button', { name: '展开描述多语言' }));
 
@@ -126,19 +126,19 @@ describe('DeveloperAccountsPage store workspace', () => {
     });
   });
 
-  it('shows a friendly confirmation dialog and loading state before syncing release notes', async () => {
+  it('shows a friendly confirmation dialog and loading state before syncing the default store page', async () => {
     const user = userEvent.setup();
     holdSyncResponse = true;
-    history.replaceState(null, '', '/admin/accounts/account-ios/apps/app-ios/release-notes');
+    history.replaceState(null, '', '/admin/accounts/account-ios/apps/app-ios/store');
 
     render(<DeveloperAccountsPage />);
 
-    await screen.findByText('当前商店最新版本：1.0');
-    await user.click(screen.getByRole('button', { name: '同步版本说明' }));
+    await screen.findAllByText(/当前商店最新版本（含未发布）：1\.0/);
+    await user.click(await screen.findByRole('button', { name: '同步到商店' }));
 
-    const dialog = screen.getByRole('dialog', { name: '同步版本说明' });
+    const dialog = screen.getByRole('dialog', { name: '同步商店页' });
     expect(dialog).not.toBeNull();
-    expect(within(dialog).getByText('版本说明')).not.toBeNull();
+    expect(within(dialog).getByText(/版本说明/)).not.toBeNull();
     expect(within(dialog).getByText('en-US、zh-Hant、fr-FR')).not.toBeNull();
 
     await user.click(screen.getByRole('button', { name: '确认同步' }));
@@ -147,7 +147,7 @@ describe('DeveloperAccountsPage store workspace', () => {
 
     releaseSyncResponse?.();
     await waitFor(() => {
-      expect(screen.queryByRole('dialog', { name: '同步版本说明' })).toBeNull();
+      expect(screen.queryByRole('dialog', { name: '同步商店页' })).toBeNull();
     });
   });
 });
@@ -291,6 +291,14 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
     return jsonResponse({ ...workspaceState, section: new URL(url, 'http://localhost').searchParams.get('section') || 'store' });
   }
   if (url.endsWith('/workspace/metadata')) {
+    const response: StoreWorkspaceActionResponse = {
+      message: '已保存',
+      state: workspaceState,
+      syncRuns: []
+    };
+    return jsonResponse(response);
+  }
+  if (url.endsWith('/workspace/release-notes')) {
     const response: StoreWorkspaceActionResponse = {
       message: '已保存',
       state: workspaceState,

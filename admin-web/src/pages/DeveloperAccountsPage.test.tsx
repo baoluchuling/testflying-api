@@ -162,6 +162,36 @@ describe('DeveloperAccountsPage store workspace', () => {
       expect(screen.queryByRole('dialog', { name: '同步商店页' })).toBeNull();
     });
   });
+
+  it('previews uploaded store images in separate phone and tablet groups', async () => {
+    const user = userEvent.setup();
+    history.replaceState(null, '', '/admin/accounts/account-ios/apps/app-ios/store');
+
+    render(<DeveloperAccountsPage />);
+
+    await screen.findByText(/lookrva · com\.example\.lookrva/);
+    await user.upload(
+      await screen.findByLabelText('en-US 手机截图上传'),
+      new File(['phone'], 'phone.png', { type: 'image/png' })
+    );
+
+    await waitFor(() => {
+      expect(Array.from(lastFormData('/workspace/metadata/store-images')?.keys() ?? [])).toContain(
+        'storeImageFiles__phone_screenshots__en-US'
+      );
+    });
+
+    const phoneGroup = await screen.findByRole('group', { name: 'en-US 手机截图' });
+    const tabletGroup = await screen.findByRole('group', { name: 'en-US 平板截图' });
+    expect(
+      within(phoneGroup).getByAltText('en-US 手机截图').getAttribute('src')
+    ).toBe('/admin/artifacts/store-images/phone.png');
+    expect(within(phoneGroup).queryByAltText('en-US 平板截图')).toBeNull();
+    expect(
+      within(tabletGroup).getByAltText('en-US 平板截图').getAttribute('src')
+    ).toBe('/admin/artifacts/store-images/tablet.png');
+    expect(within(tabletGroup).queryByAltText('en-US 手机截图')).toBeNull();
+  });
 });
 
 let holdSyncResponse = false;
@@ -275,6 +305,37 @@ const workspaceState: StoreWorkspaceState = {
   ]
 };
 
+const uploadedImageWorkspaceState: StoreWorkspaceState = {
+  ...workspaceState,
+  localizedMetadata: workspaceState.localizedMetadata.map((locale) =>
+    locale.locale === 'en-US'
+      ? {
+          ...locale,
+          storeImages: {
+            phone_screenshots: {
+              preview_items: [
+                {
+                  url: '/admin/artifacts/store-images/phone.png',
+                  fileName: 'phone.png',
+                  storageKey: 'store-images/phone.png'
+                }
+              ]
+            },
+            tablet_screenshots: {
+              preview_items: [
+                {
+                  url: '/admin/artifacts/store-images/tablet.png',
+                  fileName: 'tablet.png',
+                  storageKey: 'store-images/tablet.png'
+                }
+              ]
+            }
+          }
+        }
+      : locale
+  )
+};
+
 const marketingPageState: MarketingPageDetailState = {
   account: accountDetail.account,
   app: accountDetail.apps[0],
@@ -306,6 +367,14 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
     const response: StoreWorkspaceActionResponse = {
       message: '已保存',
       state: workspaceState,
+      syncRuns: []
+    };
+    return jsonResponse(response);
+  }
+  if (url.endsWith('/workspace/metadata/store-images') && init?.method === 'POST') {
+    const response: StoreWorkspaceActionResponse = {
+      message: '已上传',
+      state: uploadedImageWorkspaceState,
       syncRuns: []
     };
     return jsonResponse(response);
@@ -371,6 +440,15 @@ function lastJsonPayload(urlPart: string): Record<string, unknown> | null {
   for (const [url, init] of calls.slice().reverse()) {
     if (!String(url).includes(urlPart) || typeof init?.body !== 'string') continue;
     return JSON.parse(init.body) as Record<string, unknown>;
+  }
+  return null;
+}
+
+function lastFormData(urlPart: string): FormData | null {
+  const calls = vi.mocked(fetch).mock.calls;
+  for (const [url, init] of calls.slice().reverse()) {
+    if (!String(url).includes(urlPart) || !(init?.body instanceof FormData)) continue;
+    return init.body;
   }
   return null;
 }

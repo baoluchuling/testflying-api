@@ -2029,22 +2029,24 @@ function MarketingImageOverview({
               <div className="store-image-assets">
                 {assets.length ? (
                   assets.map((asset) => (
-                    <div key={asset.storageKey} className="store-image-asset-row">
+                    <div key={asset.id} className="store-image-asset-row">
                       {asset.downloadUrl ? <img src={asset.downloadUrl} alt={`${locale.locale} 营销页截图`} /> : null}
                       <span>{asset.fileName || asset.storageKey}</span>
-                      <button
-                        className="button slim"
-                        type="button"
-                        onClick={() =>
-                          onDeleteImage({
-                            locale: locale.locale,
-                            slotKey: asset.slotKey,
-                            storageKey: asset.storageKey
-                          })
-                        }
-                      >
-                        删除
-                      </button>
+                      {asset.storageKey ? (
+                        <button
+                          className="button slim"
+                          type="button"
+                          onClick={() =>
+                            onDeleteImage({
+                              locale: locale.locale,
+                              slotKey: asset.slotKey,
+                              storageKey: asset.storageKey
+                            })
+                          }
+                        >
+                          删除
+                        </button>
+                      ) : null}
                     </div>
                   ))
                 ) : (
@@ -2321,17 +2323,14 @@ function ImageOverview({
 }) {
   const [expanded, setExpanded] = useState(false);
   const current = locales.find((locale) => locale.locale === currentLocale) ?? locales[0] ?? null;
-  const currentAssets = current ? imageAssets(current.storeImages) : [];
   const phoneCount = locales.reduce(
     (total, locale) =>
-      total +
-      imageAssets(locale.storeImages).filter((asset) => asset.slotKey === 'phone_screenshots').length,
+      total + (imageAssetsBySlot(locale.storeImages).phone_screenshots.length > 0 ? 1 : 0),
     0
   );
   const tabletCount = locales.reduce(
     (total, locale) =>
-      total +
-      imageAssets(locale.storeImages).filter((asset) => asset.slotKey === 'tablet_screenshots').length,
+      total + (imageAssetsBySlot(locale.storeImages).tablet_screenshots.length > 0 ? 1 : 0),
     0
   );
 
@@ -2363,7 +2362,6 @@ function ImageOverview({
         {current ? (
           <StoreImageLocaleRow
             locale={current}
-            assets={currentAssets}
             busy={busy}
             onDeleteImage={onDeleteImage}
             onUploadImages={onUploadImages}
@@ -2381,7 +2379,6 @@ function ImageOverview({
               <StoreImageLocaleRow
                 key={locale.locale}
                 locale={locale}
-                assets={imageAssets(locale.storeImages)}
                 busy={busy}
                 onDeleteImage={onDeleteImage}
                 onUploadImages={onUploadImages}
@@ -2396,48 +2393,103 @@ function ImageOverview({
 
 function StoreImageLocaleRow({
   locale,
-  assets,
   busy,
   onDeleteImage,
   onUploadImages
 }: {
   locale: StoreLocaleContent;
-  assets: Array<{
-    slotKey: string;
-    storageKey: string;
-    downloadUrl: string;
-    fileName: string;
-  }>;
   busy: boolean;
   onDeleteImage: (payload: { locale: string; slotKey: string; storageKey: string }) => void;
   onUploadImages: (payload: StoreImageUploadRequest) => void;
 }) {
+  const assetsBySlot = imageAssetsBySlot(locale.storeImages);
+
   return (
     <div className="shot-row">
       <div className="shot-lang">{locale.locale}</div>
-      <div className="shot-strip">
-        {assets.map((asset) => (
-          <div key={asset.storageKey} className="shot uploaded">
-            {asset.downloadUrl ? <img src={asset.downloadUrl} alt={`${locale.locale} 商店图`} /> : null}
-            <button
-              className="shot-delete"
-              type="button"
-              onClick={() =>
-                onDeleteImage({
-                  locale: locale.locale,
-                  slotKey: asset.slotKey,
-                  storageKey: asset.storageKey
-                })
-              }
-            >
-              删除
-            </button>
-          </div>
-        ))}
-        <div className="shot empty">+</div>
+      <div className="shot-slot-list">
+        {STORE_IMAGE_SLOT_CONFIG.map((slot) => {
+          const assets = assetsBySlot[slot.key] ?? [];
+          return (
+            <div key={slot.key} className="shot-slot" role="group" aria-label={`${locale.locale} ${slot.label}`}>
+              <div className="shot-slot-head">
+                <strong>{slot.label}</strong>
+                <span>{assets.length} 张</span>
+              </div>
+              <div className="shot-strip">
+                {assets.map((asset) => (
+                  <div key={asset.id} className="shot uploaded">
+                    {asset.downloadUrl ? (
+                      <img src={asset.downloadUrl} alt={`${locale.locale} ${slot.label}`} />
+                    ) : null}
+                    {asset.storageKey ? (
+                      <button
+                        className="shot-delete"
+                        type="button"
+                        onClick={() =>
+                          onDeleteImage({
+                            locale: locale.locale,
+                            slotKey: asset.slotKey,
+                            storageKey: asset.storageKey
+                          })
+                        }
+                      >
+                        删除
+                      </button>
+                    ) : null}
+                  </div>
+                ))}
+                <ImageUploadAction
+                  locale={locale.locale}
+                  slotKey={slot.key}
+                  label={slot.label}
+                  busy={busy}
+                  onUploadImages={onUploadImages}
+                />
+              </div>
+            </div>
+          );
+        })}
       </div>
-      <ImageUploadActions locale={locale.locale} busy={busy} onUploadImages={onUploadImages} />
     </div>
+  );
+}
+
+function ImageUploadAction({
+  locale,
+  slotKey,
+  label,
+  busy,
+  onUploadImages
+}: {
+  locale: string;
+  slotKey: string;
+  label: string;
+  busy: boolean;
+  onUploadImages: (payload: StoreImageUploadRequest) => void;
+}) {
+  function selectFiles(files: FileList | null) {
+    const selected = Array.from(files ?? []);
+    if (selected.length === 0) return;
+    onUploadImages({ locale, slotKey, files: selected });
+  }
+
+  return (
+    <label className={busy ? 'shot empty shot-upload disabled' : 'shot empty shot-upload'}>
+      <span>+</span>
+      <small>上传</small>
+      <input
+        aria-label={`${locale} ${label}上传`}
+        type="file"
+        multiple
+        accept="image/png,image/jpeg"
+        disabled={busy}
+        onChange={(event) => {
+          selectFiles(event.currentTarget.files);
+          event.currentTarget.value = '';
+        }}
+      />
+    </label>
   );
 }
 
@@ -2458,32 +2510,22 @@ function ImageUploadActions({
 
   return (
     <div className="store-image-upload-actions">
-      <label className={busy ? 'button slim disabled' : 'button slim'}>
-        手机截图
-        <input
-          type="file"
-          multiple
-          accept="image/png,image/jpeg"
-          disabled={busy}
-          onChange={(event) => {
-            selectFiles('phone_screenshots', event.currentTarget.files);
-            event.currentTarget.value = '';
-          }}
-        />
-      </label>
-      <label className={busy ? 'button slim disabled' : 'button slim'}>
-        平板截图
-        <input
-          type="file"
-          multiple
-          accept="image/png,image/jpeg"
-          disabled={busy}
-          onChange={(event) => {
-            selectFiles('tablet_screenshots', event.currentTarget.files);
-            event.currentTarget.value = '';
-          }}
-        />
-      </label>
+      {STORE_IMAGE_SLOT_CONFIG.map((slot) => (
+        <label key={slot.key} className={busy ? 'button slim disabled' : 'button slim'}>
+          {slot.label}
+          <input
+            aria-label={`${locale} ${slot.label}上传`}
+            type="file"
+            multiple
+            accept="image/png,image/jpeg"
+            disabled={busy}
+            onChange={(event) => {
+              selectFiles(slot.key, event.currentTarget.files);
+              event.currentTarget.value = '';
+            }}
+          />
+        </label>
+      ))}
     </div>
   );
 }
@@ -2582,40 +2624,72 @@ function storeImageFormData(payload: StoreImageUploadRequest): FormData {
   return formData;
 }
 
-function imageAssets(storeImages: Record<string, unknown>): Array<{
+const STORE_IMAGE_SLOT_CONFIG = [
+  { key: 'phone_screenshots', label: '手机截图' },
+  { key: 'tablet_screenshots', label: '平板截图' }
+] as const;
+
+type StoreImageAssetPreview = {
+  id: string;
   slotKey: string;
   storageKey: string;
   downloadUrl: string;
   fileName: string;
-}> {
-  const assets: Array<{
-    slotKey: string;
-    storageKey: string;
-    downloadUrl: string;
-    fileName: string;
-  }> = [];
+};
+
+function imageAssetsBySlot(
+  storeImages: Record<string, unknown>
+): Record<(typeof STORE_IMAGE_SLOT_CONFIG)[number]['key'], StoreImageAssetPreview[]> {
+  return {
+    phone_screenshots: imageAssets(storeImages).filter(
+      (asset) => asset.slotKey === 'phone_screenshots'
+    ),
+    tablet_screenshots: imageAssets(storeImages).filter(
+      (asset) => asset.slotKey === 'tablet_screenshots'
+    )
+  };
+}
+
+function imageAssets(storeImages: Record<string, unknown>): StoreImageAssetPreview[] {
+  const assets: StoreImageAssetPreview[] = [];
   Object.entries(storeImages).forEach(([slotKey, value]) => {
     if (!value || typeof value !== 'object') return;
-    const rawAssets = (value as { assets?: unknown }).assets;
-    if (!Array.isArray(rawAssets)) return;
-    rawAssets.forEach((item) => {
+    const slot = value as { assets?: unknown; preview_items?: unknown; previewItems?: unknown };
+    const rawPreviewItems = Array.isArray(slot.preview_items)
+      ? slot.preview_items
+      : Array.isArray(slot.previewItems)
+        ? slot.previewItems
+        : null;
+    const rawAssets = rawPreviewItems ?? (Array.isArray(slot.assets) ? slot.assets : []);
+    rawAssets.forEach((item, index) => {
       if (!item || typeof item !== 'object') return;
       const asset = item as {
+        url?: unknown;
         storageKey?: unknown;
+        storage_key?: unknown;
         downloadUrl?: unknown;
+        download_url?: unknown;
         fileName?: unknown;
+        file_name?: unknown;
       };
-      const storageKey = typeof asset.storageKey === 'string' ? asset.storageKey : '';
-      if (!storageKey) return;
+      const downloadUrl = stringValue(asset.url) || stringValue(asset.downloadUrl) || stringValue(asset.download_url);
+      const storageKey = stringValue(asset.storageKey) || stringValue(asset.storage_key);
+      const fileName = stringValue(asset.fileName) || stringValue(asset.file_name);
+      if (!storageKey && !downloadUrl) return;
       assets.push({
+        id: storageKey || `${slotKey}-${index}-${downloadUrl}`,
         slotKey,
         storageKey,
-        downloadUrl: typeof asset.downloadUrl === 'string' ? asset.downloadUrl : '',
-        fileName: typeof asset.fileName === 'string' ? asset.fileName : ''
+        downloadUrl,
+        fileName
       });
     });
   });
   return assets;
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === 'string' ? value : '';
 }
 
 function errorMessage(error: unknown): string {

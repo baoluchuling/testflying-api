@@ -78,7 +78,7 @@ describe('DeveloperAccountsPage store workspace', () => {
 
     await screen.findByText(/lookrva · com\.example\.lookrva/);
     await screen.findAllByText(/当前商店最新版本（含未发布）：1\.0/);
-    await user.click(screen.getByRole('button', { name: '翻译描述到其他语言' }));
+    await user.click(await screen.findByRole('button', { name: '翻译描述到其他语言' }));
     await user.click(screen.getByRole('button', { name: '展开描述多语言' }));
 
     const hantDescription = (await screen.findByRole('textbox', {
@@ -138,11 +138,23 @@ describe('DeveloperAccountsPage store workspace', () => {
 
     const dialog = screen.getByRole('dialog', { name: '同步商店页' });
     expect(dialog).not.toBeNull();
-    expect(within(dialog).getByText(/版本说明/)).not.toBeNull();
+    const releaseNotesCheckbox = within(dialog).getByRole('checkbox', {
+      name: /版本说明/
+    }) as HTMLInputElement;
+    const storeImagesCheckbox = within(dialog).getByRole('checkbox', {
+      name: /商店图/
+    }) as HTMLInputElement;
+    expect(releaseNotesCheckbox.checked).toBe(true);
+    expect(storeImagesCheckbox.checked).toBe(true);
     expect(within(dialog).getByText('en-US、zh-Hant、fr-FR')).not.toBeNull();
 
+    await user.click(storeImagesCheckbox);
     await user.click(screen.getByRole('button', { name: '确认同步' }));
 
+    expect(lastJsonPayload('/workspace/metadata/sync')?.syncScopes).toEqual([
+      'release_notes',
+      'metadata'
+    ]);
     expect(screen.getAllByRole('button', { name: '同步中...' }).length).toBeGreaterThan(0);
 
     releaseSyncResponse?.();

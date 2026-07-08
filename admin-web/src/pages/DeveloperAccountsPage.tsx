@@ -44,13 +44,14 @@ import {
 
 type StoreImageUploadRequest = { locale: string; slotKey: string; files: File[] };
 type StoreTextField = 'promotionalText' | 'description' | 'releaseNotes';
+type SyncScopeOption = { value: string; label: string; description: string };
 type PendingSyncConfirmation =
   | {
       kind: 'workspace';
       title: string;
       targetLabel: string;
       versionLabel: string;
-      scopeLabels: string[];
+      scopeOptions: SyncScopeOption[];
       localeLabels: string[];
       locales: StoreLocaleContentInput[];
       syncScopes: string[];
@@ -60,8 +61,9 @@ type PendingSyncConfirmation =
       title: string;
       targetLabel: string;
       versionLabel: string;
-      scopeLabels: string[];
+      scopeOptions: SyncScopeOption[];
       localeLabels: string[];
+      syncScopes: string[];
       pageId: string;
       payload: MarketingPagePayload;
     };
@@ -93,6 +95,13 @@ const syncScopeLabels: Record<string, string> = {
   store_images: '商店图',
   release_notes: '版本说明',
   marketing_text: '营销页文案'
+};
+
+const syncScopeDescriptions: Record<string, string> = {
+  metadata: '同步当前商店页的宣传文本和描述。',
+  store_images: '同步当前草稿中的手机截图和平板截图。',
+  release_notes: '同步当前商店最新版本的版本说明。',
+  marketing_text: '同步当前营销页面的宣传文本。'
 };
 
 export function DeveloperAccountsPage() {
@@ -225,11 +234,21 @@ export function DeveloperAccountsPage() {
     }
   }
 
+  const hasLoadedRouteContent =
+    route.kind === 'list' || route.kind === 'new' ? Boolean(accountsState) : Boolean(detailState);
+
   return (
     <div className="accounts-page">
+      {loading && hasLoadedRouteContent ? (
+        <div className="page-busy-pill" role="status" aria-live="polite">
+          加载中
+        </div>
+      ) : null}
       {message ? <div className="notice ok">{message}</div> : null}
       {error ? <div className="notice error">{error}</div> : null}
-      {loading ? <div className="empty-state">正在加载开发者账号...</div> : null}
+      {loading && !hasLoadedRouteContent ? (
+        <div className="empty-state">正在加载开发者账号...</div>
+      ) : null}
 
       {route.kind === 'list' ? (
         <AccountsList state={accountsState} onNavigate={navigate} />
@@ -464,6 +483,8 @@ function StoreWorkspace({
   const [marketingPage, setMarketingPage] = useState<MarketingPageDetailState | null>(null);
   const [workspaceError, setWorkspaceError] = useState('');
   const [workspaceNotice, setWorkspaceNotice] = useState('');
+  const [workspaceLoading, setWorkspaceLoading] = useState(false);
+  const [marketingPageLoading, setMarketingPageLoading] = useState(false);
   const [workspaceBusy, setWorkspaceBusy] = useState(false);
   const [syncBusy, setSyncBusy] = useState(false);
   const [syncConfirmation, setSyncConfirmation] = useState<PendingSyncConfirmation | null>(null);
@@ -472,8 +493,8 @@ function StoreWorkspace({
   useEffect(() => {
     let active = true;
     setWorkspaceError('');
-    setWorkspace(null);
-    setMarketingPage(null);
+    setWorkspaceLoading(true);
+    if (section !== 'marketing' || !pageId) setMarketingPage(null);
     setSyncConfirmation(null);
     setSyncConfirmationError('');
     loadStoreWorkspace(state.account.id, appId, section)
@@ -482,22 +503,32 @@ function StoreWorkspace({
       })
       .catch((requestError) => {
         if (active) setWorkspaceError(errorMessage(requestError));
+      })
+      .finally(() => {
+        if (active) setWorkspaceLoading(false);
       });
     return () => {
       active = false;
     };
-  }, [appId, section, state.account.id]);
+  }, [appId, pageId, section, state.account.id]);
 
   useEffect(() => {
-    if (!pageId || section !== 'marketing') return;
+    if (!pageId || section !== 'marketing') {
+      setMarketingPageLoading(false);
+      return;
+    }
     let active = true;
     setWorkspaceError('');
+    setMarketingPageLoading(true);
     loadMarketingPage(state.account.id, appId, pageId)
       .then((payload) => {
         if (active) setMarketingPage(payload);
       })
       .catch((requestError) => {
         if (active) setWorkspaceError(errorMessage(requestError));
+      })
+      .finally(() => {
+        if (active) setMarketingPageLoading(false);
       });
     return () => {
       active = false;
@@ -600,15 +631,19 @@ function StoreWorkspace({
       title: onlyReleaseNotes ? '同步版本说明' : '同步商店页',
       targetLabel: app?.name ?? appId,
       versionLabel: workspace.version || '未确认',
-      scopeLabels: syncScopes.map(syncScopeLabel),
+      scopeOptions: syncScopeOptions(syncScopes),
       localeLabels: locales.map((item) => item.locale),
       locales,
       syncScopes
     });
   }
 
-  async function confirmSync() {
+  async function confirmSync(selectedScopes: string[]) {
     if (!syncConfirmation) return;
+    if (selectedScopes.length === 0) {
+      setSyncConfirmationError('请选择至少一个同步项目。');
+      return;
+    }
     setWorkspaceBusy(true);
     setSyncBusy(true);
     setWorkspaceError('');
@@ -619,7 +654,7 @@ function StoreWorkspace({
         const response = await syncStoreWorkspaceMetadata(state.account.id, appId, {
           version: workspace.version,
           locale: workspace.locale || workspace.sourceLocale,
-          syncScopes: syncConfirmation.syncScopes,
+          syncScopes: selectedScopes,
           locales: syncConfirmation.locales
         });
         setWorkspace(response.state);
@@ -629,7 +664,7 @@ function StoreWorkspace({
           state.account.id,
           appId,
           syncConfirmation.pageId,
-          syncConfirmation.payload
+          { ...syncConfirmation.payload, syncScopes: selectedScopes }
         );
         if (response.workspace) setWorkspace(response.workspace);
         if (response.state) setMarketingPage(response.state);
@@ -789,8 +824,9 @@ function StoreWorkspace({
       title: '同步营销页面',
       targetLabel: marketingPage.page.pageName,
       versionLabel: marketingPage.page.applePageIdLabel || '未同步',
-      scopeLabels: (payload.syncScopes ?? []).map(syncScopeLabel),
+      scopeOptions: syncScopeOptions(payload.syncScopes ?? []),
       localeLabels: payload.locales.map((item) => item.locale),
+      syncScopes: payload.syncScopes ?? [],
       pageId: marketingPage.page.pageId,
       payload
     });
@@ -853,6 +889,11 @@ function StoreWorkspace({
           </span>
         </div>
         <div className="compact-actions">
+          {workspaceLoading || marketingPageLoading ? (
+            <span className="inline-busy-pill" role="status" aria-live="polite">
+              加载中
+            </span>
+          ) : null}
           {section !== 'store' ? (
             <button className="button" type="button" onClick={() => onNavigate('/admin/apps')}>
               商店应用
@@ -906,6 +947,11 @@ function StoreWorkspace({
             </div>
 
             <div className="compact-editor-panel">
+              {(workspaceLoading || marketingPageLoading) && workspace ? (
+                <div className="workspace-busy-pill" role="status" aria-live="polite">
+                  正在刷新
+                </div>
+              ) : null}
               {section === 'connection' ? (
                 <div className="connection-workspace">
                   <ConnectorForm connector={state.connector} onSubmit={onSaveConnector} />
@@ -915,8 +961,12 @@ function StoreWorkspace({
 
               {workspaceError ? <div className="notice error">{workspaceError}</div> : null}
               {workspaceNotice ? <div className="notice ok">{workspaceNotice}</div> : null}
-              {!workspace && !workspaceError && section !== 'connection' ? (
-                <div className="empty-state">正在加载商店工作区...</div>
+              {!workspace && workspaceLoading && !workspaceError && section !== 'connection' ? (
+                <div className="workspace-loading-card" role="status" aria-live="polite">
+                  <span />
+                  <span />
+                  <span />
+                </div>
               ) : null}
 
               {workspace && section === 'store' ? (
@@ -933,7 +983,13 @@ function StoreWorkspace({
                 />
               ) : null}
               {workspace && section === 'marketing' ? (
-                pageId ? (
+                pageId && !marketingPage && marketingPageLoading ? (
+                  <div className="workspace-loading-card" role="status" aria-live="polite">
+                    <span />
+                    <span />
+                    <span />
+                  </div>
+                ) : pageId ? (
                   <MarketingPageDetailPanel
                     detail={marketingPage}
                     busy={workspaceBusy}
@@ -979,7 +1035,7 @@ function StoreWorkspace({
               setSyncConfirmation(null);
               setSyncConfirmationError('');
             }}
-            onConfirm={() => void confirmSync()}
+            onConfirm={(selectedScopes) => void confirmSync(selectedScopes)}
           />
         ) : null}
       </div>
@@ -1082,8 +1138,24 @@ function SyncConfirmDialog({
   busy: boolean;
   error: string;
   onCancel: () => void;
-  onConfirm: () => void;
+  onConfirm: (selectedScopes: string[]) => void;
 }) {
+  const [selectedScopes, setSelectedScopes] = useState(confirmation.syncScopes);
+
+  useEffect(() => {
+    setSelectedScopes(confirmation.syncScopes);
+  }, [confirmation]);
+
+  function toggleScope(value: string) {
+    setSelectedScopes((current) =>
+      current.includes(value)
+        ? current.filter((item) => item !== value)
+        : [...current, value]
+    );
+  }
+
+  const hasScopeSelection = selectedScopes.length > 0;
+
   return (
     <div className="modal-backdrop" role="presentation">
       <section
@@ -1102,8 +1174,28 @@ function SyncConfirmDialog({
           </button>
         </header>
         <p className="sync-confirm-summary">
-          确认后会把当前中心后台草稿提交到对应商店后台。同步过程中请不要关闭页面。
+          勾选本次要提交到商店后台的项目。同步过程中请不要关闭页面。
         </p>
+        <fieldset className="sync-scope-options">
+          <legend>同步项目</legend>
+          {confirmation.scopeOptions.map((option) => (
+            <label key={option.value} className="sync-scope-option">
+              <input
+                type="checkbox"
+                checked={selectedScopes.includes(option.value)}
+                onChange={() => toggleScope(option.value)}
+                disabled={busy}
+              />
+              <span>
+                <strong>{option.label}</strong>
+                <small>{option.description}</small>
+              </span>
+            </label>
+          ))}
+          {!hasScopeSelection ? (
+            <p className="sync-scope-warning">请选择至少一个同步项目。</p>
+          ) : null}
+        </fieldset>
         <dl className="sync-confirm-meta">
           <div>
             <dt>目标</dt>
@@ -1112,10 +1204,6 @@ function SyncConfirmDialog({
           <div>
             <dt>{confirmation.kind === 'marketing' ? '页面 ID' : '版本'}</dt>
             <dd>{confirmation.versionLabel}</dd>
-          </div>
-          <div>
-            <dt>同步范围</dt>
-            <dd>{confirmation.scopeLabels.join('、') || '未选择'}</dd>
           </div>
           <div>
             <dt>语言</dt>
@@ -1127,7 +1215,12 @@ function SyncConfirmDialog({
           <button className="button" type="button" onClick={onCancel} disabled={busy}>
             取消
           </button>
-          <button className="button primary" type="button" onClick={onConfirm} disabled={busy}>
+          <button
+            className="button primary"
+            type="button"
+            onClick={() => onConfirm(selectedScopes)}
+            disabled={busy || !hasScopeSelection}
+          >
             {busy ? '同步中...' : '确认同步'}
           </button>
         </footer>
@@ -2432,6 +2525,14 @@ function isStoreSection(value: string | undefined): value is StoreSection {
 
 function syncScopeLabel(value: string) {
   return syncScopeLabels[value] ?? value;
+}
+
+function syncScopeOptions(values: string[]): SyncScopeOption[] {
+  return values.map((value) => ({
+    value,
+    label: syncScopeLabel(value),
+    description: syncScopeDescriptions[value] ?? '同步这个项目。'
+  }));
 }
 
 function toDateTimeInput(value: string) {

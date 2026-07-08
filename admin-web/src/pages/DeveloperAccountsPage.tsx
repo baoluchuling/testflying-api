@@ -2032,7 +2032,7 @@ function MarketingImageOverview({
                     <div key={asset.id} className="store-image-asset-row">
                       {asset.downloadUrl ? <img src={asset.downloadUrl} alt={`${locale.locale} 营销页截图`} /> : null}
                       <span>{asset.fileName || asset.storageKey}</span>
-                      {asset.storageKey ? (
+                      {asset.canDelete ? (
                         <button
                           className="button slim"
                           type="button"
@@ -2422,7 +2422,7 @@ function StoreImageLocaleRow({
                     {asset.downloadUrl ? (
                       <img src={asset.downloadUrl} alt={`${locale.locale} ${slot.label}`} />
                     ) : null}
-                    {asset.storageKey ? (
+                    {asset.canDelete ? (
                       <button
                         className="shot-delete"
                         type="button"
@@ -2635,6 +2635,9 @@ type StoreImageAssetPreview = {
   storageKey: string;
   downloadUrl: string;
   fileName: string;
+  canDelete: boolean;
+  inherited: boolean;
+  sourceLocale: string;
 };
 
 function imageAssetsBySlot(
@@ -2671,17 +2674,27 @@ function imageAssets(storeImages: Record<string, unknown>): StoreImageAssetPrevi
         download_url?: unknown;
         fileName?: unknown;
         file_name?: unknown;
+        canDelete?: unknown;
+        inherited?: unknown;
+        sourceLocale?: unknown;
+        source_locale?: unknown;
       };
       const downloadUrl = stringValue(asset.url) || stringValue(asset.downloadUrl) || stringValue(asset.download_url);
       const storageKey = stringValue(asset.storageKey) || stringValue(asset.storage_key);
       const fileName = stringValue(asset.fileName) || stringValue(asset.file_name);
+      const inherited = Boolean(asset.inherited);
+      const canDelete =
+        typeof asset.canDelete === 'boolean' ? asset.canDelete : Boolean(storageKey && !inherited);
       if (!storageKey && !downloadUrl) return;
       assets.push({
         id: storageKey || `${slotKey}-${index}-${downloadUrl}`,
         slotKey,
         storageKey,
         downloadUrl,
-        fileName
+        fileName,
+        canDelete,
+        inherited,
+        sourceLocale: stringValue(asset.sourceLocale) || stringValue(asset.source_locale)
       });
     });
   });

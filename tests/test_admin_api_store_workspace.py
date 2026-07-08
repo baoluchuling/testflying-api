@@ -206,6 +206,108 @@ def test_admin_api_store_workspace_deletes_center_store_image(
     assert draft.store_images_json["phone_screenshots"]["assets"] == []
 
 
+def test_admin_api_store_workspace_marks_source_store_images_as_inherited(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch,
+) -> None:
+    seed_demo_catalog(db_session)
+    monkeypatch.setattr(
+        "testflying_api.admin.view_models.supported_locales_for_app",
+        lambda *args, **kwargs: ["en-US", "zh-Hant"],
+    )
+    payload = _workspace_payload()
+    payload["locales"].append(
+        {
+            "locale": "zh-Hant",
+            "promotionalText": "繁體文案",
+            "description": "繁體描述",
+            "releaseNotes": "繁體版本說明",
+        }
+    )
+    save_response = client.put(
+        "/admin/api/developer-accounts/account-apple-enterprise/apps/app-insight-ios/workspace/metadata",
+        headers=_admin_headers(),
+        json=payload,
+    )
+    assert save_response.status_code == 200
+    saved_locales = sorted(draft.locale for draft in db_session.query(StoreAppMetadataDraft).all())
+    assert saved_locales == ["en-US", "zh-Hant"]
+
+    response = client.get(
+        "/admin/api/developer-accounts/account-apple-enterprise/apps/app-insight-ios/workspace?locale=zh-Hant",
+        headers=_admin_headers(),
+    )
+
+    assert response.status_code == 200
+    localized = response.json()["localizedMetadata"]
+    en_us = next(item for item in localized if item["locale"] == "en-US")
+    zh_hant = next(item for item in localized if item["locale"] == "zh-Hant")
+    en_us_item = en_us["storeImages"]["phone_screenshots"]["preview_items"][0]
+    zh_hant_slot = zh_hant["storeImages"]["phone_screenshots"]
+    zh_hant_item = zh_hant_slot["preview_items"][0]
+    assert en_us_item["canDelete"] is True
+    assert en_us_item["inherited"] is False
+    assert zh_hant_slot["assets"] == []
+    assert zh_hant_item["url"] == en_us_item["url"]
+    assert zh_hant_item["sourceLocale"] == "en-US"
+    assert zh_hant_item["inherited"] is True
+    assert zh_hant_item["canDelete"] is False
+
+
+def test_admin_api_store_workspace_keeps_shared_store_image_file_until_unreferenced(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch,
+) -> None:
+    seed_demo_catalog(db_session)
+    payload = _workspace_payload()
+    payload["locales"].append(
+        {
+            "locale": "zh-Hant",
+            "promotionalText": "繁體文案",
+            "description": "繁體描述",
+            "releaseNotes": "繁體版本說明",
+            "storeImages": {
+                "phone_screenshots": {
+                    "assets": [
+                        {
+                            "storageKey": "store-assets/test/en-US/phone/01.png",
+                            "downloadUrl": "https://dist.example.test/01.png",
+                        }
+                    ]
+                }
+            },
+        }
+    )
+    deleted: list[str] = []
+
+    class FakeStorage:
+        def delete(self, storage_key: str) -> None:
+            deleted.append(storage_key)
+
+    monkeypatch.setattr(client.app.state, "artifact_storage", FakeStorage())
+    client.put(
+        "/admin/api/developer-accounts/account-apple-enterprise/apps/app-insight-ios/workspace/metadata",
+        headers=_admin_headers(),
+        json=payload,
+    )
+
+    response = client.request(
+        "DELETE",
+        "/admin/api/store-workspace/account-apple-enterprise/app-insight-ios/metadata/store-images",
+        headers=_admin_headers(),
+        json={
+            "locale": "zh-Hant",
+            "slotKey": "phone_screenshots",
+            "storageKey": "store-assets/test/en-US/phone/01.png",
+        },
+    )
+
+    assert response.status_code == 200
+    assert deleted == []
+
+
 def test_admin_api_store_workspace_uploads_store_images(
     client: TestClient,
     db_session: Session,

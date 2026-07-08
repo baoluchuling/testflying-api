@@ -605,11 +605,16 @@ def _localized_metadata(
     source_locale: str,
 ) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
+    source_draft = image_suite_locales_by_locale.get(source_locale) or drafts_by_locale.get(
+        source_locale
+    )
+    source_store_images = _store_images(source_draft)
     for locale in supported_locales:
         draft = drafts_by_locale.get(locale)
         release_note_draft = release_note_drafts_by_locale.get(locale)
         image_suite_locale = image_suite_locales_by_locale.get(locale)
         defaults = base_metadata if locale == source_locale else _empty_metadata()
+        own_store_images = _store_images(image_suite_locale or draft)
         rows.append(
             {
                 "locale": locale,
@@ -620,7 +625,12 @@ def _localized_metadata(
                 ),
                 "description": draft.description if draft else defaults["description"],
                 "release_notes": release_note_draft.release_notes if release_note_draft else "",
-                "store_images": _store_images(image_suite_locale or draft),
+                "store_images": _store_images_with_fallback(
+                    own_store_images,
+                    fallback_images=source_store_images,
+                    source_locale=source_locale,
+                    inherited=locale != source_locale,
+                ),
             }
         )
     return rows
@@ -633,14 +643,21 @@ def _localized_marketing_page(
     source_locale: str,
 ) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
+    source_store_images = _store_images(locale_rows_by_locale.get(source_locale))
     for locale in supported_locales:
         row = locale_rows_by_locale.get(locale)
+        own_store_images = _store_images(row)
         rows.append(
             {
                 "locale": locale,
                 "is_source": locale == source_locale,
                 "promotional_text": row.promotional_text if row else "",
-                "store_images": _store_images(row),
+                "store_images": _store_images_with_fallback(
+                    own_store_images,
+                    fallback_images=source_store_images,
+                    source_locale=source_locale,
+                    inherited=locale != source_locale,
+                ),
             }
         )
     return rows
@@ -839,7 +856,7 @@ def _empty_metadata() -> dict[str, str]:
     }
 
 
-def _store_images(draft: object | None) -> dict[str, str]:
+def _store_images(draft: object | None) -> dict[str, object]:
     raw_images = getattr(draft, "store_images_json", None) if draft else None
     if not isinstance(raw_images, dict):
         return _empty_store_images()
@@ -874,6 +891,9 @@ def _store_image_slot(raw_value: object) -> dict[str, object]:
             "matchedLabel": asset.get("matchedLabel"),
             "format": asset.get("format"),
             "storageKey": asset.get("storageKey"),
+            "inherited": False,
+            "sourceLocale": "",
+            "canDelete": bool(asset.get("storageKey")),
         }
         for asset in assets
         if asset.get("storageKey") or asset.get("downloadUrl")
@@ -888,6 +908,9 @@ def _store_image_slot(raw_value: object) -> dict[str, object]:
             "matchedLabel": "",
             "format": "",
             "storageKey": "",
+            "inherited": False,
+            "sourceLocale": "",
+            "canDelete": False,
         }
         for url in urls
     ]
@@ -906,6 +929,69 @@ def _store_image_slot(raw_value: object) -> dict[str, object]:
         "preview_urls": preview_urls,
         "file_names": file_names,
         "count": len(preview_urls),
+        "inherited": False,
+        "source_locale": "",
+    }
+
+
+def _store_images_with_fallback(
+    images: dict[str, object],
+    *,
+    fallback_images: dict[str, object],
+    source_locale: str,
+    inherited: bool,
+) -> dict[str, object]:
+    if not inherited:
+        return images
+    merged: dict[str, object] = {}
+    for key in ("feature_graphic_url", "phone_screenshots", "tablet_screenshots"):
+        current = images.get(key)
+        if _store_image_slot_has_preview(current):
+            merged[key] = current
+            continue
+        fallback = fallback_images.get(key)
+        merged[key] = (
+            _inherited_store_image_slot(fallback, source_locale)
+            if _store_image_slot_has_preview(fallback)
+            else current or _store_image_slot(None)
+        )
+    return merged
+
+
+def _store_image_slot_has_preview(slot: object) -> bool:
+    if not isinstance(slot, dict):
+        return False
+    preview_items = slot.get("preview_items")
+    if isinstance(preview_items, list | tuple) and preview_items:
+        return True
+    return bool(_string_list(slot.get("urls")) or _asset_list(slot.get("assets")))
+
+
+def _inherited_store_image_slot(slot: object, source_locale: str) -> dict[str, object]:
+    if not isinstance(slot, dict):
+        return _store_image_slot(None)
+    preview_items = [
+        {
+            **item,
+            "inherited": True,
+            "sourceLocale": source_locale,
+            "canDelete": False,
+        }
+        for item in slot.get("preview_items", [])
+        if isinstance(item, dict)
+    ]
+    preview_urls = [str(item.get("url") or "") for item in preview_items if item.get("url")]
+    file_names = [str(item.get("fileName") or "") for item in preview_items if item.get("fileName")]
+    return {
+        "urls": [],
+        "assets": [],
+        "value": "",
+        "preview_items": preview_items,
+        "preview_urls": preview_urls,
+        "file_names": file_names,
+        "count": len(preview_urls),
+        "inherited": True,
+        "source_locale": source_locale,
     }
 
 

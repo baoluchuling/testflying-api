@@ -15,6 +15,7 @@ describe('DeveloperAccountsPage store workspace', () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(mockFetch);
     holdSyncResponse = false;
     releaseSyncResponse = null;
+    workspaceResponseState = workspaceState;
   });
 
   afterEach(() => {
@@ -192,10 +193,32 @@ describe('DeveloperAccountsPage store workspace', () => {
     ).toBe('/admin/artifacts/store-images/tablet.png');
     expect(within(tabletGroup).queryByAltText('en-US 手机截图')).toBeNull();
   });
+
+  it('does not show delete action for inherited store images', async () => {
+    const user = userEvent.setup();
+    workspaceResponseState = inheritedImageWorkspaceState;
+    history.replaceState(null, '', '/admin/accounts/account-ios/apps/app-ios/store');
+
+    render(<DeveloperAccountsPage />);
+
+    await screen.findByText(/lookrva · com\.example\.lookrva/);
+    await user.click(await screen.findByRole('button', { name: '展开商店图多语言' }));
+
+    const sourceGroups = await screen.findAllByRole('group', { name: 'en-US 手机截图' });
+    const inheritedGroup = await screen.findByRole('group', { name: 'zh-Hant 手机截图' });
+    expect(
+      sourceGroups.some((group) => within(group).queryByRole('button', { name: '删除' }))
+    ).toBe(true);
+    expect(within(inheritedGroup).getByAltText('zh-Hant 手机截图').getAttribute('src')).toBe(
+      '/admin/artifacts/store-images/phone.png'
+    );
+    expect(within(inheritedGroup).queryByRole('button', { name: '删除' })).toBeNull();
+  });
 });
 
 let holdSyncResponse = false;
 let releaseSyncResponse: (() => void) | null = null;
+let workspaceResponseState: StoreWorkspaceState;
 
 const accountDetail: DeveloperAccountDetailState = {
   account: {
@@ -336,6 +359,51 @@ const uploadedImageWorkspaceState: StoreWorkspaceState = {
   )
 };
 
+const inheritedImageWorkspaceState: StoreWorkspaceState = {
+  ...workspaceState,
+  localizedMetadata: workspaceState.localizedMetadata.map((locale) => {
+    if (locale.locale === 'en-US') {
+      return {
+        ...locale,
+        storeImages: {
+          phone_screenshots: {
+            preview_items: [
+              {
+                url: '/admin/artifacts/store-images/phone.png',
+                fileName: 'phone.png',
+                storageKey: 'store-images/phone.png',
+                inherited: false,
+                canDelete: true
+              }
+            ]
+          }
+        }
+      };
+    }
+    if (locale.locale === 'zh-Hant') {
+      return {
+        ...locale,
+        storeImages: {
+          phone_screenshots: {
+            assets: [],
+            preview_items: [
+              {
+                url: '/admin/artifacts/store-images/phone.png',
+                fileName: 'phone.png',
+                storageKey: 'store-images/phone.png',
+                inherited: true,
+                sourceLocale: 'en-US',
+                canDelete: false
+              }
+            ]
+          }
+        }
+      };
+    }
+    return locale;
+  })
+};
+
 const marketingPageState: MarketingPageDetailState = {
   account: accountDetail.account,
   app: accountDetail.apps[0],
@@ -360,8 +428,12 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
   if (url === '/admin/api/developer-accounts/account-ios') {
     return jsonResponse(accountDetail);
   }
-  if (url.startsWith('/admin/api/developer-accounts/account-ios/apps/app-ios/workspace?')) {
-    return jsonResponse({ ...workspaceState, section: new URL(url, 'http://localhost').searchParams.get('section') || 'store' });
+  if (
+    url === '/admin/api/developer-accounts/account-ios/apps/app-ios/workspace' ||
+    url.startsWith('/admin/api/developer-accounts/account-ios/apps/app-ios/workspace?')
+  ) {
+    const section = new URL(url, 'http://localhost').searchParams.get('section') || 'store';
+    return jsonResponse({ ...workspaceResponseState, section });
   }
   if (url.endsWith('/workspace/metadata')) {
     const response: StoreWorkspaceActionResponse = {

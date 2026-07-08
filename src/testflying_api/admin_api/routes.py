@@ -142,6 +142,7 @@ from testflying_api.schema import (
     LlmProfile,
     Notification,
     StoreAppMetadataDraft,
+    StoreImageSuiteLocale,
     StoreMarketingPageLocale,
     StoreReview,
     StoreReviewAnalysisRun,
@@ -2363,7 +2364,41 @@ def _source_locale_from_payload(
 
 
 def _store_images_from_input(value: object) -> dict[str, object]:
-    return dict(value) if isinstance(value, dict) else {}
+    if not isinstance(value, dict):
+        return {}
+    images: dict[str, object] = {}
+    for slot_key, raw_value in value.items():
+        normalized_slot = str(slot_key or "").strip()
+        if normalized_slot not in STORE_IMAGE_SLOT_KEYS:
+            continue
+        if not isinstance(raw_value, dict):
+            images[normalized_slot] = raw_value
+            continue
+        if _truthy(raw_value.get("inherited")):
+            images[normalized_slot] = {"urls": [], "assets": []}
+            continue
+        urls = _string_list(raw_value.get("urls"))
+        if not urls:
+            urls = _string_list(raw_value.get("value"))
+        images[normalized_slot] = {
+            "urls": urls,
+            "assets": _own_store_image_assets(raw_value.get("assets")),
+        }
+    return images
+
+
+def _own_store_image_assets(value: object) -> list[dict[str, object]]:
+    return [
+        item
+        for item in _asset_list(value)
+        if not _truthy(item.get("inherited"))
+    ]
+
+
+def _truthy(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 async def _store_image_assets_from_form(
@@ -2912,9 +2947,11 @@ def _delete_marketing_page_image_from_draft(
         )
     locale_row.store_images_json = updated_images
     locale_row.updated_at = datetime.now(UTC)
+    session.flush()
     if hasattr(storage, "delete"):
         try:
-            storage.delete(normalized_storage_key)
+            if not _store_image_storage_key_is_referenced(session, normalized_storage_key):
+                storage.delete(normalized_storage_key)
         except Exception:
             pass
 
@@ -2984,9 +3021,11 @@ def _delete_store_image_from_current_draft(
         raise ApiError("store_image_not_found", "这张商店图已经不存在或已被删除", status_code=404)
     draft.store_images_json = updated_images
     draft.updated_at = datetime.now(UTC)
+    session.flush()
     if hasattr(storage, "delete"):
         try:
-            storage.delete(normalized_storage_key)
+            if not _store_image_storage_key_is_referenced(session, normalized_storage_key):
+                storage.delete(normalized_storage_key)
         except Exception:
             pass
 
@@ -3016,6 +3055,30 @@ def _remove_store_image_asset_from_json(
             kept_assets.append(item)
     images[slot_key] = {**slot, "assets": kept_assets}
     return images, removed
+
+
+def _store_image_storage_key_is_referenced(session: Session, storage_key: str) -> bool:
+    for model in (StoreAppMetadataDraft, StoreImageSuiteLocale, StoreMarketingPageLocale):
+        store_images_rows = session.scalars(select(model.store_images_json))
+        for store_images in store_images_rows:
+            if _store_images_reference_storage_key(store_images, storage_key):
+                return True
+    return False
+
+
+def _store_images_reference_storage_key(store_images: object, storage_key: str) -> bool:
+    if not isinstance(store_images, dict):
+        return False
+    for slot in store_images.values():
+        if not isinstance(slot, dict):
+            continue
+        assets = slot.get("assets")
+        if not isinstance(assets, list | tuple):
+            continue
+        for item in assets:
+            if isinstance(item, dict) and str(item.get("storageKey") or "") == storage_key:
+                return True
+    return False
 
 
 def _store_marketing_page_summary(

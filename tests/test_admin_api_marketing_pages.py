@@ -174,6 +174,55 @@ def test_admin_api_marketing_pages_save_copy_delete_and_delete_image(
     assert db_session.query(StoreMarketingPage).count() == 1
 
 
+def test_admin_api_marketing_pages_keeps_shared_store_image_file_until_unreferenced(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch,
+) -> None:
+    seed_demo_catalog(db_session)
+    payload = _marketing_payload()
+    payload["locales"][1]["storeImages"] = {
+        "phone_screenshots": {
+            "assets": [
+                {
+                    "storageKey": "store-assets/marketing/en-US/phone/01.png",
+                    "downloadUrl": "https://dist.example.test/marketing-01.png",
+                    "fileName": "marketing-01.png",
+                }
+            ]
+        }
+    }
+    create_response = client.post(
+        "/admin/api/store-workspace/account-apple-enterprise"
+        "/app-aurora-ios/marketing-pages",
+        headers=_admin_headers(),
+        json=payload,
+    )
+    page_id = create_response.json()["state"]["page"]["pageId"]
+    deleted: list[str] = []
+
+    class FakeStorage:
+        def delete(self, storage_key: str) -> None:
+            deleted.append(storage_key)
+
+    monkeypatch.setattr(client.app.state, "artifact_storage", FakeStorage())
+
+    response = client.request(
+        "DELETE",
+        "/admin/api/store-workspace/account-apple-enterprise"
+        f"/app-aurora-ios/marketing-pages/{page_id}/store-images",
+        headers=_admin_headers(),
+        json={
+            "locale": "zh-Hant",
+            "slotKey": "phone_screenshots",
+            "storageKey": "store-assets/marketing/en-US/phone/01.png",
+        },
+    )
+
+    assert response.status_code == 200
+    assert deleted == []
+
+
 def test_admin_api_marketing_pages_sync_creates_runs(
     client: TestClient,
     db_session: Session,

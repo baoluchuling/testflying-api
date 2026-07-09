@@ -41,8 +41,7 @@ export function AppDetailPage({ appId }: { appId: string }) {
       .then((payload) => {
         if (cancelled) return;
         setState(payload);
-        const nextEnvironment = payload.settings.development ? 'development' : 'production';
-        setEnvironment(nextEnvironment);
+        setEnvironment('development');
         setGitRef(payload.builds[0]?.gitRef || 'main');
         setDrafts({
           development: settingToDraft(payload.settings.development),

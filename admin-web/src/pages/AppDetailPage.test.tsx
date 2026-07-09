@@ -97,6 +97,40 @@ describe('AppDetailPage', () => {
       }
     });
   });
+
+  it('defaults quick build environment to development when no development settings exist', async () => {
+    vi.restoreAllMocks();
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url === '/admin/api/apps/app-ios-demo') {
+        return jsonResponse({
+          ...appDetailState,
+          settings: {
+            development: null,
+            production: {
+              environment: 'production',
+              gitUrl: 'git@example.com:any/prod-ios.git',
+              repoSubpath: '',
+              runnerLabels: ['ios-prod'],
+              credentialRefs: { git: 'git-prod' },
+              artifactType: 'ipa',
+              optionalDefaults: {},
+              updatedAtLabel: '2026-07-09 12:00'
+            }
+          }
+        });
+      }
+      return Promise.reject(new Error(`unexpected fetch ${url}`));
+    });
+
+    render(<AppDetailPage appId="app-ios-demo" />);
+
+    expect(await screen.findByRole('heading', { name: 'AnyStories' })).toBeTruthy();
+    expect((screen.getByLabelText('环境') as HTMLSelectElement).value).toBe('development');
+    expect(screen.getByText('该环境尚未配置构建设置。')).toBeTruthy();
+    expect((screen.getByRole('button', { name: '立即构建' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByText('git@example.com:any/prod-ios.git')).toBeNull();
+  });
 });
 
 const appDetailState = {

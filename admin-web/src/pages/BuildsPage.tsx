@@ -33,7 +33,6 @@ export function BuildsPage() {
 
   function navigateToApp(appId: string) {
     history.pushState({ adminRoute: 'apps' }, '', `/admin/apps/${encodeURIComponent(appId)}`);
-    window.dispatchEvent(new Event('admin:navigation'));
   }
 
   return (

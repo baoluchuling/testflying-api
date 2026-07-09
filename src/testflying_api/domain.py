@@ -13,6 +13,34 @@ class BuildEnvironment(StrEnum):
     PRODUCTION = "production"
 
 
+class BuildSource(StrEnum):
+    UPLOAD = "upload"
+    AGENT = "agent"
+
+
+class BuildLifecycleStatus(StrEnum):
+    QUEUED = "queued"
+    ASSIGNED = "assigned"
+    PREPARING = "preparing"
+    BUILDING = "building"
+    DIAGNOSING = "diagnosing"
+    REPAIRING = "repairing"
+    RETRYING = "retrying"
+    UPLOADING_ARTIFACTS = "uploading_artifacts"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    NEEDS_HUMAN = "needs_human"
+    CANCELLED = "cancelled"
+
+
+class ArtifactType(StrEnum):
+    PACKAGE = "package"
+    SYMBOLS = "symbols"
+    REPORT = "report"
+    LOG = "log"
+    MANIFEST = "manifest"
+
+
 class NotificationType(StrEnum):
     BUILD = "build"
     ACCOUNT = "account"

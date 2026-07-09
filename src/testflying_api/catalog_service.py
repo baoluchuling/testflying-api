@@ -102,7 +102,7 @@ class CatalogService:
 
     def build_response(self, build: Build) -> BuildResponse:
         app = build.app
-        artifact = build.artifact
+        artifact = build.package_artifact()
         download_url = artifact.download_url if artifact else None
         manifest_url = artifact.manifest_url if artifact else None
         install_url = artifact.install_url if artifact else ""
@@ -111,8 +111,8 @@ class CatalogService:
         return BuildResponse(
             id=build.id,
             name=app.name,
-            version=build.version,
-            build_number=build.build_number,
+            version=build.version or "",
+            build_number=build.build_number or "",
             channel=build.channel,
             environment=build.environment,
             owner="",

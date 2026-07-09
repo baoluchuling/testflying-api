@@ -1509,15 +1509,15 @@ def _upload_result(session: Session, app_id: str) -> UploadResult:
     latest_build = max(app.builds, key=lambda build: build.uploaded_at, default=None)
     if latest_build is None:
         raise AdminApiError("upload_build_not_found", "上传结果中的构建不存在", status_code=500)
-    install_info = latest_build.artifact
+    install_info = latest_build.package_artifact()
     return UploadResult(
         app_id=app.id,
         app_name=app.name,
         bundle_identifier=app.bundle_identifier,
         platform=latest_build.platform,
         environment=latest_build.environment,
-        version=latest_build.version,
-        build_number=latest_build.build_number,
+        version=latest_build.version or "",
+        build_number=latest_build.build_number or "",
         developer_account=(
             app.developer_account.team_name if app.developer_account else "未绑定账号"
         ),
@@ -1541,7 +1541,7 @@ def _app_logs_state(request: Request, *, cursor: int = 0, limit: int = 500) -> A
 
 
 def _build_item(build: Build) -> BuildItem:
-    artifact = build.artifact
+    artifact = build.package_artifact()
     app = build.app
     if app is None:
         raise AdminApiError("build_app_not_found", "构建关联的应用不存在", status_code=500)
@@ -1555,8 +1555,8 @@ def _build_item(build: Build) -> BuildItem:
             icon_color=app.icon_color,
             icon_text=app.name[:2].upper(),
         ),
-        version=build.version,
-        build_number=build.build_number,
+        version=build.version or "",
+        build_number=build.build_number or "",
         platform=build.platform,
         platform_label=platform_label(build.platform),
         environment=build.environment,

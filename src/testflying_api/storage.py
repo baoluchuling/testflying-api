@@ -180,4 +180,16 @@ def _content_type_from_name(file_name: str) -> str:
         return "application/octet-stream"
     if suffix == ".apk":
         return "application/vnd.android.package-archive"
+    if suffix == ".aab":
+        return "application/octet-stream"
+    if suffix == ".zip":
+        return "application/zip"
+    if suffix == ".json":
+        return "application/json"
+    if suffix == ".md":
+        return "text/markdown"
+    if suffix == ".log":
+        return "text/plain"
+    if suffix == ".plist":
+        return "application/xml"
     return "application/octet-stream"

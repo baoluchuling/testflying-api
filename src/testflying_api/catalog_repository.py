@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from sqlalchemy import Select, select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from testflying_api.schema import (
     App,
@@ -39,7 +39,7 @@ class CatalogRepository:
 
         statement = (
             select(Build)
-            .options(joinedload(Build.app), joinedload(Build.artifact))
+            .options(joinedload(Build.app), selectinload(Build.artifacts))
             .where(Build.id.in_(visible_build_ids), Build.platform == platform)
             .order_by(Build.uploaded_at.desc())
         )

@@ -9,7 +9,14 @@ from sqlalchemy.orm import Session, joinedload
 
 from testflying_api.catalog_repository import CatalogRepository
 from testflying_api.catalog_service import CatalogService
-from testflying_api.domain import channel_for_environment, normalize_environment, normalize_platform
+from testflying_api.domain import (
+    ArtifactType,
+    BuildLifecycleStatus,
+    BuildSource,
+    channel_for_environment,
+    normalize_environment,
+    normalize_platform,
+)
 from testflying_api.errors import ApiError
 from testflying_api.manifest import generate_ios_manifest, itms_services_url
 from testflying_api.models import UploadResponse
@@ -104,6 +111,7 @@ def create_package_upload(
         Artifact(
             id=f"artifact-{build.id}",
             build_id=build.id,
+            artifact_type=ArtifactType.PACKAGE.value,
             file_name=package_file_name,
             content_type=effective_content_type,
             storage_backend=storage.backend,
@@ -112,6 +120,7 @@ def create_package_upload(
             manifest_url=manifest_url,
             install_url=install_url,
             size_bytes=len(content),
+            metadata_json={"source": BuildSource.UPLOAD.value},
         )
     )
     _grant_build_to_registered_devices(session, build)
@@ -138,9 +147,9 @@ def create_package_upload(
 
     created_build = session.scalars(
         select(Build)
-        .options(joinedload(Build.app), joinedload(Build.artifact))
+        .options(joinedload(Build.app), joinedload(Build.artifacts))
         .where(Build.id == build.id)
-    ).one()
+    ).unique().one()
     service = CatalogService(CatalogRepository(session))
     build_response = service.build_response(created_build)
     return UploadResponse(
@@ -262,8 +271,13 @@ def _create_build(
         build_number=metadata.build_number,
         channel=channel_for_environment(environment),
         environment=environment,
+        requested_environment=environment,
         platform=metadata.platform,
+        source=BuildSource.UPLOAD.value,
+        lifecycle_status=BuildLifecycleStatus.SUCCEEDED.value,
         uploaded_at=datetime.now(UTC),
+        finished_at=datetime.now(UTC),
+        attempt_count=0,
         note=changelog,
         status="available",
     )

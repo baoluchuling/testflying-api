@@ -45,27 +45,48 @@ class Build(Base):
 
     id: Mapped[str] = mapped_column(String(80), primary_key=True)
     app_id: Mapped[str] = mapped_column(ForeignKey("apps.id", ondelete="CASCADE"), nullable=False)
-    version: Mapped[str] = mapped_column(String(60), nullable=False)
-    build_number: Mapped[str] = mapped_column(String(80), nullable=False)
+    version: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    build_number: Mapped[str | None] = mapped_column(String(80), nullable=True)
     channel: Mapped[str] = mapped_column(String(20), nullable=False)
     environment: Mapped[str] = mapped_column(String(30), nullable=False)
+    requested_environment: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+        default="development",
+    )
     platform: Mapped[str] = mapped_column(String(20), nullable=False)
+    source: Mapped[str] = mapped_column(String(30), nullable=False, default="upload")
+    lifecycle_status: Mapped[str] = mapped_column(String(40), nullable=False, default="succeeded")
+    git_url: Mapped[str | None] = mapped_column(String(800))
+    git_ref: Mapped[str | None] = mapped_column(String(240))
+    commit_sha: Mapped[str | None] = mapped_column(String(80))
+    runner_id: Mapped[str | None] = mapped_column(String(80))
+    runner_labels_json: Mapped[dict | None] = mapped_column(JSON)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failure_classification: Mapped[str | None] = mapped_column(String(80))
+    failure_summary: Mapped[str | None] = mapped_column(Text)
+    human_action: Mapped[str | None] = mapped_column(Text)
     uploaded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         default=utc_now,
     )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    duration_seconds: Mapped[int | None] = mapped_column(Integer)
     note: Mapped[str] = mapped_column(Text, nullable=False, default="")
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="available")
     min_os_version: Mapped[str | None] = mapped_column(String(80))
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     app: Mapped[App] = relationship(back_populates="builds")
-    artifact: Mapped[Artifact | None] = relationship(
+    artifacts: Mapped[list[Artifact]] = relationship(
         back_populates="build",
         cascade="all, delete-orphan",
-        uselist=False,
     )
+
+    def package_artifact(self) -> Artifact | None:
+        return next((artifact for artifact in self.artifacts if artifact.artifact_type == "package"), None)
 
 
 class Artifact(Base):
@@ -75,8 +96,8 @@ class Artifact(Base):
     build_id: Mapped[str] = mapped_column(
         ForeignKey("builds.id", ondelete="CASCADE"),
         nullable=False,
-        unique=True,
     )
+    artifact_type: Mapped[str] = mapped_column(String(30), nullable=False, default="package")
     file_name: Mapped[str] = mapped_column(String(240), nullable=False)
     content_type: Mapped[str] = mapped_column(String(120), nullable=False)
     storage_backend: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -85,13 +106,14 @@ class Artifact(Base):
     manifest_url: Mapped[str | None] = mapped_column(String(800))
     install_url: Mapped[str] = mapped_column(String(1000), nullable=False)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    metadata_json: Mapped[dict | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         default=utc_now,
     )
 
-    build: Mapped[Build] = relationship(back_populates="artifact")
+    build: Mapped[Build] = relationship(back_populates="artifacts")
 
 
 class Device(Base):

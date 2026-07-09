@@ -93,7 +93,7 @@ def upload_context(session: Session) -> dict[str, object]:
 def list_builds(session: Session, *, limit: int | None = None) -> list[Build]:
     statement = (
         select(Build)
-        .options(joinedload(Build.app), joinedload(Build.artifact))
+        .options(joinedload(Build.app), selectinload(Build.artifacts))
         .order_by(Build.uploaded_at.desc())
     )
     if limit is not None:

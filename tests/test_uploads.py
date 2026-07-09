@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from testflying_api.schema import App, DeviceBuildVisibility
+from testflying_api.schema import App, Build, DeviceBuildVisibility
 from testflying_api.seed import seed_demo_catalog
 from tests.fixtures import make_android_apk_bytes, make_ipa_bytes
 
@@ -72,6 +72,13 @@ def test_upload_android_parses_metadata_from_apk(
     app = db_session.get(App, body["app"]["id"])
     assert app is not None
     assert app.bundle_identifier == "com.example.autoparse"
+
+    build = db_session.get(Build, body["build"]["id"])
+    assert build is not None
+    package_artifact = build.package_artifact()
+    assert package_artifact is not None
+    assert package_artifact.artifact_type == "package"
+    assert package_artifact.metadata_json == {"source": "upload"}
 
 
 def test_upload_can_attach_new_app_to_developer_account(

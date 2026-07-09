@@ -106,13 +106,15 @@ export function AppDetailPage({ appId }: { appId: string }) {
     setMessage('');
     try {
       const draft = drafts[environmentKey];
+      const environmentSetting =
+        environmentKey === 'development' ? state.settings.development : state.settings.production;
       const response = await saveAppBuildSettings(state.app.id, environmentKey, {
         gitUrl: draft.gitUrl.trim(),
         repoSubpath: draft.repoSubpath.trim(),
         runnerLabels: splitList(draft.runnerLabels),
         credentialRefs: parseCredentialRefs(draft.credentialRefs),
         artifactType: draft.artifactType.trim(),
-        optionalDefaults: {}
+        optionalDefaults: environmentSetting?.optionalDefaults ?? {}
       });
       setState(response.state);
       setDrafts({

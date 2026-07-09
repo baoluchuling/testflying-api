@@ -4,12 +4,35 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppDetailPage } from './AppDetailPage';
 
 describe('AppDetailPage', () => {
+  let savedSettingsBody: Record<string, unknown> | null;
+
   beforeEach(() => {
     history.replaceState(null, '', '/admin/apps/app-ios-demo');
-    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+    savedSettingsBody = null;
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
       const url = String(input);
       if (url === '/admin/api/apps/app-ios-demo') {
         return jsonResponse(appDetailState);
+      }
+      if (
+        url === '/admin/api/apps/app-ios-demo/build-settings/development' &&
+        init?.method === 'PUT'
+      ) {
+        savedSettingsBody = JSON.parse(String(init.body)) as Record<string, unknown>;
+        return jsonResponse({
+          message: '构建设置已保存',
+          build: null,
+          state: {
+            ...appDetailState,
+            settings: {
+              ...appDetailState.settings,
+              development: {
+                ...appDetailState.settings.development,
+                gitUrl: String(savedSettingsBody.gitUrl)
+              }
+            }
+          }
+        });
       }
       if (url === '/admin/api/apps/app-ios-demo/builds') {
         return jsonResponse({
@@ -54,6 +77,26 @@ describe('AppDetailPage', () => {
 
     expect(await screen.findByText('构建任务已创建')).toBeTruthy();
   });
+
+  it('preserves optional defaults when saving build settings', async () => {
+    const user = userEvent.setup();
+    render(<AppDetailPage appId="app-ios-demo" />);
+
+    await screen.findByRole('heading', { name: 'AnyStories' });
+    const gitUrlInput = screen.getByDisplayValue('git@example.com:any/ios.git');
+    await user.clear(gitUrlInput);
+    await user.type(gitUrlInput, 'git@example.com:any/new-ios.git');
+    await user.click(screen.getAllByRole('button', { name: '保存设置' })[0]);
+
+    expect(await screen.findByText('构建设置已保存')).toBeTruthy();
+    expect(savedSettingsBody).toMatchObject({
+      gitUrl: 'git@example.com:any/new-ios.git',
+      optionalDefaults: {
+        releaseChannel: 'internal',
+        notifyGroups: ['qa', 'ios']
+      }
+    });
+  });
 });
 
 const appDetailState = {
@@ -73,7 +116,10 @@ const appDetailState = {
       runnerLabels: ['ios-release'],
       credentialRefs: { git: 'git-main' },
       artifactType: 'ipa',
-      optionalDefaults: {},
+      optionalDefaults: {
+        releaseChannel: 'internal',
+        notifyGroups: ['qa', 'ios']
+      },
       updatedAtLabel: '2026-07-09 10:00'
     },
     production: null

@@ -115,3 +115,115 @@ def test_admin_can_create_queued_agent_build_from_app_detail(
     assert created["gitRef"] == "main"
     assert created["version"] == ""
     assert created["buildNumber"] == ""
+
+
+def test_admin_save_build_setting_rejects_invalid_environment_with_admin_error(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    app = _create_app(db_session)
+
+    response = client.put(
+        f"/admin/api/apps/{app.id}/build-settings/staging",
+        headers=_admin_headers(),
+        json={
+            "gitUrl": "git@example.com:mobile/demo.git",
+            "repoSubpath": "apps/demo",
+            "runnerLabels": ["ios-release"],
+            "credentialRefs": {"git": "git-main"},
+            "artifactType": "ipa",
+            "optionalDefaults": {},
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {
+        "error": {
+            "code": "invalid_environment",
+            "message": "environment 必须是 development 或 production",
+            "detail": {"retryable": False},
+        }
+    }
+
+
+def test_admin_save_build_setting_returns_admin_error_for_missing_app(
+    client: TestClient,
+) -> None:
+    response = client.put(
+        "/admin/api/apps/app-ios-com-example-missing/build-settings/development",
+        headers=_admin_headers(),
+        json={
+            "gitUrl": "git@example.com:mobile/demo.git",
+            "repoSubpath": "apps/demo",
+            "runnerLabels": ["ios-release"],
+            "credentialRefs": {"git": "git-main"},
+            "artifactType": "ipa",
+            "optionalDefaults": {},
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "error": {
+            "code": "app_not_found",
+            "message": "应用不存在",
+            "detail": {"retryable": False},
+        }
+    }
+
+
+def test_admin_create_agent_build_rejects_invalid_environment_with_admin_error(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    app = _create_app(db_session)
+
+    response = client.post(
+        f"/admin/api/apps/{app.id}/builds",
+        headers=_admin_headers(),
+        json={
+            "environment": "staging",
+            "gitUrl": "git@example.com:mobile/demo.git",
+            "gitRef": "main",
+            "repoSubpath": "",
+            "runnerLabels": ["ios-release"],
+            "credentialRefs": {"git": "git-main"},
+            "artifactType": "ipa",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {
+        "error": {
+            "code": "invalid_environment",
+            "message": "environment 必须是 development 或 production",
+            "detail": {"retryable": False},
+        }
+    }
+
+
+def test_admin_create_agent_build_returns_admin_error_for_missing_app(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/admin/api/apps/app-ios-com-example-missing/builds",
+        headers=_admin_headers(),
+        json={
+            "environment": "development",
+            "gitUrl": "git@example.com:mobile/demo.git",
+            "gitRef": "main",
+            "repoSubpath": "",
+            "runnerLabels": ["ios-release"],
+            "credentialRefs": {"git": "git-main"},
+            "artifactType": "ipa",
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "error": {
+            "code": "app_not_found",
+            "message": "应用不存在",
+            "detail": {"retryable": False},
+        }
+    }

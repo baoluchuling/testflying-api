@@ -34,6 +34,17 @@ def settings_by_environment(session: Session, app_id: str) -> dict[str, AppBuild
     return {item.environment: item for item in settings}
 
 
+def _parse_environment(value: str) -> str:
+    try:
+        return normalize_environment(value).value
+    except ValueError as error:
+        raise ApiError(
+            "invalid_environment",
+            "environment 必须是 development 或 production",
+            status_code=422,
+        ) from error
+
+
 def save_build_setting(
     session: Session,
     *,
@@ -47,7 +58,7 @@ def save_build_setting(
     optional_defaults: dict[str, object],
 ) -> AppBuildSetting:
     app_or_404(session, app_id)
-    normalized_environment = normalize_environment(environment).value
+    normalized_environment = _parse_environment(environment)
     existing = session.scalar(
         select(AppBuildSetting).where(
             AppBuildSetting.app_id == app_id,
@@ -84,7 +95,7 @@ def create_agent_build(
     artifact_type: str,
 ) -> Build:
     app = app_or_404(session, app_id)
-    normalized_environment = normalize_environment(environment).value
+    normalized_environment = _parse_environment(environment)
     build = Build(
         id=f"build-agent-{uuid4().hex[:12]}",
         app_id=app.id,

@@ -277,23 +277,26 @@ def save_app_build_setting(
     payload: BuildSettingSaveRequest,
     _: AdminDep,
 ) -> AppBuildActionResponse:
-    app = build_platform.app_or_404(session, app_id)
-    build_platform.save_build_setting(
-        session,
-        app_id=app_id,
-        environment=environment,
-        git_url=payload.git_url,
-        repo_subpath=payload.repo_subpath,
-        runner_labels=payload.runner_labels,
-        credential_refs=payload.credential_refs,
-        artifact_type=payload.artifact_type,
-        optional_defaults=payload.optional_defaults,
-    )
-    return AppBuildActionResponse(
-        message="构建配置已保存",
-        build=None,
-        state=_app_detail_state(session, app),
-    )
+    try:
+        app = build_platform.app_or_404(session, app_id)
+        build_platform.save_build_setting(
+            session,
+            app_id=app_id,
+            environment=environment,
+            git_url=payload.git_url,
+            repo_subpath=payload.repo_subpath,
+            runner_labels=payload.runner_labels,
+            credential_refs=payload.credential_refs,
+            artifact_type=payload.artifact_type,
+            optional_defaults=payload.optional_defaults,
+        )
+        return AppBuildActionResponse(
+            message="构建配置已保存",
+            build=None,
+            state=_app_detail_state(session, app),
+        )
+    except ApiError as error:
+        raise _admin_api_error(error) from error
 
 
 @router.post(
@@ -307,22 +310,25 @@ def create_app_agent_build(
     payload: AgentBuildCreateRequest,
     _: AdminDep,
 ) -> AppBuildActionResponse:
-    build = build_platform.create_agent_build(
-        session,
-        app_id=app_id,
-        environment=payload.environment,
-        git_url=payload.git_url,
-        git_ref=payload.git_ref,
-        repo_subpath=payload.repo_subpath,
-        runner_labels=payload.runner_labels,
-        credential_refs=payload.credential_refs,
-        artifact_type=payload.artifact_type,
-    )
-    return AppBuildActionResponse(
-        message="构建任务已创建",
-        build=_build_item(build),
-        state=_app_detail_state(session, build.app),
-    )
+    try:
+        build = build_platform.create_agent_build(
+            session,
+            app_id=app_id,
+            environment=payload.environment,
+            git_url=payload.git_url,
+            git_ref=payload.git_ref,
+            repo_subpath=payload.repo_subpath,
+            runner_labels=payload.runner_labels,
+            credential_refs=payload.credential_refs,
+            artifact_type=payload.artifact_type,
+        )
+        return AppBuildActionResponse(
+            message="构建任务已创建",
+            build=_build_item(build),
+            state=_app_detail_state(session, build.app),
+        )
+    except ApiError as error:
+        raise _admin_api_error(error) from error
 
 
 @router.get(

@@ -58,6 +58,24 @@ def test_admin_app_detail_returns_build_history_and_empty_settings(
     assert payload["settings"]["production"] is None
 
 
+def test_admin_app_detail_returns_admin_error_for_missing_app(
+    client: TestClient,
+) -> None:
+    response = client.get(
+        "/admin/api/apps/app-ios-com-example-missing",
+        headers=_admin_headers(),
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "error": {
+            "code": "app_not_found",
+            "message": "应用不存在",
+            "detail": {"retryable": False},
+        }
+    }
+
+
 def test_admin_can_save_development_build_settings(
     client: TestClient,
     db_session: Session,

@@ -24,9 +24,7 @@ from testflying_api.admin.view_models import (
     account_detail_context,
     account_status_label,
     dashboard_context,
-    environment_label,
     format_datetime,
-    format_size,
     list_accounts,
     list_apps,
     list_builds,
@@ -55,10 +53,7 @@ from testflying_api.admin_api.schemas import (
     AppDetailState,
     AppLogsState,
     AgentBuildCreateRequest,
-    BuildAppSummary,
-    BuildArtifactItem,
     BuildItem,
-    BuildSettingItem,
     BuildSettingSaveRequest,
     BuildsState,
     ConnectorActionResponse,
@@ -141,7 +136,6 @@ from testflying_api.llm_config import (
 )
 from testflying_api.schema import (
     App,
-    AppBuildSetting,
     Build,
     DeveloperAccount,
     Device,
@@ -261,8 +255,10 @@ def app_detail_state(
     app_id: str,
     _: AdminDep,
 ) -> AppDetailState:
-    app = build_platform.app_or_404(session, app_id)
-    return _app_detail_state(session, app)
+    try:
+        return build_platform.app_detail_state(session, app_id)
+    except ApiError as error:
+        raise _admin_api_error(error) from error
 
 
 @router.put(
@@ -278,7 +274,6 @@ def save_app_build_setting(
     _: AdminDep,
 ) -> AppBuildActionResponse:
     try:
-        app = build_platform.app_or_404(session, app_id)
         build_platform.save_build_setting(
             session,
             app_id=app_id,
@@ -293,7 +288,7 @@ def save_app_build_setting(
         return AppBuildActionResponse(
             message="构建配置已保存",
             build=None,
-            state=_app_detail_state(session, app),
+            state=build_platform.app_detail_state(session, app_id),
         )
     except ApiError as error:
         raise _admin_api_error(error) from error
@@ -325,7 +320,7 @@ def create_app_agent_build(
         return AppBuildActionResponse(
             message="构建任务已创建",
             build=_build_item(build),
-            state=_app_detail_state(session, build.app),
+            state=build_platform.app_detail_state(session, app_id),
         )
     except ApiError as error:
         raise _admin_api_error(error) from error
@@ -1628,84 +1623,7 @@ def _app_logs_state(request: Request, *, cursor: int = 0, limit: int = 500) -> A
 
 
 def _build_item(build: Build) -> BuildItem:
-    artifact = build.package_artifact()
-    app = build.app
-    if app is None:
-        raise AdminApiError("build_app_not_found", "构建关联的应用不存在", status_code=500)
-    return BuildItem(
-        id=build.id,
-        app=BuildAppSummary(
-            id=app.id,
-            name=app.name,
-            bundle_identifier=app.bundle_identifier,
-            platform=app.platform,
-            icon_color=app.icon_color,
-            icon_text=app.name[:2].upper(),
-        ),
-        version=build.version or "",
-        build_number=build.build_number or "",
-        source=build.source,
-        lifecycle_status=build.lifecycle_status,
-        git_ref=build.git_ref or "",
-        platform=build.platform,
-        platform_label=platform_label(build.platform),
-        environment=build.environment,
-        environment_label=environment_label(build.environment),
-        status=build.status,
-        note=build.note or "",
-        min_os_version=build.min_os_version or "",
-        uploaded_at=_iso_datetime(build.uploaded_at),
-        uploaded_at_label=format_datetime(build.uploaded_at),
-        expires_at=_optional_iso_datetime(build.expires_at),
-        expires_at_label=format_datetime(build.expires_at),
-        artifact=(
-            BuildArtifactItem(
-                file_name=artifact.file_name,
-                size_label=format_size(artifact.size_bytes),
-                install_url=artifact.install_url,
-                download_url=artifact.download_url,
-                manifest_url=artifact.manifest_url,
-            )
-            if artifact
-            else None
-        ),
-    )
-
-
-def _app_detail_state(session: Session, app: App | None) -> AppDetailState:
-    if app is None:
-        raise AdminApiError("build_app_not_found", "构建关联的应用不存在", status_code=500)
-    settings = build_platform.settings_by_environment(session, app.id)
-    return AppDetailState(
-        app=BuildAppSummary(
-            id=app.id,
-            name=app.name,
-            bundle_identifier=app.bundle_identifier,
-            platform=app.platform,
-            icon_color=app.icon_color,
-            icon_text=app.name[:2].upper(),
-        ),
-        builds=[_build_item(build) for build in build_platform.list_app_builds(session, app.id)],
-        settings={
-            "development": _build_setting_item(settings.get("development")),
-            "production": _build_setting_item(settings.get("production")),
-        },
-    )
-
-
-def _build_setting_item(setting: AppBuildSetting | None) -> BuildSettingItem | None:
-    if setting is None:
-        return None
-    return BuildSettingItem(
-        environment=setting.environment,
-        git_url=setting.git_url,
-        repo_subpath=setting.repo_subpath,
-        runner_labels=list(setting.runner_labels_json or []),
-        credential_refs=dict(setting.credential_refs_json or {}),
-        artifact_type=setting.artifact_type,
-        optional_defaults=dict(setting.optional_defaults_json or {}),
-        updated_at_label=format_datetime(setting.updated_at),
-    )
+    return build_platform.build_item(build)
 
 
 def _device_item(device: Device) -> DeviceItem:

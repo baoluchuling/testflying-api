@@ -6,6 +6,20 @@ from uuid import uuid4
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
+from testflying_api.admin.view_models import (
+    environment_label,
+    format_datetime,
+    format_size,
+    platform_label,
+)
+from testflying_api.admin_api.errors import AdminApiError
+from testflying_api.admin_api.schemas import (
+    AppDetailState,
+    BuildAppSummary,
+    BuildArtifactItem,
+    BuildItem,
+    BuildSettingItem,
+)
 from testflying_api.domain import channel_for_environment, normalize_environment
 from testflying_api.errors import ApiError
 from testflying_api.schema import App, AppBuildSetting, Build
@@ -32,6 +46,19 @@ def list_app_builds(session: Session, app_id: str) -> list[Build]:
 def settings_by_environment(session: Session, app_id: str) -> dict[str, AppBuildSetting]:
     settings = session.scalars(select(AppBuildSetting).where(AppBuildSetting.app_id == app_id))
     return {item.environment: item for item in settings}
+
+
+def app_detail_state(session: Session, app_id: str) -> AppDetailState:
+    app = app_or_404(session, app_id)
+    settings = settings_by_environment(session, app.id)
+    return AppDetailState(
+        app=_build_app_summary(app),
+        builds=[build_item(build) for build in list_app_builds(session, app.id)],
+        settings={
+            "development": build_setting_item(settings.get("development")),
+            "production": build_setting_item(settings.get("production")),
+        },
+    )
 
 
 def _parse_environment(value: str) -> str:
@@ -127,3 +154,79 @@ def create_agent_build(
         .where(Build.id == build.id)
         .options(joinedload(Build.app), selectinload(Build.artifacts))
     ).one()
+
+
+def build_item(build: Build) -> BuildItem:
+    artifact = build.package_artifact()
+    app = build.app
+    if app is None:
+        raise AdminApiError("build_app_not_found", "构建关联的应用不存在", status_code=500)
+    return BuildItem(
+        id=build.id,
+        app=_build_app_summary(app),
+        version=build.version or "",
+        build_number=build.build_number or "",
+        source=build.source,
+        lifecycle_status=build.lifecycle_status,
+        git_ref=build.git_ref or "",
+        platform=build.platform,
+        platform_label=platform_label(build.platform),
+        environment=build.environment,
+        environment_label=environment_label(build.environment),
+        status=build.status,
+        note=build.note or "",
+        min_os_version=build.min_os_version or "",
+        uploaded_at=_iso_datetime(build.uploaded_at),
+        uploaded_at_label=format_datetime(build.uploaded_at),
+        expires_at=_optional_iso_datetime(build.expires_at),
+        expires_at_label=format_datetime(build.expires_at),
+        artifact=(
+            BuildArtifactItem(
+                file_name=artifact.file_name,
+                size_label=format_size(artifact.size_bytes),
+                install_url=artifact.install_url,
+                download_url=artifact.download_url,
+                manifest_url=artifact.manifest_url,
+            )
+            if artifact
+            else None
+        ),
+    )
+
+
+def build_setting_item(setting: AppBuildSetting | None) -> BuildSettingItem | None:
+    if setting is None:
+        return None
+    return BuildSettingItem(
+        environment=setting.environment,
+        git_url=setting.git_url,
+        repo_subpath=setting.repo_subpath,
+        runner_labels=list(setting.runner_labels_json or []),
+        credential_refs=dict(setting.credential_refs_json or {}),
+        artifact_type=setting.artifact_type,
+        optional_defaults=dict(setting.optional_defaults_json or {}),
+        updated_at_label=format_datetime(setting.updated_at),
+    )
+
+
+def _build_app_summary(app: App) -> BuildAppSummary:
+    return BuildAppSummary(
+        id=app.id,
+        name=app.name,
+        bundle_identifier=app.bundle_identifier,
+        platform=app.platform,
+        icon_color=app.icon_color,
+        icon_text=app.name[:2].upper(),
+    )
+
+
+def _iso_datetime(value: datetime) -> str:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _optional_iso_datetime(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    return _iso_datetime(value)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import re
 from uuid import uuid4
 
 from sqlalchemy import select
@@ -23,6 +24,13 @@ from testflying_api.admin_api.schemas import (
 from testflying_api.domain import channel_for_environment, normalize_environment
 from testflying_api.errors import ApiError
 from testflying_api.schema import App, AppBuildSetting, Build
+
+_CREDENTIAL_REF_MAX_LENGTH = 120
+_PEM_MARKER_RE = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----", re.IGNORECASE)
+_JWT_RE = re.compile(r"^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$")
+_HEX_SECRET_RE = re.compile(r"^[A-Fa-f0-9]{32,}$")
+_TOKEN_PREFIXES = ("ghp_", "gho_", "github_pat_", "glpat-", "sk-", "xoxb-", "xoxp-")
+_SECRET_WORD_RE = re.compile(r"(secret|token|apikey|api_key|password|passwd|private[_-]?key)", re.I)
 
 
 def app_or_404(session: Session, app_id: str) -> App:
@@ -86,6 +94,13 @@ def save_build_setting(
 ) -> AppBuildSetting:
     app_or_404(session, app_id)
     normalized_environment = _parse_environment(environment)
+    normalized_git_url = _require_non_blank(git_url, field="git_url", label="git_url")
+    normalized_artifact_type = _require_non_blank(
+        artifact_type,
+        field="artifact_type",
+        label="artifact_type",
+    )
+    normalized_credential_refs = _normalize_credential_refs(credential_refs)
     existing = session.scalar(
         select(AppBuildSetting).where(
             AppBuildSetting.app_id == app_id,
@@ -97,11 +112,11 @@ def save_build_setting(
         app_id=app_id,
         environment=normalized_environment,
     )
-    setting.git_url = git_url.strip()
+    setting.git_url = normalized_git_url
     setting.repo_subpath = repo_subpath.strip()
     setting.runner_labels_json = [label.strip() for label in runner_labels if label.strip()]
-    setting.credential_refs_json = dict(credential_refs)
-    setting.artifact_type = artifact_type.strip()
+    setting.credential_refs_json = normalized_credential_refs
+    setting.artifact_type = normalized_artifact_type
     setting.optional_defaults_json = dict(optional_defaults)
     setting.updated_at = datetime.now(UTC)
     session.add(setting)
@@ -123,6 +138,14 @@ def create_agent_build(
 ) -> Build:
     app = app_or_404(session, app_id)
     normalized_environment = _parse_environment(environment)
+    normalized_git_url = _require_non_blank(git_url, field="git_url", label="git_url")
+    normalized_git_ref = _require_non_blank(git_ref, field="git_ref", label="git_ref")
+    normalized_artifact_type = _require_non_blank(
+        artifact_type,
+        field="artifact_type",
+        label="artifact_type",
+    )
+    normalized_credential_refs = _normalize_credential_refs(credential_refs)
     build = Build(
         id=f"build-agent-{uuid4().hex[:12]}",
         app_id=app.id,
@@ -134,13 +157,13 @@ def create_agent_build(
         platform=app.platform,
         source="agent",
         lifecycle_status="queued",
-        git_url=git_url.strip(),
-        git_ref=git_ref.strip(),
+        git_url=normalized_git_url,
+        git_ref=normalized_git_ref,
         runner_labels_json={
             "required": [label.strip() for label in runner_labels if label.strip()],
             "repoSubpath": repo_subpath.strip(),
-            "credentialRefs": dict(credential_refs),
-            "artifactType": artifact_type.strip(),
+            "credentialRefs": normalized_credential_refs,
+            "artifactType": normalized_artifact_type,
         },
         attempt_count=0,
         note="",
@@ -230,3 +253,51 @@ def _optional_iso_datetime(value: datetime | None) -> str | None:
     if value is None:
         return None
     return _iso_datetime(value)
+
+
+def _require_non_blank(value: str, *, field: str, label: str) -> str:
+    normalized = value.strip()
+    if normalized:
+        return normalized
+    raise ApiError(
+        "invalid_build_input",
+        f"{label} 不能为空",
+        status_code=422,
+        extra={"field": field},
+    )
+
+
+def _normalize_credential_refs(credential_refs: dict[str, str]) -> dict[str, str]:
+    normalized: dict[str, str] = {}
+    for key, raw_value in credential_refs.items():
+        normalized[key] = _validate_credential_ref(key=key, value=raw_value)
+    return normalized
+
+
+def _validate_credential_ref(*, key: str, value: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise _invalid_credential_ref(key, "credential ref 不能为空")
+    if "\n" in value or "\r" in value:
+        raise _invalid_credential_ref(key, "credential ref 不能包含换行")
+    if len(normalized) > _CREDENTIAL_REF_MAX_LENGTH:
+        raise _invalid_credential_ref(key, "credential ref 过长")
+    lowered = normalized.lower()
+    if _PEM_MARKER_RE.search(value):
+        raise _invalid_credential_ref(key, "credential ref 不能是私钥内容")
+    if normalized.startswith(_TOKEN_PREFIXES) or _JWT_RE.fullmatch(normalized):
+        raise _invalid_credential_ref(key, "credential ref 不能是 token 或密钥")
+    if _HEX_SECRET_RE.fullmatch(normalized) and any(char.isalpha() for char in normalized):
+        raise _invalid_credential_ref(key, "credential ref 不能是 token 或密钥")
+    if _SECRET_WORD_RE.search(lowered) and len(normalized) >= 16:
+        raise _invalid_credential_ref(key, "credential ref 不能是 secret 文本")
+    return normalized
+
+
+def _invalid_credential_ref(key: str, message: str) -> ApiError:
+    return ApiError(
+        "invalid_credential_ref",
+        f"{key}: {message}",
+        status_code=422,
+        extra={"field": "credential_refs", "key": key},
+    )

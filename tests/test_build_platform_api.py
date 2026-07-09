@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from base64 import b64encode
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -105,6 +106,39 @@ def test_admin_can_save_development_build_settings(
     ]
 
 
+def test_admin_can_save_production_build_settings_with_valid_credential_refs(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    app = _create_app(db_session)
+
+    response = client.put(
+        f"/admin/api/apps/{app.id}/build-settings/production",
+        headers=_admin_headers(),
+        json={
+            "gitUrl": "  git@example.com:mobile/demo.git  ",
+            "repoSubpath": " ios/App ",
+            "runnerLabels": [" release-runner ", " "],
+            "credentialRefs": {"git": "git-main", "iosSigning": "mac-mini-1"},
+            "artifactType": " ipa ",
+            "optionalDefaults": {},
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["state"]["settings"]["production"] == {
+        "environment": "production",
+        "gitUrl": "git@example.com:mobile/demo.git",
+        "repoSubpath": "ios/App",
+        "runnerLabels": ["release-runner"],
+        "credentialRefs": {"git": "git-main", "iosSigning": "mac-mini-1"},
+        "artifactType": "ipa",
+        "optionalDefaults": {},
+        "updatedAtLabel": payload["state"]["settings"]["production"]["updatedAtLabel"],
+    }
+
+
 def test_admin_can_create_queued_agent_build_from_app_detail(
     client: TestClient,
     db_session: Session,
@@ -133,6 +167,135 @@ def test_admin_can_create_queued_agent_build_from_app_detail(
     assert created["gitRef"] == "main"
     assert created["version"] == ""
     assert created["buildNumber"] == ""
+
+
+def test_admin_save_build_setting_rejects_blank_required_fields_with_admin_error(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    app = _create_app(db_session)
+
+    response = client.put(
+        f"/admin/api/apps/{app.id}/build-settings/development",
+        headers=_admin_headers(),
+        json={
+            "gitUrl": "   ",
+            "repoSubpath": "apps/demo",
+            "runnerLabels": ["ios-release"],
+            "credentialRefs": {"git": "git-main"},
+            "artifactType": " \t ",
+            "optionalDefaults": {},
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {
+        "error": {
+            "code": "invalid_build_input",
+            "message": "git_url 不能为空",
+            "detail": {"field": "git_url", "retryable": False},
+        }
+    }
+
+
+def test_admin_create_agent_build_rejects_blank_required_fields_with_admin_error(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    app = _create_app(db_session)
+
+    response = client.post(
+        f"/admin/api/apps/{app.id}/builds",
+        headers=_admin_headers(),
+        json={
+            "environment": "development",
+            "gitUrl": "git@example.com:mobile/demo.git",
+            "gitRef": "   ",
+            "repoSubpath": "",
+            "runnerLabels": ["ios-release"],
+            "credentialRefs": {"git": "git-main"},
+            "artifactType": "ipa",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {
+        "error": {
+            "code": "invalid_build_input",
+            "message": "git_ref 不能为空",
+            "detail": {"field": "git_ref", "retryable": False},
+        }
+    }
+
+
+@pytest.mark.parametrize(
+    ("credential_ref", "message"),
+    [
+        ("   ", "git: credential ref 不能为空"),
+        ("-----BEGIN PRIVATE KEY-----", "git: credential ref 不能是私钥内容"),
+        ("line1\nline2", "git: credential ref 不能包含换行"),
+        ("x" * 121, "git: credential ref 过长"),
+    ],
+)
+def test_admin_save_build_setting_rejects_invalid_credential_refs_with_admin_error(
+    client: TestClient,
+    db_session: Session,
+    credential_ref: str,
+    message: str,
+) -> None:
+    app = _create_app(db_session)
+
+    response = client.put(
+        f"/admin/api/apps/{app.id}/build-settings/development",
+        headers=_admin_headers(),
+        json={
+            "gitUrl": "git@example.com:mobile/demo.git",
+            "repoSubpath": "apps/demo",
+            "runnerLabels": ["ios-release"],
+            "credentialRefs": {"git": credential_ref},
+            "artifactType": "ipa",
+            "optionalDefaults": {},
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {
+        "error": {
+            "code": "invalid_credential_ref",
+            "message": message,
+            "detail": {"field": "credential_refs", "key": "git", "retryable": False},
+        }
+    }
+
+
+def test_admin_create_agent_build_rejects_token_like_credential_refs_with_admin_error(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    app = _create_app(db_session)
+
+    response = client.post(
+        f"/admin/api/apps/{app.id}/builds",
+        headers=_admin_headers(),
+        json={
+            "environment": "development",
+            "gitUrl": "git@example.com:mobile/demo.git",
+            "gitRef": "main",
+            "repoSubpath": "",
+            "runnerLabels": ["ios-release"],
+            "credentialRefs": {"git": "ghp_1234567890abcdefghijklmnopqrstuvwxyz"},
+            "artifactType": "ipa",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {
+        "error": {
+            "code": "invalid_credential_ref",
+            "message": "git: credential ref 不能是 token 或密钥",
+            "detail": {"field": "credential_refs", "key": "git", "retryable": False},
+        }
+    }
 
 
 def test_admin_save_build_setting_rejects_invalid_environment_with_admin_error(

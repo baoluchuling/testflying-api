@@ -8,6 +8,7 @@ import { UploadPage } from '../pages/UploadPage';
 import { AppLogsPage } from '../pages/AppLogsPage';
 import { DashboardPage } from '../pages/DashboardPage';
 import { BuildsPage } from '../pages/BuildsPage';
+import { AppDetailPage } from '../pages/AppDetailPage';
 import { DevicesPage } from '../pages/DevicesPage';
 import { NotificationsPage } from '../pages/NotificationsPage';
 import { ApiDocsPage } from '../pages/ApiDocsPage';
@@ -67,6 +68,8 @@ export function AdminApp() {
 
   const navItems = bootstrap?.navItems ?? fallbackNav;
   const title = useMemo(() => routeTitles[activeNavRoute], [activeNavRoute]);
+  const appDetailMatch = location.pathname.match(/^\/admin\/apps\/([^/]+)$/);
+  const appDetailId = appDetailMatch ? decodeURIComponent(appDetailMatch[1]) : null;
 
   function navigate(path: string, key: AdminRouteKey) {
     if (location.pathname !== path) {
@@ -137,7 +140,8 @@ export function AdminApp() {
 
         {activeRoute === 'dashboard' ? <DashboardPage /> : null}
         {activeRoute === 'uploads' ? <UploadPage /> : null}
-        {activeRoute === 'apps' ? <StoreAppsPage /> : null}
+        {activeRoute === 'apps' && appDetailId ? <AppDetailPage appId={appDetailId} /> : null}
+        {activeRoute === 'apps' && !appDetailId ? <StoreAppsPage /> : null}
         {activeRoute === 'accounts' ? <DeveloperAccountsPage /> : null}
         {activeRoute === 'store-reviews' ? <StoreReviewsPage /> : null}
         {activeRoute === 'llm-config' ? <LlmConfigPage /> : null}

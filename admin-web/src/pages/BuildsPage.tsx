@@ -31,6 +31,11 @@ export function BuildsPage() {
     setCopied(label);
   }
 
+  function navigateToApp(appId: string) {
+    history.pushState({ adminRoute: 'apps' }, '', `/admin/apps/${encodeURIComponent(appId)}`);
+    window.dispatchEvent(new Event('admin:navigation'));
+  }
+
   return (
     <section className="panel table-panel" data-builds-page>
       <div className="panel-head">
@@ -44,12 +49,12 @@ export function BuildsPage() {
           <span>应用</span>
           <span>版本</span>
           <span>平台</span>
-          <span>环境</span>
-          <span>大小</span>
+          <span>来源 / 状态</span>
+          <span>产物</span>
           <span>操作</span>
         </div>
         {(state?.builds ?? []).map((build) => (
-          <BuildRow key={build.id} build={build} onCopy={copy} />
+          <BuildRow key={build.id} build={build} onCopy={copy} onOpenApp={navigateToApp} />
         ))}
       </div>
       {!state && !error ? <div className="empty-state">正在加载构建...</div> : null}
@@ -60,14 +65,18 @@ export function BuildsPage() {
 
 function BuildRow({
   build,
-  onCopy
+  onCopy,
+  onOpenApp
 }: {
   build: BuildItem;
   onCopy: (label: string, value: string) => Promise<void>;
+  onOpenApp: (appId: string) => void;
 }) {
+  const artifacts = build.artifacts?.length ? build.artifacts : build.artifact ? [build.artifact] : [];
+
   return (
     <div className="data-table-row build-row" role="row">
-      <span className="app-cell">
+      <button type="button" className="link-button app-cell build-app-link" onClick={() => onOpenApp(build.app.id)}>
         <span className="app-avatar" style={{ backgroundColor: build.app.iconColor }}>
           {build.app.iconText}
         </span>
@@ -75,31 +84,45 @@ function BuildRow({
           <strong>{build.app.name}</strong>
           <small>{build.app.bundleIdentifier}</small>
         </span>
-      </span>
+      </button>
       <span>
         <strong>{build.version}</strong>
         <small>build {build.buildNumber}</small>
       </span>
       <span>{build.platformLabel}</span>
-      <span>{build.environmentLabel}</span>
-      <span>{build.artifact?.sizeLabel ?? '-'}</span>
-      <span className="inline-actions">
-        <button
-          type="button"
-          className="button"
-          disabled={!build.artifact?.installUrl}
-          onClick={() => onCopy('installUrl', build.artifact?.installUrl ?? '')}
-        >
-          复制安装
-        </button>
-        <button
-          type="button"
-          className="button"
-          disabled={!build.artifact?.downloadUrl}
-          onClick={() => onCopy('downloadUrl', build.artifact?.downloadUrl ?? '')}
-        >
-          下载地址
-        </button>
+      <span>
+        <strong>{build.sourceLabel || build.environmentLabel}</strong>
+        <small>{build.lifecycleStatusLabel || build.lifecycleStatus || build.status}</small>
+      </span>
+      <span>
+        <strong>{artifacts[0]?.sizeLabel ?? '-'}</strong>
+        <small>{artifacts.length ? `${artifacts.length} 个产物` : build.environmentLabel}</small>
+      </span>
+      <span className="artifact-actions">
+        {artifacts.length === 0 ? <small>无可用链接</small> : null}
+        {artifacts.map((artifact, index) => (
+          <div key={`${artifact.fileName}-${index}`} className="artifact-action-group">
+            <small>{artifact.fileName}</small>
+            <span className="inline-actions">
+              <button
+                type="button"
+                className="button"
+                disabled={!artifact.installUrl}
+                onClick={() => onCopy(`${artifact.fileName}: installUrl`, artifact.installUrl)}
+              >
+                复制安装
+              </button>
+              <button
+                type="button"
+                className="button"
+                disabled={!artifact.downloadUrl}
+                onClick={() => onCopy(`${artifact.fileName}: downloadUrl`, artifact.downloadUrl)}
+              >
+                下载地址
+              </button>
+            </span>
+          </div>
+        ))}
       </span>
     </div>
   );

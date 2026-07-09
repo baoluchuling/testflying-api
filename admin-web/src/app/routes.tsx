@@ -23,9 +23,9 @@ export const routeTitles: Record<AdminRouteKey, { eyebrow: string; title: string
     summary: '自动解析包信息，支持 iOS / Android，不会提交到商店。'
   },
   apps: {
-    eyebrow: 'Store Management',
-    title: '商店管理',
-    summary: '从应用进入商店内容、评论和账号连接。'
+    eyebrow: 'Applications',
+    title: '应用',
+    summary: '查看应用详情、构建配置、构建历史和商店管理入口。'
   },
   accounts: {
     eyebrow: 'Store Accounts',

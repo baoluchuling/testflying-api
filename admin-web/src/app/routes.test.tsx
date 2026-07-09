@@ -13,6 +13,7 @@ describe('routeKeyFromPath', () => {
 
 describe('navKeyFromPath', () => {
   it('highlights store management for app store workspace pages', () => {
+    expect(navKeyFromPath('/admin/apps/app-ios-demo')).toBe('apps');
     expect(navKeyFromPath('/admin/accounts/account-ios/apps/app-ios/store')).toBe('apps');
     expect(navKeyFromPath('/admin/accounts/account-ios/apps/app-ios/marketing')).toBe('apps');
     expect(navKeyFromPath('/admin/accounts/account-ios/apps/app-ios/connection')).toBe('apps');

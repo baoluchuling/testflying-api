@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AdminApp } from './AdminApp';
-import type { BuildsState, DashboardState, StoreReviewsState } from './apiClient';
+import type { AppDetailState, BuildsState, DashboardState, StoreReviewsState } from './apiClient';
 
 const bootstrapPayload = {
   appName: 'testflying',
@@ -37,6 +37,9 @@ describe('AdminApp', () => {
       }
       if (url === '/admin/api/builds') {
         return jsonResponse(buildsState);
+      }
+      if (url === '/admin/api/apps/app-1') {
+        return jsonResponse(appDetailState);
       }
       return Promise.reject(new Error(`unexpected fetch ${url}`));
     });
@@ -73,6 +76,16 @@ describe('AdminApp', () => {
     expect(location.pathname).toBe('/admin/builds');
     expect(await screen.findByText('构建列表')).toBeTruthy();
     expect(screen.queryByText('新后台重构中')).toBeNull();
+  });
+
+  it('renders app detail inside the shell while keeping the apps nav active', async () => {
+    history.replaceState(null, '', '/admin/apps/app-1');
+
+    render(<AdminApp />);
+
+    expect(await screen.findByRole('heading', { level: 2, name: 'lookrva' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '商店管理' }).className).toContain('active');
+    expect(screen.getByText('构建历史')).toBeTruthy();
   });
 });
 
@@ -117,16 +130,47 @@ const buildsState: BuildsState = {
       platformLabel: 'iOS',
       environment: 'development',
       environmentLabel: '开发环境',
+      source: 'upload',
+      sourceLabel: '上传',
+      lifecycleStatus: 'succeeded',
+      lifecycleStatusLabel: '成功',
       status: 'available',
       note: '',
       minOsVersion: 'iOS 16.0',
+      gitRef: 'main',
       uploadedAt: '2026-06-29T00:00:00',
       uploadedAtLabel: '2026-06-29 00:00',
       expiresAt: null,
       expiresAtLabel: '-',
-      artifact: null
+      artifact: null,
+      artifacts: []
     }
   ]
+};
+
+const appDetailState: AppDetailState = {
+  app: {
+    id: 'app-1',
+    name: 'lookrva',
+    bundleIdentifier: 'com.example.lookrva',
+    platform: 'ios',
+    iconColor: '#171717',
+    iconText: 'LO'
+  },
+  settings: {
+    development: {
+      environment: 'development',
+      gitUrl: 'git@example.com:lookrva/ios.git',
+      repoSubpath: '',
+      runnerLabels: ['ios-release'],
+      credentialRefs: { git: 'git-main' },
+      artifactType: 'ipa',
+      optionalDefaults: {},
+      updatedAtLabel: '2026-07-09 10:00'
+    },
+    production: null
+  },
+  builds: buildsState.builds
 };
 
 function jsonResponse(payload: unknown): Promise<Response> {

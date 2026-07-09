@@ -556,6 +556,8 @@ export type BuildAppSummary = {
 };
 
 export type BuildArtifact = {
+  artifactType?: string;
+  artifactTypeLabel?: string;
   fileName: string;
   sizeLabel: string;
   installUrl: string;
@@ -568,6 +570,11 @@ export type BuildItem = {
   app: BuildAppSummary;
   version: string;
   buildNumber: string;
+  source?: string;
+  sourceLabel?: string;
+  lifecycleStatus?: string;
+  lifecycleStatusLabel?: string;
+  gitRef?: string;
   platform: string;
   platformLabel: string;
   environment: string;
@@ -580,6 +587,52 @@ export type BuildItem = {
   expiresAt: string | null;
   expiresAtLabel: string;
   artifact: BuildArtifact | null;
+  artifacts?: BuildArtifact[];
+};
+
+export type BuildSettingItem = {
+  environment: string;
+  gitUrl: string;
+  repoSubpath: string;
+  runnerLabels: string[];
+  credentialRefs: Record<string, string>;
+  artifactType: string;
+  optionalDefaults: Record<string, unknown>;
+  updatedAtLabel: string;
+};
+
+export type AppDetailState = {
+  app: BuildAppSummary;
+  builds: BuildItem[];
+  settings: {
+    development: BuildSettingItem | null;
+    production: BuildSettingItem | null;
+  };
+};
+
+export type AgentBuildCreatePayload = {
+  environment: string;
+  gitUrl: string;
+  gitRef: string;
+  repoSubpath: string;
+  runnerLabels: string[];
+  credentialRefs: Record<string, string>;
+  artifactType: string;
+};
+
+export type BuildSettingSavePayload = {
+  gitUrl: string;
+  repoSubpath: string;
+  runnerLabels: string[];
+  credentialRefs: Record<string, string>;
+  artifactType: string;
+  optionalDefaults: Record<string, unknown>;
+};
+
+export type AppBuildActionResponse = {
+  message: string;
+  build: BuildItem | null;
+  state: AppDetailState;
 };
 
 export type NotificationItem = {
@@ -1102,6 +1155,31 @@ export function loadUploadState(): Promise<UploadState> {
 
 export function loadBuildsState(): Promise<BuildsState> {
   return getJson<BuildsState>('/admin/api/builds');
+}
+
+export function loadAppDetailState(appId: string): Promise<AppDetailState> {
+  return getJson<AppDetailState>(`/admin/api/apps/${encodeURIComponent(appId)}`);
+}
+
+export function createAgentBuild(
+  appId: string,
+  payload: AgentBuildCreatePayload
+): Promise<AppBuildActionResponse> {
+  return postJson<AppBuildActionResponse>(
+    `/admin/api/apps/${encodeURIComponent(appId)}/builds`,
+    payload
+  );
+}
+
+export function saveAppBuildSettings(
+  appId: string,
+  environment: 'development' | 'production',
+  payload: BuildSettingSavePayload
+): Promise<AppBuildActionResponse> {
+  return putJson<AppBuildActionResponse>(
+    `/admin/api/apps/${encodeURIComponent(appId)}/build-settings/${environment}`,
+    payload
+  );
 }
 
 export function loadDevicesState(): Promise<DevicesState> {

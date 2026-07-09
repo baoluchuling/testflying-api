@@ -169,6 +169,33 @@ def test_admin_can_create_queued_agent_build_from_app_detail(
     assert created["buildNumber"] == ""
 
 
+@pytest.mark.parametrize("credential_ref", ["git-main", "ios-dev", "mac-mini-1"])
+def test_admin_accepts_supported_credential_ref_ids(
+    client: TestClient,
+    db_session: Session,
+    credential_ref: str,
+) -> None:
+    app = _create_app(db_session)
+
+    response = client.put(
+        f"/admin/api/apps/{app.id}/build-settings/development",
+        headers=_admin_headers(),
+        json={
+            "gitUrl": "git@example.com:mobile/demo.git",
+            "repoSubpath": "apps/demo",
+            "runnerLabels": ["ios-release"],
+            "credentialRefs": {"git": credential_ref},
+            "artifactType": "ipa",
+            "optionalDefaults": {},
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["state"]["settings"]["development"]["credentialRefs"] == {
+        "git": credential_ref
+    }
+
+
 def test_admin_save_build_setting_rejects_blank_required_fields_with_admin_error(
     client: TestClient,
     db_session: Session,
@@ -235,6 +262,38 @@ def test_admin_create_agent_build_rejects_blank_required_fields_with_admin_error
         ("-----BEGIN PRIVATE KEY-----", "git: credential ref 不能是私钥内容"),
         ("line1\nline2", "git: credential ref 不能包含换行"),
         ("x" * 121, "git: credential ref 过长"),
+        (
+            "supersecret",
+            "git: credential ref 必须是受支持前缀的小写 kebab-case 标识",
+        ),
+        (
+            "password",
+            "git: credential ref 必须是受支持前缀的小写 kebab-case 标识",
+        ),
+        (
+            "token-main",
+            "git: credential ref 必须是受支持前缀的小写 kebab-case 标识",
+        ),
+        (
+            "abc123",
+            "git: credential ref 必须是受支持前缀的小写 kebab-case 标识",
+        ),
+        (
+            "Git-Main",
+            "git: credential ref 必须是受支持前缀的小写 kebab-case 标识",
+        ),
+        (
+            "git.main",
+            "git: credential ref 必须是受支持前缀的小写 kebab-case 标识",
+        ),
+        (
+            "mac mini 1",
+            "git: credential ref 必须是受支持前缀的小写 kebab-case 标识",
+        ),
+        (
+            "mac-" + ("mini-" * 11) + "1",
+            "git: credential ref 过长",
+        ),
     ],
 )
 def test_admin_save_build_setting_rejects_invalid_credential_refs_with_admin_error(
@@ -268,9 +327,25 @@ def test_admin_save_build_setting_rejects_invalid_credential_refs_with_admin_err
     }
 
 
-def test_admin_create_agent_build_rejects_token_like_credential_refs_with_admin_error(
+@pytest.mark.parametrize(
+    ("credential_ref", "message"),
+    [
+        ("ghp_1234567890abcdefghijklmnopqrstuvwxyz", "git: credential ref 不能是 token 或密钥"),
+        (
+            "supersecret",
+            "git: credential ref 必须是受支持前缀的小写 kebab-case 标识",
+        ),
+        (
+            "runner-\nprod",
+            "git: credential ref 不能包含换行",
+        ),
+    ],
+)
+def test_admin_create_agent_build_rejects_invalid_credential_refs_with_admin_error(
     client: TestClient,
     db_session: Session,
+    credential_ref: str,
+    message: str,
 ) -> None:
     app = _create_app(db_session)
 
@@ -283,7 +358,7 @@ def test_admin_create_agent_build_rejects_token_like_credential_refs_with_admin_
             "gitRef": "main",
             "repoSubpath": "",
             "runnerLabels": ["ios-release"],
-            "credentialRefs": {"git": "ghp_1234567890abcdefghijklmnopqrstuvwxyz"},
+            "credentialRefs": {"git": credential_ref},
             "artifactType": "ipa",
         },
     )
@@ -292,7 +367,7 @@ def test_admin_create_agent_build_rejects_token_like_credential_refs_with_admin_
     assert response.json() == {
         "error": {
             "code": "invalid_credential_ref",
-            "message": "git: credential ref 不能是 token 或密钥",
+            "message": message,
             "detail": {"field": "credential_refs", "key": "git", "retryable": False},
         }
     }

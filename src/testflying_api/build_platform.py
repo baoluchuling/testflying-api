@@ -26,11 +26,16 @@ from testflying_api.errors import ApiError
 from testflying_api.schema import App, AppBuildSetting, Build
 
 _CREDENTIAL_REF_MAX_LENGTH = 120
+_CREDENTIAL_REF_ID_MAX_LENGTH = 40
 _PEM_MARKER_RE = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----", re.IGNORECASE)
 _JWT_RE = re.compile(r"^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$")
 _HEX_SECRET_RE = re.compile(r"^[A-Fa-f0-9]{32,}$")
 _TOKEN_PREFIXES = ("ghp_", "gho_", "github_pat_", "glpat-", "sk-", "xoxb-", "xoxp-")
 _SECRET_WORD_RE = re.compile(r"(secret|token|apikey|api_key|password|passwd|private[_-]?key)", re.I)
+_CREDENTIAL_REF_ID_RE = re.compile(
+    r"^(?:git|ios|android|apple|google|keystore|certificate|provisioning|signing|runner|mac)"
+    r"-[a-z0-9]+(?:-[a-z0-9]+)*$"
+)
 
 
 def app_or_404(session: Session, app_id: str) -> App:
@@ -291,6 +296,13 @@ def _validate_credential_ref(*, key: str, value: str) -> str:
         raise _invalid_credential_ref(key, "credential ref 不能是 token 或密钥")
     if _SECRET_WORD_RE.search(lowered) and len(normalized) >= 16:
         raise _invalid_credential_ref(key, "credential ref 不能是 secret 文本")
+    if len(normalized) > _CREDENTIAL_REF_ID_MAX_LENGTH:
+        raise _invalid_credential_ref(key, "credential ref 过长")
+    if not _CREDENTIAL_REF_ID_RE.fullmatch(normalized):
+        raise _invalid_credential_ref(
+            key,
+            "credential ref 必须是受支持前缀的小写 kebab-case 标识",
+        )
     return normalized
 
 

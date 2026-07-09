@@ -51,9 +51,11 @@ def upgrade() -> None:
         batch_op.add_column(sa.Column("duration_seconds", sa.Integer(), nullable=True))
 
     _upgrade_artifacts()
+    _upgrade_app_build_settings()
 
 
 def downgrade() -> None:
+    _downgrade_app_build_settings()
     _downgrade_artifacts()
 
     with op.batch_alter_table("builds") as batch_op:
@@ -91,11 +93,37 @@ def _upgrade_artifacts() -> None:
         batch_op.add_column(sa.Column("metadata_json", sa.JSON(), nullable=True))
 
 
+def _upgrade_app_build_settings() -> None:
+    op.create_table(
+        "app_build_settings",
+        sa.Column("id", sa.String(length=80), primary_key=True),
+        sa.Column(
+            "app_id",
+            sa.String(length=80),
+            sa.ForeignKey("apps.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column("environment", sa.String(length=30), nullable=False),
+        sa.Column("git_url", sa.String(length=800), nullable=False),
+        sa.Column("repo_subpath", sa.String(length=240), nullable=False),
+        sa.Column("runner_labels_json", sa.JSON(), nullable=False),
+        sa.Column("credential_refs_json", sa.JSON(), nullable=False),
+        sa.Column("artifact_type", sa.String(length=30), nullable=False),
+        sa.Column("optional_defaults_json", sa.JSON(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+        sa.UniqueConstraint("app_id", "environment", name="uq_app_build_settings_scope"),
+    )
+
+
 def _downgrade_artifacts() -> None:
     with op.batch_alter_table("artifacts", recreate="always") as batch_op:
         batch_op.drop_column("metadata_json")
         batch_op.drop_column("artifact_type")
         batch_op.create_unique_constraint("uq_artifacts_build_id", ["build_id"])
+
+
+def _downgrade_app_build_settings() -> None:
+    op.drop_table("app_build_settings")
 
 
 def _drop_artifacts_build_id_unique_postgresql() -> None:

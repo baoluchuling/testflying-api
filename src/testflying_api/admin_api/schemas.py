@@ -642,6 +642,9 @@ class BuildItem(AdminApiModel):
     app: BuildAppSummary
     version: str
     build_number: str
+    source: str
+    lifecycle_status: str
+    git_ref: str
     platform: str
     platform_label: str
     environment: str
@@ -654,6 +657,48 @@ class BuildItem(AdminApiModel):
     expires_at: str | None
     expires_at_label: str
     artifact: BuildArtifactItem | None
+
+
+class BuildSettingItem(AdminApiModel):
+    environment: str
+    git_url: str
+    repo_subpath: str
+    runner_labels: list[str]
+    credential_refs: dict[str, str]
+    artifact_type: str
+    optional_defaults: dict[str, Any]
+    updated_at_label: str
+
+
+class BuildSettingSaveRequest(AdminApiModel):
+    git_url: str
+    repo_subpath: str = ""
+    runner_labels: list[str] = Field(default_factory=list)
+    credential_refs: dict[str, str] = Field(default_factory=dict)
+    artifact_type: str
+    optional_defaults: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentBuildCreateRequest(AdminApiModel):
+    environment: str
+    git_url: str
+    git_ref: str
+    repo_subpath: str = ""
+    runner_labels: list[str] = Field(default_factory=list)
+    credential_refs: dict[str, str] = Field(default_factory=dict)
+    artifact_type: str
+
+
+class AppDetailState(AdminApiModel):
+    app: BuildAppSummary
+    builds: list[BuildItem]
+    settings: dict[str, BuildSettingItem | None]
+
+
+class AppBuildActionResponse(AdminApiModel):
+    message: str
+    build: BuildItem | None
+    state: AppDetailState
 
 
 class NotificationItem(AdminApiModel):

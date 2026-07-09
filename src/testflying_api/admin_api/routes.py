@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from testflying_api import build_platform
 from testflying_api.admin.security import require_admin
 from testflying_api.admin.services import (
     bind_app_to_account,
@@ -50,10 +51,15 @@ from testflying_api.admin_api.schemas import (
     ApiDocEndpointItem,
     ApiDocParamItem,
     ApiDocsState,
+    AppBuildActionResponse,
+    AppDetailState,
     AppLogsState,
+    AgentBuildCreateRequest,
     BuildAppSummary,
     BuildArtifactItem,
     BuildItem,
+    BuildSettingItem,
+    BuildSettingSaveRequest,
     BuildsState,
     ConnectorActionResponse,
     ConnectorSaveRequest,
@@ -135,6 +141,7 @@ from testflying_api.llm_config import (
 )
 from testflying_api.schema import (
     App,
+    AppBuildSetting,
     Build,
     DeveloperAccount,
     Device,
@@ -242,6 +249,80 @@ def builds_state(
 ) -> BuildsState:
     builds = list_builds(session)
     return BuildsState(builds=[_build_item(build) for build in builds], total=len(builds))
+
+
+@router.get(
+    "/apps/{app_id}",
+    response_model=AppDetailState,
+    response_model_by_alias=True,
+)
+def app_detail_state(
+    session: SessionDep,
+    app_id: str,
+    _: AdminDep,
+) -> AppDetailState:
+    app = build_platform.app_or_404(session, app_id)
+    return _app_detail_state(session, app)
+
+
+@router.put(
+    "/apps/{app_id}/build-settings/{environment}",
+    response_model=AppBuildActionResponse,
+    response_model_by_alias=True,
+)
+def save_app_build_setting(
+    session: SessionDep,
+    app_id: str,
+    environment: str,
+    payload: BuildSettingSaveRequest,
+    _: AdminDep,
+) -> AppBuildActionResponse:
+    app = build_platform.app_or_404(session, app_id)
+    build_platform.save_build_setting(
+        session,
+        app_id=app_id,
+        environment=environment,
+        git_url=payload.git_url,
+        repo_subpath=payload.repo_subpath,
+        runner_labels=payload.runner_labels,
+        credential_refs=payload.credential_refs,
+        artifact_type=payload.artifact_type,
+        optional_defaults=payload.optional_defaults,
+    )
+    return AppBuildActionResponse(
+        message="构建配置已保存",
+        build=None,
+        state=_app_detail_state(session, app),
+    )
+
+
+@router.post(
+    "/apps/{app_id}/builds",
+    response_model=AppBuildActionResponse,
+    response_model_by_alias=True,
+)
+def create_app_agent_build(
+    session: SessionDep,
+    app_id: str,
+    payload: AgentBuildCreateRequest,
+    _: AdminDep,
+) -> AppBuildActionResponse:
+    build = build_platform.create_agent_build(
+        session,
+        app_id=app_id,
+        environment=payload.environment,
+        git_url=payload.git_url,
+        git_ref=payload.git_ref,
+        repo_subpath=payload.repo_subpath,
+        runner_labels=payload.runner_labels,
+        credential_refs=payload.credential_refs,
+        artifact_type=payload.artifact_type,
+    )
+    return AppBuildActionResponse(
+        message="构建任务已创建",
+        build=_build_item(build),
+        state=_app_detail_state(session, build.app),
+    )
 
 
 @router.get(
@@ -1557,6 +1638,9 @@ def _build_item(build: Build) -> BuildItem:
         ),
         version=build.version or "",
         build_number=build.build_number or "",
+        source=build.source,
+        lifecycle_status=build.lifecycle_status,
+        git_ref=build.git_ref or "",
         platform=build.platform,
         platform_label=platform_label(build.platform),
         environment=build.environment,
@@ -1579,6 +1663,42 @@ def _build_item(build: Build) -> BuildItem:
             if artifact
             else None
         ),
+    )
+
+
+def _app_detail_state(session: Session, app: App | None) -> AppDetailState:
+    if app is None:
+        raise AdminApiError("build_app_not_found", "构建关联的应用不存在", status_code=500)
+    settings = build_platform.settings_by_environment(session, app.id)
+    return AppDetailState(
+        app=BuildAppSummary(
+            id=app.id,
+            name=app.name,
+            bundle_identifier=app.bundle_identifier,
+            platform=app.platform,
+            icon_color=app.icon_color,
+            icon_text=app.name[:2].upper(),
+        ),
+        builds=[_build_item(build) for build in build_platform.list_app_builds(session, app.id)],
+        settings={
+            "development": _build_setting_item(settings.get("development")),
+            "production": _build_setting_item(settings.get("production")),
+        },
+    )
+
+
+def _build_setting_item(setting: AppBuildSetting | None) -> BuildSettingItem | None:
+    if setting is None:
+        return None
+    return BuildSettingItem(
+        environment=setting.environment,
+        git_url=setting.git_url,
+        repo_subpath=setting.repo_subpath,
+        runner_labels=list(setting.runner_labels_json or []),
+        credential_refs=dict(setting.credential_refs_json or {}),
+        artifact_type=setting.artifact_type,
+        optional_defaults=dict(setting.optional_defaults_json or {}),
+        updated_at_label=format_datetime(setting.updated_at),
     )
 
 

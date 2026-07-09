@@ -37,7 +37,33 @@ class App(Base):
     )
 
     builds: Mapped[list[Build]] = relationship(back_populates="app", cascade="all, delete-orphan")
+    build_settings: Mapped[list[AppBuildSetting]] = relationship(
+        back_populates="app",
+        cascade="all, delete-orphan",
+    )
     developer_account: Mapped[DeveloperAccount | None] = relationship(back_populates="apps")
+
+
+class AppBuildSetting(Base):
+    __tablename__ = "app_build_settings"
+    __table_args__ = (UniqueConstraint("app_id", "environment", name="uq_app_build_settings_scope"),)
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    app_id: Mapped[str] = mapped_column(ForeignKey("apps.id", ondelete="CASCADE"), nullable=False)
+    environment: Mapped[str] = mapped_column(String(30), nullable=False)
+    git_url: Mapped[str] = mapped_column(String(800), nullable=False)
+    repo_subpath: Mapped[str] = mapped_column(String(240), nullable=False, default="")
+    runner_labels_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    credential_refs_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    artifact_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    optional_defaults_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+    )
+
+    app: Mapped[App] = relationship(back_populates="build_settings")
 
 
 class Build(Base):

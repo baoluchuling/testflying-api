@@ -52,9 +52,11 @@ def upgrade() -> None:
 
     _upgrade_artifacts()
     _upgrade_app_build_settings()
+    _upgrade_build_runners()
 
 
 def downgrade() -> None:
+    _downgrade_build_runners()
     _downgrade_app_build_settings()
     _downgrade_artifacts()
 
@@ -124,6 +126,52 @@ def _downgrade_artifacts() -> None:
 
 def _downgrade_app_build_settings() -> None:
     op.drop_table("app_build_settings")
+
+
+def _upgrade_build_runners() -> None:
+    op.create_table(
+        "build_runners",
+        sa.Column("id", sa.String(length=80), primary_key=True),
+        sa.Column("name", sa.String(length=120), nullable=False),
+        sa.Column("token_hash", sa.String(length=240), nullable=False),
+        sa.Column("labels_json", sa.JSON(), nullable=False),
+        sa.Column("capabilities_json", sa.JSON(), nullable=False),
+        sa.Column("status", sa.String(length=40), nullable=False, server_default="offline"),
+        sa.Column("version", sa.String(length=80), nullable=False, server_default=""),
+        sa.Column("package_agent_version", sa.String(length=80), nullable=False, server_default=""),
+        sa.Column("last_seen_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column(
+            "current_build_id",
+            sa.String(length=80),
+            sa.ForeignKey("builds.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
+    )
+    op.create_table(
+        "build_events",
+        sa.Column("id", sa.String(length=80), primary_key=True),
+        sa.Column(
+            "build_id",
+            sa.String(length=80),
+            sa.ForeignKey("builds.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column(
+            "runner_id",
+            sa.String(length=80),
+            sa.ForeignKey("build_runners.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
+        sa.Column("type", sa.String(length=80), nullable=False),
+        sa.Column("message", sa.String(length=500), nullable=False),
+        sa.Column("payload_json", sa.JSON(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    )
+
+
+def _downgrade_build_runners() -> None:
+    op.drop_table("build_events")
+    op.drop_table("build_runners")
 
 
 def _drop_artifacts_build_id_unique_postgresql() -> None:

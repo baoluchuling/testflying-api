@@ -689,6 +689,55 @@ class AgentBuildCreateRequest(AdminApiModel):
     artifact_type: str
 
 
+class RunnerHeartbeatRequest(AdminApiModel):
+    runner_id: str
+    name: str
+    labels: list[str] = Field(default_factory=list)
+    version: str
+    package_agent_version: str
+    capabilities: dict[str, Any] = Field(default_factory=dict)
+
+
+class RunnerPollRequest(AdminApiModel):
+    runner_id: str
+    timeout_seconds: float = 0
+
+
+class RunnerBuildPayload(AdminApiModel):
+    id: str
+    app_id: str
+    platform: str
+    environment: str
+    git_url: str
+    git_ref: str
+    repo_subpath: str
+    artifact_type: str
+    credential_refs: dict[str, str]
+
+
+class RunnerPollResponse(AdminApiModel):
+    build: RunnerBuildPayload | None
+
+
+class RunnerEventRequest(AdminApiModel):
+    runner_id: str
+    type: str
+    message: str
+    lifecycle_status: str | None = None
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class RunnerCompleteRequest(AdminApiModel):
+    runner_id: str
+    status: str
+    version: str | None = None
+    build_number: str | None = None
+    note: str | None = None
+    failure_classification: str | None = None
+    failure_summary: str | None = None
+    human_action: str | None = None
+
+
 class AppDetailState(AdminApiModel):
     app: BuildAppSummary
     builds: list[BuildItem]

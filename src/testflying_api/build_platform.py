@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
 import re
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from sqlalchemy import select
@@ -21,9 +21,15 @@ from testflying_api.admin_api.schemas import (
     BuildItem,
     BuildSettingItem,
 )
-from testflying_api.domain import channel_for_environment, normalize_environment
+from testflying_api.domain import (
+    ArtifactType,
+    BuildLifecycleStatus,
+    channel_for_environment,
+    normalize_environment,
+)
 from testflying_api.errors import ApiError
-from testflying_api.schema import App, AppBuildSetting, Build
+from testflying_api.schema import App, AppBuildSetting, Artifact, Build, BuildEvent, BuildRunner
+from testflying_api.storage import ArtifactStorage
 
 _CREDENTIAL_REF_MAX_LENGTH = 120
 _CREDENTIAL_REF_ID_MAX_LENGTH = 40
@@ -36,6 +42,12 @@ _CREDENTIAL_REF_ID_RE = re.compile(
     r"^(?:git|ios|android|apple|google|keystore|certificate|provisioning|signing|runner|mac)"
     r"-[a-z0-9]+(?:-[a-z0-9]+)*$"
 )
+_RUNNER_REQUIRED_ARTIFACTS = {
+    ArtifactType.PACKAGE.value,
+    ArtifactType.SYMBOLS.value,
+    ArtifactType.REPORT.value,
+    ArtifactType.LOG.value,
+}
 
 
 def app_or_404(session: Session, app_id: str) -> App:
@@ -184,6 +196,273 @@ def create_agent_build(
     ).one()
 
 
+def register_runner(
+    session: Session,
+    *,
+    runner_id: str,
+    name: str,
+    token: str,
+    labels: list[str],
+    version: str,
+    package_agent_version: str,
+    capabilities: dict[str, object],
+) -> BuildRunner:
+    runner = session.get(BuildRunner, runner_id) or BuildRunner(id=runner_id)
+    runner.name = _require_non_blank(name, field="name", label="name")
+    runner.token_hash = _require_non_blank(token, field="token", label="token")
+    runner.labels_json = [label.strip() for label in labels if label.strip()]
+    runner.capabilities_json = dict(capabilities)
+    runner.status = "busy" if runner.current_build_id else "online"
+    runner.version = version.strip()
+    runner.package_agent_version = package_agent_version.strip()
+    runner.last_seen_at = datetime.now(UTC)
+    session.add(runner)
+    session.commit()
+    return runner
+
+
+def heartbeat_runner(
+    session: Session,
+    *,
+    runner_id: str,
+    name: str,
+    token: str,
+    labels: list[str],
+    version: str,
+    package_agent_version: str,
+    capabilities: dict[str, object],
+) -> BuildRunner:
+    return register_runner(
+        session,
+        runner_id=runner_id,
+        name=name,
+        token=token,
+        labels=labels,
+        version=version,
+        package_agent_version=package_agent_version,
+        capabilities=capabilities,
+    )
+
+
+def poll_runner_build(session: Session, *, runner_id: str, token: str) -> Build | None:
+    runner = _runner_or_401(session, runner_id=runner_id, token=token)
+    runner.last_seen_at = datetime.now(UTC)
+    if runner.current_build_id:
+        runner.status = "busy"
+        session.add(runner)
+        session.commit()
+        return None
+
+    runner_platforms = {
+        str(item).strip()
+        for item in (runner.capabilities_json or {}).get("platforms", [])
+        if str(item).strip()
+    }
+    queued_builds = session.scalars(
+        select(Build)
+        .where(
+            Build.source == "agent",
+            Build.lifecycle_status == BuildLifecycleStatus.QUEUED.value,
+            Build.attempt_count < 5,
+        )
+        .order_by(Build.uploaded_at.asc())
+    )
+    runner_labels = set(runner.labels_json or [])
+    for build in queued_builds:
+        required_labels = set((build.runner_labels_json or {}).get("required", []))
+        if required_labels and not required_labels.issubset(runner_labels):
+            continue
+        if runner_platforms and build.platform not in runner_platforms:
+            continue
+        build.lifecycle_status = BuildLifecycleStatus.ASSIGNED.value
+        build.runner_id = runner.id
+        build.attempt_count += 1
+        build.started_at = build.started_at or datetime.now(UTC)
+        runner.current_build_id = build.id
+        runner.status = "busy"
+        session.add_all([build, runner])
+        session.commit()
+        return _build_with_relations(session, build.id)
+
+    runner.status = "online"
+    session.add(runner)
+    session.commit()
+    return None
+
+
+def append_build_event(
+    session: Session,
+    *,
+    build_id: str,
+    runner_id: str,
+    token: str,
+    event_type: str,
+    message: str,
+    lifecycle_status: str | None = None,
+    payload: dict[str, object] | None = None,
+) -> BuildEvent:
+    build, runner = _runner_build_pair(session, build_id=build_id, runner_id=runner_id, token=token)
+    normalized_type = _require_non_blank(event_type, field="type", label="type")
+    normalized_message = _require_non_blank(message, field="message", label="message")
+    event = BuildEvent(
+        id=f"build-event-{uuid4().hex[:12]}",
+        build_id=build.id,
+        runner_id=runner.id,
+        type=normalized_type,
+        message=normalized_message,
+        payload_json=dict(payload or {}),
+    )
+    if lifecycle_status:
+        build.lifecycle_status = lifecycle_status.strip()
+    build.started_at = build.started_at or datetime.now(UTC)
+    runner.last_seen_at = datetime.now(UTC)
+    session.add_all([event, build, runner])
+    session.commit()
+    return event
+
+
+def upload_build_artifact(
+    session: Session,
+    *,
+    storage: ArtifactStorage,
+    build_id: str,
+    runner_id: str,
+    token: str,
+    artifact_type: str,
+    file_name: str,
+    content: bytes,
+    content_type: str,
+) -> Artifact:
+    build, runner = _runner_build_pair(session, build_id=build_id, runner_id=runner_id, token=token)
+    normalized_type = _require_non_blank(
+        artifact_type,
+        field="artifact_type",
+        label="artifact_type",
+    ).lower()
+    stored = storage.save(
+        build.id,
+        file_name=file_name,
+        content=content,
+        content_type=content_type or "application/octet-stream",
+    )
+    artifact = session.scalar(
+        select(Artifact).where(
+            Artifact.build_id == build.id,
+            Artifact.artifact_type == normalized_type,
+        )
+    )
+    if artifact is None:
+        artifact = Artifact(
+            id=f"artifact-{build.id}-{normalized_type}",
+            build_id=build.id,
+            artifact_type=normalized_type,
+            file_name=file_name,
+            content_type=content_type or "application/octet-stream",
+            storage_backend=storage.backend,
+            storage_key=stored.storage_key,
+            download_url=stored.download_url,
+            manifest_url=None,
+            install_url=(
+                stored.download_url if normalized_type == ArtifactType.PACKAGE.value else ""
+            ),
+            size_bytes=len(content),
+            metadata_json={"source": "runner", "runnerId": runner.id},
+        )
+    else:
+        if artifact.storage_key != stored.storage_key:
+            storage.delete(artifact.storage_key)
+        artifact.file_name = file_name
+        artifact.content_type = content_type or "application/octet-stream"
+        artifact.storage_backend = storage.backend
+        artifact.storage_key = stored.storage_key
+        artifact.download_url = stored.download_url
+        artifact.manifest_url = None
+        artifact.install_url = (
+            stored.download_url if normalized_type == ArtifactType.PACKAGE.value else ""
+        )
+        artifact.size_bytes = len(content)
+        artifact.metadata_json = {"source": "runner", "runnerId": runner.id}
+    build.lifecycle_status = BuildLifecycleStatus.UPLOADING_ARTIFACTS.value
+    runner.last_seen_at = datetime.now(UTC)
+    event = BuildEvent(
+        id=f"build-event-{uuid4().hex[:12]}",
+        build_id=build.id,
+        runner_id=runner.id,
+        type="artifact_uploaded",
+        message=f"{normalized_type} uploaded",
+        payload_json={"artifactType": normalized_type, "fileName": file_name},
+    )
+    session.add_all([artifact, build, runner, event])
+    session.commit()
+    return artifact
+
+
+def complete_runner_build(
+    session: Session,
+    *,
+    build_id: str,
+    runner_id: str,
+    token: str,
+    status: str,
+    version: str | None = None,
+    build_number: str | None = None,
+    note: str | None = None,
+    failure_classification: str | None = None,
+    failure_summary: str | None = None,
+    human_action: str | None = None,
+) -> Build:
+    build, runner = _runner_build_pair(session, build_id=build_id, runner_id=runner_id, token=token)
+    normalized_status = _require_non_blank(status, field="status", label="status").lower()
+    artifacts = session.scalars(select(Artifact).where(Artifact.build_id == build.id)).all()
+    if normalized_status == BuildLifecycleStatus.SUCCEEDED.value:
+        existing_types = {artifact.artifact_type for artifact in artifacts}
+        missing = sorted(_RUNNER_REQUIRED_ARTIFACTS - existing_types)
+        if missing:
+            raise ApiError(
+                "missing_required_artifacts",
+                f"自动构建缺少必需制品: {', '.join(missing)}",
+                status_code=422,
+            )
+        build.status = "available"
+    elif normalized_status == BuildLifecycleStatus.NEEDS_HUMAN.value:
+        build.status = "pending"
+    else:
+        build.status = "failed"
+    if version is not None and version.strip():
+        build.version = version.strip()
+    if build_number is not None and build_number.strip():
+        build.build_number = build_number.strip()
+    if note is not None and note.strip():
+        build.note = note.strip()
+    build.lifecycle_status = normalized_status
+    build.failure_classification = (
+        failure_classification.strip() if failure_classification else None
+    )
+    build.failure_summary = failure_summary.strip() if failure_summary else None
+    build.human_action = human_action.strip() if human_action else None
+    build.started_at = _ensure_utc_datetime(build.started_at) or datetime.now(UTC)
+    build.finished_at = datetime.now(UTC)
+    build.duration_seconds = int((build.finished_at - build.started_at).total_seconds())
+    runner.current_build_id = None
+    runner.status = "online"
+    runner.last_seen_at = datetime.now(UTC)
+    event = BuildEvent(
+        id=f"build-event-{uuid4().hex[:12]}",
+        build_id=build.id,
+        runner_id=runner.id,
+        type="complete",
+        message=f"build {normalized_status}",
+        payload_json={
+            "status": normalized_status,
+            "version": build.version or "",
+            "buildNumber": build.build_number or "",
+        },
+    )
+    session.add_all([build, runner, event])
+    session.commit()
+    return _build_with_relations(session, build.id)
+
+
 def build_item(build: Build) -> BuildItem:
     artifact = build.package_artifact()
     app = build.app
@@ -313,3 +592,42 @@ def _invalid_credential_ref(key: str, message: str) -> ApiError:
         status_code=422,
         extra={"field": "credential_refs", "key": key},
     )
+
+
+def _build_with_relations(session: Session, build_id: str) -> Build:
+    return session.scalars(
+        select(Build)
+        .where(Build.id == build_id)
+        .options(joinedload(Build.app), selectinload(Build.artifacts))
+    ).one()
+
+
+def _runner_or_401(session: Session, *, runner_id: str, token: str) -> BuildRunner:
+    runner = session.get(BuildRunner, runner_id)
+    if runner is None or runner.token_hash != token:
+        raise ApiError("invalid_runner_token", "Runner token 不正确", status_code=401)
+    return runner
+
+
+def _runner_build_pair(
+    session: Session,
+    *,
+    build_id: str,
+    runner_id: str,
+    token: str,
+) -> tuple[Build, BuildRunner]:
+    runner = _runner_or_401(session, runner_id=runner_id, token=token)
+    build = session.get(Build, build_id)
+    if build is None:
+        raise ApiError("build_not_found", "构建不存在", status_code=404)
+    if build.runner_id != runner.id or runner.current_build_id != build.id:
+        raise ApiError("runner_build_mismatch", "Runner 未持有该构建", status_code=409)
+    return build, runner
+
+
+def _ensure_utc_datetime(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)

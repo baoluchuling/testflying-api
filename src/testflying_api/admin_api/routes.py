@@ -46,13 +46,13 @@ from testflying_api.admin_api.schemas import (
     AdminHealthState,
     AdminNavItem,
     AdminUploadResponse,
+    AgentBuildCreateRequest,
     ApiDocEndpointItem,
     ApiDocParamItem,
     ApiDocsState,
     AppBuildActionResponse,
     AppDetailState,
     AppLogsState,
-    AgentBuildCreateRequest,
     BuildItem,
     BuildSettingSaveRequest,
     BuildsState,
@@ -95,6 +95,12 @@ from testflying_api.admin_api.schemas import (
     ReviewItem,
     ReviewScopeRequest,
     ReviewStats,
+    RunnerBuildPayload,
+    RunnerCompleteRequest,
+    RunnerEventRequest,
+    RunnerHeartbeatRequest,
+    RunnerPollRequest,
+    RunnerPollResponse,
     StoreAppBuildItem,
     StoreAppItem,
     StoreAppsAccountSummary,
@@ -226,8 +232,7 @@ def dashboard_state(
         ],
         recent_builds=[_build_item(build) for build in context["recent_builds"]],
         recent_notifications=[
-            _notification_item(notification)
-            for notification in context["recent_notifications"]
+            _notification_item(notification) for notification in context["recent_notifications"]
         ],
     )
 
@@ -322,6 +327,165 @@ def create_app_agent_build(
             build=_build_item(build),
             state=build_platform.app_detail_state(session, app_id),
         )
+    except ApiError as error:
+        raise _admin_api_error(error) from error
+
+
+def _runner_token(request: Request) -> str:
+    authorization = request.headers.get("Authorization", "")
+    prefix = "Bearer "
+    if not authorization.startswith(prefix):
+        raise AdminApiError("missing_runner_token", "缺少 Runner token", status_code=401)
+    token = authorization[len(prefix) :].strip()
+    if not token:
+        raise AdminApiError("missing_runner_token", "缺少 Runner token", status_code=401)
+    return token
+
+
+@router.post("/build-runners/register", response_model=dict, response_model_by_alias=True)
+def runner_register(
+    payload: RunnerHeartbeatRequest,
+    request: Request,
+    session: SessionDep,
+) -> dict[str, bool]:
+    try:
+        build_platform.register_runner(
+            session,
+            runner_id=payload.runner_id,
+            name=payload.name,
+            token=_runner_token(request),
+            labels=payload.labels,
+            version=payload.version,
+            package_agent_version=payload.package_agent_version,
+            capabilities=payload.capabilities,
+        )
+        return {"ok": True}
+    except ApiError as error:
+        raise _admin_api_error(error) from error
+
+
+@router.post("/build-runners/heartbeat", response_model=dict, response_model_by_alias=True)
+def runner_heartbeat(
+    payload: RunnerHeartbeatRequest,
+    request: Request,
+    session: SessionDep,
+) -> dict[str, bool]:
+    try:
+        build_platform.heartbeat_runner(
+            session,
+            runner_id=payload.runner_id,
+            name=payload.name,
+            token=_runner_token(request),
+            labels=payload.labels,
+            version=payload.version,
+            package_agent_version=payload.package_agent_version,
+            capabilities=payload.capabilities,
+        )
+        return {"ok": True}
+    except ApiError as error:
+        raise _admin_api_error(error) from error
+
+
+@router.post("/build-runners/poll", response_model=RunnerPollResponse, response_model_by_alias=True)
+def runner_poll(
+    payload: RunnerPollRequest,
+    request: Request,
+    session: SessionDep,
+) -> RunnerPollResponse:
+    try:
+        build = build_platform.poll_runner_build(
+            session,
+            runner_id=payload.runner_id,
+            token=_runner_token(request),
+        )
+        return RunnerPollResponse(build=_runner_build_payload(build) if build else None)
+    except ApiError as error:
+        raise _admin_api_error(error) from error
+
+
+@router.post(
+    "/build-runners/builds/{build_id}/events",
+    response_model=dict,
+    response_model_by_alias=True,
+)
+def runner_build_event(
+    build_id: str,
+    payload: RunnerEventRequest,
+    request: Request,
+    session: SessionDep,
+) -> dict[str, bool]:
+    try:
+        build_platform.append_build_event(
+            session,
+            build_id=build_id,
+            runner_id=payload.runner_id,
+            token=_runner_token(request),
+            event_type=payload.type,
+            message=payload.message,
+            lifecycle_status=payload.lifecycle_status,
+            payload=payload.payload,
+        )
+        return {"ok": True}
+    except ApiError as error:
+        raise _admin_api_error(error) from error
+
+
+@router.post(
+    "/build-runners/builds/{build_id}/artifacts",
+    response_model=dict,
+    response_model_by_alias=True,
+)
+async def runner_build_artifact(
+    build_id: str,
+    request: Request,
+    session: SessionDep,
+    runner_id: Annotated[str, Form(alias="runnerId")],
+    artifact_type: Annotated[str, Form(alias="artifactType")],
+    file: Annotated[UploadFile, File()],
+) -> dict[str, bool]:
+    try:
+        build_platform.upload_build_artifact(
+            session,
+            storage=request.app.state.artifact_storage,
+            build_id=build_id,
+            runner_id=runner_id,
+            token=_runner_token(request),
+            artifact_type=artifact_type,
+            file_name=file.filename or "",
+            content=await file.read(),
+            content_type=file.content_type or "application/octet-stream",
+        )
+        return {"ok": True}
+    except ApiError as error:
+        raise _admin_api_error(error) from error
+
+
+@router.post(
+    "/build-runners/builds/{build_id}/complete",
+    response_model=dict,
+    response_model_by_alias=True,
+)
+def runner_build_complete(
+    build_id: str,
+    payload: RunnerCompleteRequest,
+    request: Request,
+    session: SessionDep,
+) -> dict[str, bool]:
+    try:
+        build_platform.complete_runner_build(
+            session,
+            build_id=build_id,
+            runner_id=payload.runner_id,
+            token=_runner_token(request),
+            status=payload.status,
+            version=payload.version,
+            build_number=payload.build_number,
+            note=payload.note,
+            failure_classification=payload.failure_classification,
+            failure_summary=payload.failure_summary,
+            human_action=payload.human_action,
+        )
+        return {"ok": True}
     except ApiError as error:
         raise _admin_api_error(error) from error
 
@@ -778,8 +942,7 @@ def sync_store_workspace_metadata(
         for row in rows:
             if sync_scopes & {"metadata", "description", "promotional_text", "store_images"}:
                 selected_scopes = sorted(
-                    sync_scopes
-                    & {"metadata", "description", "promotional_text", "store_images"}
+                    sync_scopes & {"metadata", "description", "promotional_text", "store_images"}
                 )
                 sync_runs.append(
                     sync_current_app_metadata(
@@ -1680,9 +1843,7 @@ def _notification_type_counts(notifications: list[Notification]) -> list[Notific
 
 def _public_api_markdown() -> str:
     return (
-        resources.files("testflying_api")
-        .joinpath(PUBLIC_API_DOC_PATH)
-        .read_text(encoding="utf-8")
+        resources.files("testflying_api").joinpath(PUBLIC_API_DOC_PATH).read_text(encoding="utf-8")
     )
 
 
@@ -2085,9 +2246,7 @@ def _developer_accounts_state(session: Session) -> DeveloperAccountsState:
                 if account.status != "ok" or account.connector_status != "ok"
             ),
             bound_apps=sum(len(account.app_names) for account in accounts),
-            connector_needs=sum(
-                1 for account in accounts if account.connector_status != "ok"
-            ),
+            connector_needs=sum(1 for account in accounts if account.connector_status != "ok"),
         ),
     )
 
@@ -2432,11 +2591,7 @@ def _store_images_from_input(value: object) -> dict[str, object]:
 
 
 def _own_store_image_assets(value: object) -> list[dict[str, object]]:
-    return [
-        item
-        for item in _asset_list(value)
-        if not _truthy(item.get("inherited"))
-    ]
+    return [item for item in _asset_list(value) if not _truthy(item.get("inherited"))]
 
 
 def _truthy(value: object) -> bool:
@@ -3162,9 +3317,7 @@ def _store_marketing_page_summary(
             int(item.get("filled_text_count") or 0) if isinstance(item, dict) else 0
         ),
         asset_count=int(item.get("asset_count") or 0) if isinstance(item, dict) else 0,
-        detail_path=(
-            f"/admin/accounts/{account_id}/apps/{app_id}/marketing-pages/{page_id}"
-        ),
+        detail_path=(f"/admin/accounts/{account_id}/apps/{app_id}/marketing-pages/{page_id}"),
     )
 
 
@@ -3320,6 +3473,22 @@ def _string_list(value: Any) -> list[str]:
         return [str(item).strip() for item in value if str(item).strip()]
     text = str(value or "").strip()
     return [text] if text else []
+
+
+def _runner_build_payload(build: Build) -> RunnerBuildPayload:
+    runner_data = dict(build.runner_labels_json or {})
+    credential_refs = runner_data.get("credentialRefs")
+    return RunnerBuildPayload(
+        id=build.id,
+        app_id=build.app_id,
+        platform=build.platform,
+        environment=build.environment,
+        git_url=build.git_url or "",
+        git_ref=build.git_ref or "",
+        repo_subpath=str(runner_data.get("repoSubpath") or ""),
+        artifact_type=str(runner_data.get("artifactType") or ""),
+        credential_refs=credential_refs if isinstance(credential_refs, dict) else {},
+    )
 
 
 def _admin_api_error(error: ApiError) -> AdminApiError:

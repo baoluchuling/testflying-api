@@ -46,7 +46,9 @@ class App(Base):
 
 class AppBuildSetting(Base):
     __tablename__ = "app_build_settings"
-    __table_args__ = (UniqueConstraint("app_id", "environment", name="uq_app_build_settings_scope"),)
+    __table_args__ = (
+        UniqueConstraint("app_id", "environment", name="uq_app_build_settings_scope"),
+    )
 
     id: Mapped[str] = mapped_column(String(80), primary_key=True)
     app_id: Mapped[str] = mapped_column(ForeignKey("apps.id", ondelete="CASCADE"), nullable=False)
@@ -112,7 +114,10 @@ class Build(Base):
     )
 
     def package_artifact(self) -> Artifact | None:
-        return next((artifact for artifact in self.artifacts if artifact.artifact_type == "package"), None)
+        return next(
+            (artifact for artifact in self.artifacts if artifact.artifact_type == "package"),
+            None,
+        )
 
 
 class Artifact(Base):
@@ -140,6 +145,46 @@ class Artifact(Base):
     )
 
     build: Mapped[Build] = relationship(back_populates="artifacts")
+
+
+class BuildRunner(Base):
+    __tablename__ = "build_runners"
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(240), nullable=False)
+    labels_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    capabilities_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="offline")
+    version: Mapped[str] = mapped_column(String(80), nullable=False, default="")
+    package_agent_version: Mapped[str] = mapped_column(String(80), nullable=False, default="")
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    current_build_id: Mapped[str | None] = mapped_column(
+        ForeignKey("builds.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+
+class BuildEvent(Base):
+    __tablename__ = "build_events"
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    build_id: Mapped[str] = mapped_column(
+        ForeignKey("builds.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    runner_id: Mapped[str | None] = mapped_column(
+        ForeignKey("build_runners.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    type: Mapped[str] = mapped_column(String(80), nullable=False)
+    message: Mapped[str] = mapped_column(String(500), nullable=False)
+    payload_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+    )
 
 
 class Device(Base):

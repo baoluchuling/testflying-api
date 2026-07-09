@@ -1950,8 +1950,8 @@ def _store_app_item(app: App, *, selected_app_id: str) -> StoreAppItem:
         status_label=_store_app_status_label(status),
         latest_build=(
             StoreAppBuildItem(
-                version=latest_build.version,
-                build_number=latest_build.build_number,
+                version=latest_build.version or "",
+                build_number=latest_build.build_number or "",
                 environment=latest_build.environment,
                 uploaded_at=_iso_datetime(latest_build.uploaded_at),
             )

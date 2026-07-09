@@ -5,6 +5,7 @@ from base64 import b64encode
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from testflying_api.schema import Build
 from testflying_api.seed import seed_demo_catalog
 
 
@@ -83,3 +84,27 @@ def test_admin_api_store_apps_selects_requested_app(
     assert payload["selectedApp"]["reviewsPath"] == (
         "/admin/store-reviews?accountId=account-apple-enterprise&appId=app-insight-ios"
     )
+
+
+def test_admin_api_store_apps_handles_nullable_latest_build_metadata(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    seed_demo_catalog(db_session)
+    latest_build = db_session.get(Build, "build-dataflow-android-54")
+    assert latest_build is not None
+    latest_build.version = None
+    latest_build.build_number = None
+    db_session.commit()
+
+    response = client.get("/admin/api/store-apps", headers=_admin_headers())
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["selectedApp"]["id"] == "app-dataflow-android"
+    assert payload["selectedApp"]["latestBuild"] == {
+        "version": "",
+        "buildNumber": "",
+        "environment": "development",
+        "uploadedAt": latest_build.uploaded_at.isoformat(),
+    }

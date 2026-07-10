@@ -50,6 +50,9 @@ class AgentReport:
     package_paths: list[str] = field(default_factory=list)
     symbols_paths: list[str] = field(default_factory=list)
     log_paths: list[str] = field(default_factory=list)
+    version: str | None = None
+    build_number: str | None = None
+    commit_sha: str | None = None
     adapter: str | None = None
     max_attempts: int = MAX_BUILD_ATTEMPTS
 
@@ -62,6 +65,9 @@ class AgentReport:
             "packagePaths": payload["package_paths"],
             "symbolsPaths": payload["symbols_paths"],
             "logPaths": payload["log_paths"],
+            "version": payload["version"],
+            "buildNumber": payload["build_number"],
+            "commitSha": payload["commit_sha"],
             "adapter": payload["adapter"],
             "maxAttempts": payload["max_attempts"],
         }

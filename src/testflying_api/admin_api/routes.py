@@ -480,6 +480,7 @@ def runner_build_complete(
             status=payload.status,
             version=payload.version,
             build_number=payload.build_number,
+            commit_sha=payload.commit_sha,
             note=payload.note,
             failure_classification=payload.failure_classification,
             failure_summary=payload.failure_summary,

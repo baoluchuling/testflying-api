@@ -359,43 +359,20 @@ def upload_build_artifact(
         content=content,
         content_type=content_type or "application/octet-stream",
     )
-    artifact = session.scalar(
-        select(Artifact).where(
-            Artifact.build_id == build.id,
-            Artifact.artifact_type == normalized_type,
-        )
+    artifact = Artifact(
+        id=f"artifact-{build.id}-{normalized_type}-{uuid4().hex[:8]}",
+        build_id=build.id,
+        artifact_type=normalized_type,
+        file_name=file_name,
+        content_type=content_type or "application/octet-stream",
+        storage_backend=storage.backend,
+        storage_key=stored.storage_key,
+        download_url=stored.download_url,
+        manifest_url=None,
+        install_url=(stored.download_url if normalized_type == ArtifactType.PACKAGE.value else ""),
+        size_bytes=len(content),
+        metadata_json={"source": "runner", "runnerId": runner.id},
     )
-    if artifact is None:
-        artifact = Artifact(
-            id=f"artifact-{build.id}-{normalized_type}",
-            build_id=build.id,
-            artifact_type=normalized_type,
-            file_name=file_name,
-            content_type=content_type or "application/octet-stream",
-            storage_backend=storage.backend,
-            storage_key=stored.storage_key,
-            download_url=stored.download_url,
-            manifest_url=None,
-            install_url=(
-                stored.download_url if normalized_type == ArtifactType.PACKAGE.value else ""
-            ),
-            size_bytes=len(content),
-            metadata_json={"source": "runner", "runnerId": runner.id},
-        )
-    else:
-        if artifact.storage_key != stored.storage_key:
-            storage.delete(artifact.storage_key)
-        artifact.file_name = file_name
-        artifact.content_type = content_type or "application/octet-stream"
-        artifact.storage_backend = storage.backend
-        artifact.storage_key = stored.storage_key
-        artifact.download_url = stored.download_url
-        artifact.manifest_url = None
-        artifact.install_url = (
-            stored.download_url if normalized_type == ArtifactType.PACKAGE.value else ""
-        )
-        artifact.size_bytes = len(content)
-        artifact.metadata_json = {"source": "runner", "runnerId": runner.id}
     build.lifecycle_status = BuildLifecycleStatus.UPLOADING_ARTIFACTS.value
     runner.last_seen_at = datetime.now(UTC)
     event = BuildEvent(
@@ -420,6 +397,7 @@ def complete_runner_build(
     status: str,
     version: str | None = None,
     build_number: str | None = None,
+    commit_sha: str | None = None,
     note: str | None = None,
     failure_classification: str | None = None,
     failure_summary: str | None = None,
@@ -446,6 +424,8 @@ def complete_runner_build(
         build.version = version.strip()
     if build_number is not None and build_number.strip():
         build.build_number = build_number.strip()
+    if commit_sha is not None and commit_sha.strip():
+        build.commit_sha = commit_sha.strip()
     if note is not None and note.strip():
         build.note = note.strip()
     build.lifecycle_status = normalized_status
@@ -470,6 +450,7 @@ def complete_runner_build(
             "status": normalized_status,
             "version": build.version or "",
             "buildNumber": build.build_number or "",
+            "commitSha": build.commit_sha or "",
         },
     )
     session.add_all([build, runner, event])

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 type AgentReport struct {
@@ -17,6 +18,9 @@ type AgentReport struct {
 	PackagePaths   []string `json:"packagePaths"`
 	SymbolsPaths   []string `json:"symbolsPaths"`
 	LogPaths       []string `json:"logPaths"`
+	Version        string   `json:"version"`
+	BuildNumber    string   `json:"buildNumber"`
+	CommitSHA      string   `json:"commitSha"`
 	Adapter        *string  `json:"adapter"`
 	MaxAttempts    int      `json:"maxAttempts"`
 }
@@ -66,26 +70,15 @@ func ArtifactUploadsFromReport(outputDir string, report AgentReport) ([]Artifact
 		if len(item.paths) == 0 {
 			return nil, fmt.Errorf("report is missing %s paths", item.artifactType)
 		}
-		if len(item.paths) > 1 {
-			return nil, fmt.Errorf("report lists multiple %s paths", item.artifactType)
-		}
-		resolved, err := resolveArtifactPath(outputDir, item.paths[0])
-		if err != nil {
-			return nil, fmt.Errorf("%s artifact path is invalid: %w", item.artifactType, err)
-		}
-		uploads = append(uploads, ArtifactUpload{
-			ArtifactType: item.artifactType,
-			Path:         resolved,
-		})
-	}
-
-	for _, upload := range uploads {
-		info, err := os.Stat(upload.Path)
-		if err != nil {
-			return nil, fmt.Errorf("%s artifact %q is unreadable: %w", upload.ArtifactType, upload.Path, err)
-		}
-		if info.IsDir() {
-			return nil, fmt.Errorf("%s artifact %q is a directory", upload.ArtifactType, upload.Path)
+		for _, artifactPath := range item.paths {
+			resolved, err := resolveArtifactPath(outputDir, artifactPath)
+			if err != nil {
+				return nil, fmt.Errorf("%s artifact path %q is invalid: %w", item.artifactType, artifactPath, err)
+			}
+			uploads = append(uploads, ArtifactUpload{
+				ArtifactType: item.artifactType,
+				Path:         resolved,
+			})
 		}
 	}
 
@@ -105,8 +98,48 @@ func resolveArtifactPath(outputDir string, pathValue string) (string, error) {
 	if pathValue == "" {
 		return "", fmt.Errorf("path is blank")
 	}
-	if filepath.IsAbs(pathValue) {
-		return pathValue, nil
+
+	outputDirAbs, err := filepath.Abs(outputDir)
+	if err != nil {
+		return "", fmt.Errorf("resolve output dir: %w", err)
 	}
-	return filepath.Join(outputDir, pathValue), nil
+	outputDirReal, err := filepath.EvalSymlinks(outputDirAbs)
+	if err != nil {
+		return "", fmt.Errorf("resolve output dir symlinks: %w", err)
+	}
+
+	candidate := pathValue
+	if !filepath.IsAbs(candidate) {
+		candidate = filepath.Join(outputDirAbs, candidate)
+	}
+	candidateAbs, err := filepath.Abs(candidate)
+	if err != nil {
+		return "", fmt.Errorf("resolve path: %w", err)
+	}
+	if !pathWithinDir(outputDirAbs, candidateAbs) {
+		return "", fmt.Errorf("path escapes output directory")
+	}
+	resolved, err := filepath.EvalSymlinks(candidateAbs)
+	if err != nil {
+		return "", fmt.Errorf("resolve symlinks: %w", err)
+	}
+	if !pathWithinDir(outputDirReal, resolved) {
+		return "", fmt.Errorf("path escapes output directory via symlink")
+	}
+	info, err := os.Stat(resolved)
+	if err != nil {
+		return "", fmt.Errorf("stat artifact: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("artifact is not a regular file")
+	}
+	return resolved, nil
+}
+
+func pathWithinDir(root string, candidate string) bool {
+	rel, err := filepath.Rel(root, candidate)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
 }

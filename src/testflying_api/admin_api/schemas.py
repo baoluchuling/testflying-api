@@ -732,6 +732,7 @@ class RunnerCompleteRequest(AdminApiModel):
     status: str
     version: str | None = None
     build_number: str | None = None
+    commit_sha: str | None = None
     note: str | None = None
     failure_classification: str | None = None
     failure_summary: str | None = None

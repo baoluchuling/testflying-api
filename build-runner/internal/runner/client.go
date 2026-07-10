@@ -50,6 +50,7 @@ type completeRequest struct {
 	Status                string `json:"status"`
 	Version               string `json:"version,omitempty"`
 	BuildNumber           string `json:"buildNumber,omitempty"`
+	CommitSHA             string `json:"commitSha,omitempty"`
 	Note                  string `json:"note,omitempty"`
 	FailureClassification string `json:"failureClassification,omitempty"`
 	FailureSummary        string `json:"failureSummary,omitempty"`

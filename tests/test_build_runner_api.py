@@ -400,6 +400,7 @@ def test_runner_artifact_event_and_complete_flow_marks_build_succeeded(
             "status": "succeeded",
             "version": "1.2.3",
             "buildNumber": "42",
+            "commitSha": "abc123def456",
             "note": "done",
         },
     )
@@ -410,6 +411,7 @@ def test_runner_artifact_event_and_complete_flow_marks_build_succeeded(
     assert build.status == "available"
     assert build.version == "1.2.3"
     assert build.build_number == "42"
+    assert build.commit_sha == "abc123def456"
     assert build.finished_at is not None
     assert build.started_at is not None
     assert build.runner_id == "runner-mac-1"
@@ -431,6 +433,59 @@ def test_runner_artifact_event_and_complete_flow_marks_build_succeeded(
         "artifact_uploaded",
         "complete",
     ]
+    assert events[-1].payload_json["commitSha"] == "abc123def456"
+
+
+def test_runner_artifact_upload_keeps_multiple_rows_for_same_type(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    app = _create_app(db_session)
+    build = _create_agent_build(db_session, app=app)
+    client.post(
+        "/admin/api/build-runners/register",
+        headers=_runner_headers(),
+        json={
+            "runnerId": "runner-mac-1",
+            "name": "Mac mini 1",
+            "labels": ["ios-release"],
+            "version": "0.1.0",
+            "packageAgentVersion": "0.1.0",
+            "capabilities": {"platforms": ["ios"], "llmAdapters": ["codex"], "capacity": 1},
+        },
+    )
+    client.post(
+        "/admin/api/build-runners/poll",
+        headers=_runner_headers(),
+        json={"runnerId": "runner-mac-1", "timeoutSeconds": 0},
+    )
+
+    for artifact_type, file_name in [
+        ("package", "app.ipa"),
+        ("symbols", "symbols.zip"),
+        ("report", "report.json"),
+        ("log", "runner.log"),
+        ("log", "xcode.log"),
+    ]:
+        upload_response = client.post(
+            f"/admin/api/build-runners/builds/{build.id}/artifacts",
+            headers=_runner_headers(),
+            data={"runnerId": "runner-mac-1", "artifactType": artifact_type},
+            files={"file": (file_name, b"content", "application/octet-stream")},
+        )
+        assert upload_response.status_code == 200
+
+    complete_response = client.post(
+        f"/admin/api/build-runners/builds/{build.id}/complete",
+        headers=_runner_headers(),
+        json={"runnerId": "runner-mac-1", "status": "succeeded"},
+    )
+
+    assert complete_response.status_code == 200
+    artifacts = db_session.query(Artifact).filter_by(build_id=build.id).all()
+    log_artifacts = [artifact for artifact in artifacts if artifact.artifact_type == "log"]
+    assert len(log_artifacts) == 2
+    assert {artifact.file_name for artifact in log_artifacts} == {"runner.log", "xcode.log"}
 
 
 def test_runner_event_rejects_terminal_lifecycle_status(

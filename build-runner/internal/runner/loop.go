@@ -330,9 +330,12 @@ func needsHumanCompletionFromReport(
 
 func successfulCompletionRequest(runnerID string, report AgentReport) completeRequest {
 	return completeRequest{
-		RunnerID: runnerID,
-		Status:   "succeeded",
-		Note:     report.Summary,
+		RunnerID:    runnerID,
+		Status:      "succeeded",
+		Version:     report.Version,
+		BuildNumber: report.BuildNumber,
+		CommitSHA:   report.CommitSHA,
+		Note:        report.Summary,
 	}
 }
 

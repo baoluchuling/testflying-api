@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -229,7 +230,7 @@ func TestConfigValidateRequiresFieldsAndCapacityOne(t *testing.T) {
 
 func TestRunOnceAssignedBuildRunsPackageAgentPostsEventsAndCompletesNeedsHuman(t *testing.T) {
 	root := t.TempDir()
-	packageAgentBin := writeFakePackageAgent(t, root, 0, `{
+	packageAgentBin := writeFakePackageAgentWithFiles(t, root, 0, `{
   "status": "success",
   "classification": "build_succeeded",
   "summary": "fake package-agent completed",
@@ -237,7 +238,11 @@ func TestRunOnceAssignedBuildRunsPackageAgentPostsEventsAndCompletesNeedsHuman(t
   "symbolsPaths": ["app.dSYM.zip"],
   "logPaths": ["runner.log"],
   "maxAttempts": 5
-}`)
+}`, map[string]string{
+		"app.ipa":      "ipa-bytes",
+		"app.dSYM.zip": "symbols-bytes",
+		"runner.log":   "runner-log",
+	})
 
 	type capturedEvent struct {
 		Type            string                 `json:"type"`
@@ -252,11 +257,17 @@ func TestRunOnceAssignedBuildRunsPackageAgentPostsEventsAndCompletesNeedsHuman(t
 		FailureSummary        string `json:"failureSummary"`
 		HumanAction           string `json:"humanAction"`
 	}
+	type uploadedArtifact struct {
+		ArtifactType string
+		FileName     string
+		Body         string
+	}
 
 	var heartbeatBody heartbeatRequest
 	var pollBody pollRequest
 	events := make([]capturedEvent, 0, 2)
 	completes := make([]capturedComplete, 0, 1)
+	uploads := make([]uploadedArtifact, 0, 4)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -288,6 +299,26 @@ func TestRunOnceAssignedBuildRunsPackageAgentPostsEventsAndCompletesNeedsHuman(t
 				t.Fatalf("decode event: %v", err)
 			}
 			events = append(events, event)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		case "/admin/api/build-runners/builds/build-123/artifacts":
+			if err := r.ParseMultipartForm(1 << 20); err != nil {
+				t.Fatalf("parse multipart form: %v", err)
+			}
+			file, header, err := r.FormFile("file")
+			if err != nil {
+				t.Fatalf("read artifact file: %v", err)
+			}
+			defer file.Close()
+			data, err := io.ReadAll(file)
+			if err != nil {
+				t.Fatalf("read artifact body: %v", err)
+			}
+			uploads = append(uploads, uploadedArtifact{
+				ArtifactType: r.FormValue("artifactType"),
+				FileName:     header.Filename,
+				Body:         string(data),
+			})
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"ok":true}`))
 		case "/admin/api/build-runners/builds/build-123/complete":
@@ -410,24 +441,35 @@ func TestRunOnceAssignedBuildRunsPackageAgentPostsEventsAndCompletesNeedsHuman(t
 	if completes[0].RunnerID != cfg.RunnerID {
 		t.Fatalf("complete runnerId = %q, want %q", completes[0].RunnerID, cfg.RunnerID)
 	}
-	if completes[0].Status != "needs_human" {
-		t.Fatalf("complete status = %q, want %q", completes[0].Status, "needs_human")
+	if completes[0].Status != "succeeded" {
+		t.Fatalf("complete status = %q, want %q", completes[0].Status, "succeeded")
 	}
-	if completes[0].FailureClassification != terminalNeedsHumanArtifactUploadClassification {
-		t.Fatalf(
-			"complete failureClassification = %q, want %q",
-			completes[0].FailureClassification,
-			terminalNeedsHumanArtifactUploadClassification,
-		)
+	if completes[0].FailureClassification != "" {
+		t.Fatalf("complete failureClassification = %q, want empty", completes[0].FailureClassification)
 	}
-	if completes[0].FailureSummary != terminalNeedsHumanArtifactUploadSummary {
-		t.Fatalf("complete failureSummary = %q", completes[0].FailureSummary)
+	if completes[0].FailureSummary != "" {
+		t.Fatalf("complete failureSummary = %q, want empty", completes[0].FailureSummary)
 	}
-	if completes[0].Note != terminalNeedsHumanArtifactUploadSummary {
+	if completes[0].Note != "fake package-agent completed" {
 		t.Fatalf("complete note = %q", completes[0].Note)
 	}
-	if completes[0].HumanAction != terminalNeedsHumanArtifactUploadAction {
-		t.Fatalf("complete humanAction = %q", completes[0].HumanAction)
+	if completes[0].HumanAction != "" {
+		t.Fatalf("complete humanAction = %q, want empty", completes[0].HumanAction)
+	}
+
+	if len(uploads) != 4 {
+		t.Fatalf("upload count = %d, want 4", len(uploads))
+	}
+	wantUploads := []uploadedArtifact{
+		{ArtifactType: "report", FileName: "report.json", Body: "{\n  \"status\": \"success\",\n  \"classification\": \"build_succeeded\",\n  \"summary\": \"fake package-agent completed\",\n  \"packagePaths\": [\"app.ipa\"],\n  \"symbolsPaths\": [\"app.dSYM.zip\"],\n  \"logPaths\": [\"runner.log\"],\n  \"maxAttempts\": 5\n}\n"},
+		{ArtifactType: "package", FileName: "app.ipa", Body: "ipa-bytes\n"},
+		{ArtifactType: "symbols", FileName: "app.dSYM.zip", Body: "symbols-bytes\n"},
+		{ArtifactType: "log", FileName: "runner.log", Body: "runner-log\n"},
+	}
+	for index, want := range wantUploads {
+		if uploads[index] != want {
+			t.Fatalf("upload[%d] = %#v, want %#v", index, uploads[index], want)
+		}
 	}
 }
 
@@ -879,7 +921,7 @@ func TestRunOnceAssignedBuildCompletesFailedWhenStartEventPostFails(t *testing.T
 
 func TestRunOnceAssignedBuildCompletesNeedsHumanWhenFinishEventPostFails(t *testing.T) {
 	root := t.TempDir()
-	packageAgentBin := writeFakePackageAgent(t, root, 0, `{
+	packageAgentBin := writeFakePackageAgentWithFiles(t, root, 0, `{
   "status": "success",
   "classification": "build_succeeded",
   "summary": "fake package-agent completed",
@@ -887,7 +929,11 @@ func TestRunOnceAssignedBuildCompletesNeedsHumanWhenFinishEventPostFails(t *test
   "symbolsPaths": ["app.dSYM.zip"],
   "logPaths": ["runner.log"],
   "maxAttempts": 5
-}`)
+}`, map[string]string{
+		"app.ipa":      "ipa-bytes",
+		"app.dSYM.zip": "symbols-bytes",
+		"runner.log":   "runner-log",
+	})
 
 	type capturedEvent struct {
 		Type string `json:"type"`
@@ -932,6 +978,9 @@ func TestRunOnceAssignedBuildCompletesNeedsHumanWhenFinishEventPostFails(t *test
 				http.Error(w, "finish event rejected", http.StatusBadGateway)
 				return
 			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		case "/admin/api/build-runners/builds/build-123/artifacts":
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"ok":true}`))
 		case "/admin/api/build-runners/builds/build-123/complete":
@@ -993,10 +1042,148 @@ func TestRunOnceAssignedBuildCompletesNeedsHumanWhenFinishEventPostFails(t *test
 	}
 }
 
+func TestRunOnceAssignedBuildCompletesNeedsHumanWhenArtifactUploadFails(t *testing.T) {
+	root := t.TempDir()
+	packageAgentBin := writeFakePackageAgent(t, root, 0, `{
+  "status": "success",
+  "classification": "build_succeeded",
+  "summary": "fake package-agent completed",
+  "packagePaths": ["missing.ipa"],
+  "symbolsPaths": ["app.dSYM.zip"],
+  "logPaths": ["runner.log"],
+  "maxAttempts": 5
+}`)
+
+	type capturedComplete struct {
+		RunnerID              string `json:"runnerId"`
+		Status                string `json:"status"`
+		Note                  string `json:"note"`
+		FailureClassification string `json:"failureClassification"`
+		FailureSummary        string `json:"failureSummary"`
+		HumanAction           string `json:"humanAction"`
+	}
+
+	completes := make([]capturedComplete, 0, 1)
+	var eventCalls int
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/admin/api/build-runners/heartbeat":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		case "/admin/api/build-runners/poll":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"build":{
+				"id":"build-123",
+				"appId":"app-1",
+				"platform":"ios",
+				"environment":"development",
+				"gitUrl":"https://example.com/repo.git",
+				"gitRef":"main",
+				"repoSubpath":"ios/app",
+				"artifactType":"ipa",
+				"credentialRefs":{"git":"git-main"}
+			}}`))
+		case "/admin/api/build-runners/builds/build-123/events":
+			eventCalls++
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		case "/admin/api/build-runners/builds/build-123/complete":
+			var complete capturedComplete
+			if err := json.NewDecoder(r.Body).Decode(&complete); err != nil {
+				t.Fatalf("decode complete: %v", err)
+			}
+			completes = append(completes, complete)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		case "/admin/api/build-runners/builds/build-123/artifacts":
+			t.Fatal("artifact upload should not be attempted when the first required file is missing")
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	cfg := Config{
+		RunnerID:            "runner-1",
+		Name:                "Runner 1",
+		Token:               "token",
+		ServerURL:           server.URL,
+		RootDir:             root,
+		PackageAgentBin:     packageAgentBin,
+		Version:             "0.1.0",
+		PackageAgentVersion: "0.1.0",
+		Labels:              []string{"ios-release"},
+		Platforms:           []string{"ios"},
+		LLMAdapters:         []string{"codex"},
+		Capacity:            1,
+	}
+
+	err := RunOnce(context.Background(), cfg, server.Client())
+	if err == nil {
+		t.Fatal("RunOnce() error = nil, want error")
+	}
+	if eventCalls != 1 {
+		t.Fatalf("event calls = %d, want 1", eventCalls)
+	}
+	if len(completes) != 1 {
+		t.Fatalf("complete count = %d, want 1", len(completes))
+	}
+	if completes[0].Status != "needs_human" {
+		t.Fatalf("complete status = %q, want needs_human", completes[0].Status)
+	}
+	if completes[0].FailureClassification != postAgentArtifactUploadFailureClassification {
+		t.Fatalf("complete failureClassification = %q", completes[0].FailureClassification)
+	}
+	if !strings.Contains(completes[0].Note, "required artifact upload failed") {
+		t.Fatalf("complete note = %q", completes[0].Note)
+	}
+	if !strings.Contains(completes[0].Note, "missing.ipa") {
+		t.Fatalf("complete note = %q", completes[0].Note)
+	}
+	if completes[0].FailureSummary != completes[0].Note {
+		t.Fatalf("complete failureSummary = %q, want note match", completes[0].FailureSummary)
+	}
+	if completes[0].HumanAction != postAgentArtifactUploadAction {
+		t.Fatalf("complete humanAction = %q", completes[0].HumanAction)
+	}
+}
+
+func TestCompleteStatusFromReport(t *testing.T) {
+	if got := CompleteStatusFromReport("success"); got != "succeeded" {
+		t.Fatalf("CompleteStatusFromReport(success) = %q, want succeeded", got)
+	}
+	if got := CompleteStatusFromReport("needs_human"); got != "needs_human" {
+		t.Fatalf("CompleteStatusFromReport(needs_human) = %q, want needs_human", got)
+	}
+	if got := CompleteStatusFromReport("failed"); got != "failed" {
+		t.Fatalf("CompleteStatusFromReport(failed) = %q, want failed", got)
+	}
+}
+
 func writeFakePackageAgent(t *testing.T, root string, exitCode int, reportJSON string) string {
+	return writeFakePackageAgentWithFiles(t, root, exitCode, reportJSON, nil)
+}
+
+func writeFakePackageAgentWithFiles(
+	t *testing.T,
+	root string,
+	exitCode int,
+	reportJSON string,
+	outputFiles map[string]string,
+) string {
 	t.Helper()
 
 	packageAgentBin := filepath.Join(root, "fake-package-agent.sh")
+	fileWriters := ""
+	for relativePath, body := range outputFiles {
+		fileWriters += fmt.Sprintf(`
+mkdir -p "$(dirname "$OUTPUT/%s")"
+cat > "$OUTPUT/%s" <<'EOF'
+%s
+EOF
+`, relativePath, relativePath, body)
+	}
 	script := fmt.Sprintf(`#!/bin/sh
 set -eu
 
@@ -1028,8 +1215,9 @@ printf 'input=%%s\noutput=%%s\n' "$INPUT" "$OUTPUT" > "$OUTPUT/invocation.txt"
 cat > "$OUTPUT/report.json" <<'EOF'
 %s
 EOF
+%s
 exit %d
-`, reportJSON, exitCode)
+`, reportJSON, fileWriters, exitCode)
 	if err := os.WriteFile(packageAgentBin, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}

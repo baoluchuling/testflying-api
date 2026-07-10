@@ -6,7 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -101,6 +104,68 @@ func (c *Client) PostEvent(
 
 func (c *Client) Complete(ctx context.Context, buildID string, request completeRequest) error {
 	return c.postJSON(ctx, fmt.Sprintf("/admin/api/build-runners/builds/%s/complete", buildID), request, nil)
+}
+
+func (c *Client) UploadArtifact(
+	ctx context.Context,
+	buildID string,
+	runnerID string,
+	artifactType string,
+	filePath string,
+) error {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("runnerId", runnerID); err != nil {
+		return err
+	}
+	if err := writer.WriteField("artifactType", artifactType); err != nil {
+		return err
+	}
+	part, err := writer.CreateFormFile("file", filepath.Base(filePath))
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(part, file); err != nil {
+		return err
+	}
+	if err := writer.Close(); err != nil {
+		return err
+	}
+
+	request, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		c.baseURL+fmt.Sprintf("/admin/api/build-runners/builds/%s/artifacts", buildID),
+		&body,
+	)
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Authorization", "Bearer "+c.token)
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+
+	response, err := c.httpClient.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode >= 300 {
+		data, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
+		return fmt.Errorf(
+			"request /admin/api/build-runners/builds/%s/artifacts failed: status=%d body=%s",
+			buildID,
+			response.StatusCode,
+			strings.TrimSpace(string(data)),
+		)
+	}
+	return nil
 }
 
 func (c *Client) postJSON(ctx context.Context, path string, requestBody any, responseBody any) error {

@@ -10,15 +10,14 @@ import (
 )
 
 const (
-	terminalNeedsHumanArtifactUploadClassification = "artifact_upload_pending"
-	terminalNeedsHumanArtifactUploadSummary        = "package-agent completed but the runner cannot upload required artifacts yet."
-	terminalNeedsHumanArtifactUploadAction         = "Upload package, symbols, report, and log artifacts before marking the build succeeded."
-	preAgentWorkspaceFailureClassification         = "workspace_setup_failed"
-	preAgentInputFailureClassification             = "build_input_write_failed"
-	preAgentStartEventFailureClassification        = "start_event_post_failed"
-	postAgentFinishEventFailureClassification      = "finish_event_post_failed"
-	postAgentFinishEventFailureSummary             = "package-agent completed, but the runner could not persist the finish event or verify artifacts."
-	postAgentFinishEventFailureAction              = "Inspect the runner workspace output and verify required artifacts before resolving the build."
+	postAgentArtifactUploadFailureClassification = "artifact_upload_failed"
+	postAgentArtifactUploadAction                = "Inspect the package-agent output directory, fix the missing or unreadable artifact, and rerun or manually resolve the build."
+	preAgentWorkspaceFailureClassification       = "workspace_setup_failed"
+	preAgentInputFailureClassification           = "build_input_write_failed"
+	preAgentStartEventFailureClassification      = "start_event_post_failed"
+	postAgentFinishEventFailureClassification    = "finish_event_post_failed"
+	postAgentFinishEventFailureSummary           = "package-agent completed, but the runner could not persist the finish event or verify artifacts."
+	postAgentFinishEventFailureAction            = "Inspect the runner workspace output and verify required artifacts before resolving the build."
 )
 
 type BuildAssignment struct {
@@ -163,6 +162,73 @@ func handleBuild(ctx context.Context, client *Client, cfg Config, build BuildAss
 		return returnErr
 	}
 
+	if reportErr != nil {
+		return completeWithOriginalError(
+			ctx,
+			client,
+			build.ID,
+			artifactUploadFailureCompletionRequest(cfg.RunnerID, fmt.Errorf("read report.json: %w", reportErr)),
+			reportErr,
+		)
+	}
+
+	if CompleteStatusFromReport(report.Status) != "succeeded" {
+		request := needsHumanCompletionFromSuccessfulExit(cfg.RunnerID, report)
+		event := eventRequest{
+			RunnerID: cfg.RunnerID,
+			Type:     "runner.build.needs_human",
+			Message:  needsHumanEventMessage(request),
+			Payload:  payload,
+		}
+		postErr := client.PostEvent(ctx, build.ID, event)
+		completeErr := client.Complete(ctx, build.ID, request)
+		if postErr != nil && completeErr != nil {
+			return fmt.Errorf(
+				"package-agent reported %q after successful exit; event post error: %v; complete error: %w",
+				report.Status,
+				postErr,
+				completeErr,
+			)
+		}
+		if postErr != nil {
+			return fmt.Errorf(
+				"package-agent reported %q after successful exit; event post error: %w",
+				report.Status,
+				postErr,
+			)
+		}
+		if completeErr != nil {
+			return fmt.Errorf(
+				"package-agent reported %q after successful exit; complete error: %w",
+				report.Status,
+				completeErr,
+			)
+		}
+		return nil
+	}
+
+	uploads, err := ArtifactUploadsFromReport(outputDir, report)
+	if err != nil {
+		return completeWithOriginalError(
+			ctx,
+			client,
+			build.ID,
+			artifactUploadFailureCompletionRequest(cfg.RunnerID, err),
+			err,
+		)
+	}
+	for _, upload := range uploads {
+		if err := client.UploadArtifact(ctx, build.ID, cfg.RunnerID, upload.ArtifactType, upload.Path); err != nil {
+			return completeWithOriginalError(
+				ctx,
+				client,
+				build.ID,
+				artifactUploadFailureCompletionRequest(cfg.RunnerID, err),
+				err,
+			)
+		}
+	}
+
 	if err := client.PostEvent(ctx, build.ID, eventRequest{
 		RunnerID:        cfg.RunnerID,
 		Type:            "runner.build.finished",
@@ -179,7 +245,7 @@ func handleBuild(ctx context.Context, client *Client, cfg Config, build BuildAss
 		)
 	}
 
-	return client.Complete(ctx, build.ID, needsHumanCompletionRequest(cfg.RunnerID))
+	return client.Complete(ctx, build.ID, successfulCompletionRequest(cfg.RunnerID, report))
 }
 
 func terminalPackageAgentOutcome(
@@ -262,15 +328,34 @@ func needsHumanCompletionFromReport(
 	return request
 }
 
-func needsHumanCompletionRequest(runnerID string) completeRequest {
+func successfulCompletionRequest(runnerID string, report AgentReport) completeRequest {
 	return completeRequest{
+		RunnerID: runnerID,
+		Status:   "succeeded",
+		Note:     report.Summary,
+	}
+}
+
+func needsHumanCompletionFromSuccessfulExit(runnerID string, report AgentReport) completeRequest {
+	request := completeRequest{
 		RunnerID:              runnerID,
 		Status:                "needs_human",
-		Note:                  terminalNeedsHumanArtifactUploadSummary,
-		FailureClassification: terminalNeedsHumanArtifactUploadClassification,
-		FailureSummary:        terminalNeedsHumanArtifactUploadSummary,
-		HumanAction:           terminalNeedsHumanArtifactUploadAction,
+		Note:                  report.Summary,
+		FailureClassification: report.Classification,
+		FailureSummary:        report.Summary,
+		HumanAction:           report.HumanAction,
 	}
+	if request.FailureClassification == "" {
+		request.FailureClassification = "package_agent_success_exit_status_mismatch"
+	}
+	if request.FailureSummary == "" {
+		request.FailureSummary = fmt.Sprintf("package-agent exited successfully but reported status %q", report.Status)
+		request.Note = request.FailureSummary
+	}
+	if request.HumanAction == "" {
+		request.HumanAction = "Inspect the package-agent report and resolve the build manually."
+	}
+	return request
 }
 
 func needsHumanEventMessage(request completeRequest) string {
@@ -308,6 +393,18 @@ func finishEventFailureCompletionRequest(runnerID string, cause error) completeR
 		FailureClassification: postAgentFinishEventFailureClassification,
 		FailureSummary:        note,
 		HumanAction:           postAgentFinishEventFailureAction,
+	}
+}
+
+func artifactUploadFailureCompletionRequest(runnerID string, cause error) completeRequest {
+	note := fmt.Sprintf("package-agent completed, but required artifact upload failed: %v", cause)
+	return completeRequest{
+		RunnerID:              runnerID,
+		Status:                "needs_human",
+		Note:                  note,
+		FailureClassification: postAgentArtifactUploadFailureClassification,
+		FailureSummary:        note,
+		HumanAction:           postAgentArtifactUploadAction,
 	}
 }
 

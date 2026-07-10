@@ -25,7 +25,7 @@ class BuildInput:
             raise ValueError(f"missing required string fields: {', '.join(missing)}")
 
         max_attempts = payload.get("maxAttempts", MAX_BUILD_ATTEMPTS)
-        if not isinstance(max_attempts, int) or max_attempts < 1:
+        if isinstance(max_attempts, bool) or not isinstance(max_attempts, int) or max_attempts < 1:
             raise ValueError("maxAttempts must be a positive integer when provided")
         if max_attempts > MAX_BUILD_ATTEMPTS:
             raise ValueError(f"maxAttempts must be <= {MAX_BUILD_ATTEMPTS}")

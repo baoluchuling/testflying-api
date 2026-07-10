@@ -88,6 +88,32 @@ def test_policy_blocks_build_script_rewrite() -> None:
     assert decision == PolicyDecision(allowed=False, reason="project_modification_blocked")
 
 
+def test_policy_blocks_ios_runner_swift_source_edit() -> None:
+    action = Action(
+        kind="build",
+        command=["python3", "-c", "open('ios/Runner/AppDelegate.swift','w').write('// rewrite')"],
+    )
+
+    decision = evaluate_action(action)
+
+    assert decision == PolicyDecision(allowed=False, reason="project_modification_blocked")
+
+
+def test_policy_blocks_android_app_kotlin_source_edit() -> None:
+    action = Action(
+        kind="env_repair",
+        command=[
+            "cp",
+            "/tmp/MainActivity.kt",
+            "android/app/src/main/kotlin/com/example/MainActivity.kt",
+        ],
+    )
+
+    decision = evaluate_action(action)
+
+    assert decision == PolicyDecision(allowed=False, reason="project_modification_blocked")
+
+
 def test_policy_allows_git_status_for_inspection() -> None:
     action = Action(kind="inspect", command=["git", "status", "--short"])
 

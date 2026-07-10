@@ -118,6 +118,31 @@ def test_cli_returns_failed_for_max_attempts_above_retry_cap(tmp_path: Path) -> 
     assert report["summary"] == "maxAttempts must be <= 5"
 
 
+def test_cli_returns_failed_for_boolean_max_attempts(tmp_path: Path) -> None:
+    input_path = tmp_path / "build-input.json"
+    input_path.write_text(
+        json.dumps(
+            {
+                "projectDir": str(tmp_path / "project"),
+                "platform": "ios",
+                "environment": "prod",
+                "artifactType": "ipa",
+                "maxAttempts": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "output"
+
+    exit_code = main(["build", "--input", str(input_path), "--output", str(output_dir)])
+
+    assert exit_code == 1
+    report = json.loads((output_dir / "report.json").read_text(encoding="utf-8"))
+    assert report["status"] == "failed"
+    assert report["classification"] == "invalid_input"
+    assert report["summary"] == "maxAttempts must be a positive integer when provided"
+
+
 def test_cli_returns_success_only_with_required_artifacts(tmp_path: Path) -> None:
     package_path = tmp_path / "app.ipa"
     symbols_path = tmp_path / "app.dsym.zip"

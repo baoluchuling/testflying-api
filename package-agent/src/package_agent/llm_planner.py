@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shlex
 import subprocess
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,7 @@ class LlmPlan:
 class PlannerCommand:
     args: list[str]
     stdin: str | None
+    output_path: Path | None = None
 
 
 def request_llm_plan(
@@ -37,29 +39,38 @@ def request_llm_plan(
     *,
     timeout_seconds: int = 120,
 ) -> LlmPlan:
-    command = planner_command(adapter, _planner_prompt(build_input))
-    result = subprocess.run(
-        command.args,
-        input=command.stdin,
-        capture_output=True,
-        text=True,
-        timeout=timeout_seconds,
-        check=False,
-    )
-    if result.returncode != 0:
-        raise ValueError(f"planner exited with code {result.returncode}")
-    try:
-        payload = json.loads(result.stdout)
-    except json.JSONDecodeError as exc:
-        raise ValueError("planner did not return valid JSON") from exc
-    return parse_llm_plan(payload)
+    prompt = _planner_prompt(build_input)
+    if adapter.name == "codex_cli":
+        with tempfile.NamedTemporaryFile() as output_file:
+            command = planner_command(adapter, prompt, output_path=Path(output_file.name))
+            return _run_planner_command(command, timeout_seconds=timeout_seconds)
+
+    command = planner_command(adapter, prompt)
+    return _run_planner_command(command, timeout_seconds=timeout_seconds)
 
 
-def planner_command(adapter: LlmAdapter, prompt: str) -> PlannerCommand:
+def planner_command(
+    adapter: LlmAdapter,
+    prompt: str,
+    *,
+    output_path: Path | None = None,
+) -> PlannerCommand:
     if adapter.name == "injected_llm_planner":
         return PlannerCommand(args=[adapter.executable], stdin=prompt)
     if adapter.name == "codex_cli":
-        return PlannerCommand(args=[adapter.executable, "exec", "--json"], stdin=prompt)
+        if output_path is None:
+            raise ValueError("codex planner requires an output path")
+        return PlannerCommand(
+            args=[
+                adapter.executable,
+                "exec",
+                "--output-last-message",
+                str(output_path),
+                "-",
+            ],
+            stdin=prompt,
+            output_path=output_path,
+        )
     if adapter.name == "claude_cli":
         return PlannerCommand(args=[adapter.executable, "-p", prompt], stdin=None)
     if adapter.name == "llm_runtime":
@@ -70,6 +81,35 @@ def planner_command(adapter: LlmAdapter, prompt: str) -> PlannerCommand:
             stdin=prompt,
         )
     return PlannerCommand(args=[adapter.executable], stdin=prompt)
+
+
+def _run_planner_command(command: PlannerCommand, *, timeout_seconds: int) -> LlmPlan:
+    result = subprocess.run(
+        command.args,
+        input=command.stdin,
+        capture_output=True,
+        text=True,
+        timeout=timeout_seconds,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise ValueError(f"planner exited with code {result.returncode}")
+    payload_text = _planner_output_text(command, result.stdout)
+    try:
+        payload = json.loads(payload_text)
+    except json.JSONDecodeError as exc:
+        raise ValueError("planner did not return valid JSON") from exc
+    return parse_llm_plan(payload)
+
+
+def _planner_output_text(command: PlannerCommand, stdout: str) -> str:
+    if command.output_path is None:
+        return stdout
+
+    payload_text = command.output_path.read_text(encoding="utf-8")
+    if not payload_text.strip():
+        raise ValueError("planner did not return valid JSON")
+    return payload_text
 
 
 def parse_llm_plan(payload: object) -> LlmPlan:

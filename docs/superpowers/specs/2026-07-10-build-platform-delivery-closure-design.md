@@ -11,7 +11,8 @@ TestFlying 已具备应用级构建配置、构建历史、Runner 调度、`pack
 - 尚无可重复执行的真实 Flutter/原生项目构建验收流程。
 
 本设计补齐以上闭环，不改变 Agent 的源代码写入边界，也不允许 Agent 执行
-`git commit` 或 `git push`。
+`git commit` 或 `git push`。Agent 允许执行 `git fetch`、`git pull`、状态检查以及受管
+workspace 内的本地 Git 操作，但不得借这些操作改写用户原始 Jenkins workspace。
 
 ## 目标
 

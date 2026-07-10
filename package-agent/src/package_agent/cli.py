@@ -25,6 +25,7 @@ def main(argv: list[str] | None = None) -> int:
     build_parser = subparsers.add_parser("build")
     build_parser.add_argument("--input", required=True)
     build_parser.add_argument("--output", required=True)
+    build_parser.add_argument("--config")
 
     args = parser.parse_args(argv)
     if args.command != "build":
@@ -33,12 +34,21 @@ def main(argv: list[str] | None = None) -> int:
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    report = _build_report(Path(args.input), output_dir=output_dir)
+    report = _build_report(
+        Path(args.input),
+        output_dir=output_dir,
+        config_override=Path(args.config).resolve() if args.config else None,
+    )
     _write_report(output_dir=output_dir, report=report)
     return report.exit_code()
 
 
-def _build_report(input_path: Path, *, output_dir: Path) -> AgentReport:
+def _build_report(
+    input_path: Path,
+    *,
+    output_dir: Path,
+    config_override: Path | None = None,
+) -> AgentReport:
     if not input_path.exists():
         return AgentReport(
             status="needs_human",
@@ -71,6 +81,21 @@ def _build_report(input_path: Path, *, output_dir: Path) -> AgentReport:
             summary=str(exc),
         )
 
+    if config_override is not None:
+        if not config_override.is_file():
+            return AgentReport(
+                status="needs_human",
+                classification="missing_build_config",
+                summary="The requested external build config is not a readable regular file.",
+                commit_sha=build_input.commit_sha,
+                max_attempts=build_input.max_attempts,
+            )
+        return _build_from_project_config(
+            build_input,
+            config_path=config_override,
+            output_dir=output_dir,
+        )
+
     config_path = Path(build_input.project_dir) / CONFIG_FILE
     if config_path.exists():
         return _build_from_project_config(
@@ -100,6 +125,14 @@ def _build_from_project_config(
 ) -> AgentReport:
     try:
         config = json.loads(config_path.read_text(encoding="utf-8"))
+    except OSError:
+        return AgentReport(
+            status="needs_human",
+            classification="unreadable_build_config",
+            summary="The build config is not readable.",
+            commit_sha=build_input.commit_sha,
+            max_attempts=build_input.max_attempts,
+        )
     except json.JSONDecodeError:
         return AgentReport(
             status="failed",

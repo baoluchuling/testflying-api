@@ -19,7 +19,8 @@ class PolicyDecision:
 
 
 ALLOWED_KINDS = {"inspect", "build", "env_repair", "artifact_collect"}
-BLOCKED_GIT_COMMANDS = {"commit", "push", "pull", "tag"}
+# Checkout cleanup and local Git operations are allowed only in the Runner-managed checkout.
+BLOCKED_GIT_COMMANDS = {"commit", "push"}
 GIT_OPTIONS_WITH_VALUES = {
     "-C",
     "-c",
@@ -32,6 +33,7 @@ GIT_OPTIONS_WITH_VALUES = {
 }
 SHELL_COMMAND_FLAGS = {"-c", "-ic", "-lc"}
 SHELL_LAUNCHERS = {"bash", "sh", "zsh"}
+SHELL_SEPARATORS = set(";&|()\n")
 PROTECTED_PATH_PATTERNS = (
     "lib/",
     "src/",
@@ -146,17 +148,36 @@ def _iter_command_views(command: list[str]) -> list[list[str]]:
             continue
         shell_text = command[index + 1]
         try:
-            nested = shlex.split(shell_text)
+            nested_commands = _split_shell_commands(shell_text)
         except ValueError:
             continue
-        if nested:
+        for nested in nested_commands:
             views.extend(_iter_command_views(nested))
     return views
 
 
+def _split_shell_commands(shell_text: str) -> list[list[str]]:
+    lexer = shlex.shlex(shell_text, posix=True, punctuation_chars=";&|()\n")
+    lexer.whitespace = " \t\r"
+    lexer.whitespace_split = True
+    lexer.commenters = ""
+    commands: list[list[str]] = []
+    current: list[str] = []
+    for token in lexer:
+        if token and all(character in SHELL_SEPARATORS for character in token):
+            if current:
+                commands.append(current)
+                current = []
+            continue
+        current.append(token)
+    if current:
+        commands.append(current)
+    return commands
+
+
 def _blocked_git_operation_in_command(command: list[str]) -> bool:
     lowered = [token.lower() for token in command]
-    if not lowered or lowered[0] != "git":
+    if not lowered or lowered[0].rsplit("/", 1)[-1] != "git":
         return False
 
     subcommand_index = _git_subcommand_index(lowered)

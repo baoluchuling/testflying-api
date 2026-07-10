@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from package_agent.policy import Action, PolicyDecision, evaluate_action
 
 
@@ -63,15 +65,36 @@ def test_policy_blocks_git_commit_after_git_dir_option() -> None:
     assert decision == PolicyDecision(allowed=False, reason="blocked_git_operation")
 
 
-def test_policy_blocks_shell_wrapped_git_pull_after_global_option() -> None:
-    action = Action(
-        kind="inspect",
-        command=["bash", "-lc", "git -C repo pull --ff-only origin main"],
-    )
+@pytest.mark.parametrize(
+    "command",
+    [
+        ["git", "pull", "--ff-only"],
+        ["git", "fetch", "origin"],
+        ["git", "tag", "local-checkpoint"],
+        ["git", "reset", "--hard", "HEAD"],
+        ["bash", "-lc", "git -C repo pull --ff-only origin main"],
+    ],
+)
+def test_policy_allows_permitted_git_operations(command: list[str]) -> None:
+    assert evaluate_action(Action(kind="inspect", command=command)).allowed is True
 
-    decision = evaluate_action(action)
 
-    assert decision == PolicyDecision(allowed=False, reason="blocked_git_operation")
+@pytest.mark.parametrize(
+    "command",
+    [
+        ["git", "commit", "-m", "blocked"],
+        ["git", "push", "origin", "main"],
+        ["bash", "-lc", "git commit -m blocked"],
+        ["zsh", "-lc", "git push origin main"],
+        ["bash", "-lc", "git status --short && git push origin main"],
+        ["zsh", "-lc", "echo ready; git commit -m blocked"],
+        ["/usr/bin/git", "push", "origin", "main"],
+        ["bash", "-lc", "git status --short\ngit push origin main"],
+    ],
+)
+def test_policy_blocks_only_publishing_git_operations(command: list[str]) -> None:
+    decision = evaluate_action(Action(kind="inspect", command=command))
+    assert decision.reason == "blocked_git_operation"
 
 
 def test_policy_blocks_protected_build_file_change() -> None:

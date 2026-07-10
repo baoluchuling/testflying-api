@@ -236,6 +236,123 @@ def test_cli_runs_project_config_command_and_collects_redacted_artifacts(tmp_pat
     assert "[REDACTED]" in Path(report["logPaths"][1]).read_text(encoding="utf-8")
 
 
+def test_cli_returns_needs_human_when_config_override_is_missing(tmp_path: Path) -> None:
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    input_path = _write_build_input(tmp_path, project_dir, artifact_type="apk")
+    output_dir = tmp_path / "output"
+
+    exit_code = main(
+        [
+            "build",
+            "--input",
+            str(input_path),
+            "--output",
+            str(output_dir),
+            "--config",
+            str(tmp_path / "missing-config.json"),
+        ]
+    )
+
+    assert exit_code == 2
+    report = json.loads((output_dir / "report.json").read_text(encoding="utf-8"))
+    assert report["classification"] == "missing_build_config"
+
+
+def test_cli_returns_failed_when_config_override_is_invalid_json(tmp_path: Path) -> None:
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    input_path = _write_build_input(tmp_path, project_dir, artifact_type="apk")
+    config_path = tmp_path / "acceptance.json"
+    config_path.write_text("{invalid", encoding="utf-8")
+    output_dir = tmp_path / "output"
+
+    exit_code = main(
+        [
+            "build",
+            "--input",
+            str(input_path),
+            "--output",
+            str(output_dir),
+            "--config",
+            str(config_path),
+        ]
+    )
+
+    assert exit_code == 1
+    report = json.loads((output_dir / "report.json").read_text(encoding="utf-8"))
+    assert report["classification"] == "invalid_build_config_json"
+
+
+def test_cli_applies_policy_to_config_override(tmp_path: Path) -> None:
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    input_path = _write_build_input(tmp_path, project_dir, artifact_type="apk")
+    config_path = tmp_path / "blocked.json"
+    config_path.write_text(json.dumps({"buildCommand": ["git", "commit", "-m", "blocked"]}))
+    output_dir = tmp_path / "output"
+
+    exit_code = main(
+        [
+            "build",
+            "--input",
+            str(input_path),
+            "--output",
+            str(output_dir),
+            "--config",
+            str(config_path),
+        ]
+    )
+
+    assert exit_code == 2
+    report = json.loads((output_dir / "report.json").read_text(encoding="utf-8"))
+    assert report["classification"] == "blocked_git_operation"
+
+
+def test_cli_uses_config_override_without_project_config(tmp_path: Path) -> None:
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    input_path = _write_build_input(tmp_path, project_dir, artifact_type="apk")
+    config_path = tmp_path / "acceptance.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "buildCommand": [
+                    sys.executable,
+                    "-c",
+                    (
+                        "from pathlib import Path; Path('dist').mkdir(); "
+                        "Path('dist/app.apk').write_text('apk'); "
+                        "Path('dist/mapping.txt').write_text('symbols')"
+                    ),
+                ],
+                "packagePaths": ["dist/*.apk"],
+                "symbolsPaths": ["dist/mapping.txt"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "output"
+
+    exit_code = main(
+        [
+            "build",
+            "--input",
+            str(input_path),
+            "--output",
+            str(output_dir),
+            "--config",
+            str(config_path),
+        ]
+    )
+
+    assert exit_code == 0
+    assert not (project_dir / "testflying-package-agent.json").exists()
+    report = json.loads((output_dir / "report.json").read_text(encoding="utf-8"))
+    assert report["classification"] == "build_succeeded"
+    assert Path(report["packagePaths"][0]).read_text(encoding="utf-8") == "apk"
+
+
 def test_cli_returns_needs_human_without_config_or_artifact_paths(
     tmp_path: Path,
     monkeypatch,
@@ -382,3 +499,19 @@ def _write_fake_planner(tmp_path: Path, payload: dict[str, object]) -> Path:
     )
     planner.chmod(0o755)
     return planner
+
+
+def _write_build_input(tmp_path: Path, project_dir: Path, *, artifact_type: str) -> Path:
+    input_path = tmp_path / "build-input.json"
+    input_path.write_text(
+        json.dumps(
+            {
+                "projectDir": str(project_dir),
+                "platform": "android" if artifact_type in {"apk", "aab"} else "ios",
+                "environment": "development",
+                "artifactType": artifact_type,
+            }
+        ),
+        encoding="utf-8",
+    )
+    return input_path

@@ -48,6 +48,15 @@ _RUNNER_REQUIRED_ARTIFACTS = {
     ArtifactType.REPORT.value,
     ArtifactType.LOG.value,
 }
+_TERMINAL_BUILD_LIFECYCLE_STATUSES = {
+    BuildLifecycleStatus.SUCCEEDED.value,
+    BuildLifecycleStatus.FAILED.value,
+    BuildLifecycleStatus.NEEDS_HUMAN.value,
+    BuildLifecycleStatus.CANCELLED.value,
+}
+_RUNNER_EVENT_LIFECYCLE_STATUSES = {
+    status.value for status in BuildLifecycleStatus if status.value not in _TERMINAL_BUILD_LIFECYCLE_STATUSES
+}
 
 
 def app_or_404(session: Session, app_id: str) -> App:
@@ -308,6 +317,7 @@ def append_build_event(
     build, runner = _runner_build_pair(session, build_id=build_id, runner_id=runner_id, token=token)
     normalized_type = _require_non_blank(event_type, field="type", label="type")
     normalized_message = _require_non_blank(message, field="message", label="message")
+    normalized_lifecycle_status = _normalize_runner_event_lifecycle_status(lifecycle_status)
     event = BuildEvent(
         id=f"build-event-{uuid4().hex[:12]}",
         build_id=build.id,
@@ -316,8 +326,8 @@ def append_build_event(
         message=normalized_message,
         payload_json=dict(payload or {}),
     )
-    if lifecycle_status:
-        build.lifecycle_status = lifecycle_status.strip()
+    if normalized_lifecycle_status is not None:
+        build.lifecycle_status = normalized_lifecycle_status
     build.started_at = build.started_at or datetime.now(UTC)
     runner.last_seen_at = datetime.now(UTC)
     session.add_all([event, build, runner])
@@ -416,7 +426,7 @@ def complete_runner_build(
     human_action: str | None = None,
 ) -> Build:
     build, runner = _runner_build_pair(session, build_id=build_id, runner_id=runner_id, token=token)
-    normalized_status = _require_non_blank(status, field="status", label="status").lower()
+    normalized_status = _normalize_complete_status(status)
     artifacts = session.scalars(select(Artifact).where(Artifact.build_id == build.id)).all()
     if normalized_status == BuildLifecycleStatus.SUCCEEDED.value:
         existing_types = {artifact.artifact_type for artifact in artifacts}
@@ -604,6 +614,36 @@ def _build_with_relations(session: Session, build_id: str) -> Build:
         .where(Build.id == build_id)
         .options(joinedload(Build.app), selectinload(Build.artifacts))
     ).one()
+
+
+def _normalize_runner_event_lifecycle_status(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = _require_non_blank(
+        value,
+        field="lifecycle_status",
+        label="lifecycle_status",
+    ).lower()
+    if normalized not in _RUNNER_EVENT_LIFECYCLE_STATUSES:
+        raise ApiError(
+            "invalid_runner_event_lifecycle_status",
+            "Runner event lifecycle_status 只支持非终态构建状态",
+            status_code=422,
+            extra={"field": "lifecycle_status"},
+        )
+    return normalized
+
+
+def _normalize_complete_status(value: str) -> str:
+    normalized = _require_non_blank(value, field="status", label="status").lower()
+    if normalized not in _TERMINAL_BUILD_LIFECYCLE_STATUSES:
+        raise ApiError(
+            "invalid_runner_complete_status",
+            "status 必须是受支持的终态构建状态",
+            status_code=422,
+            extra={"field": "status"},
+        )
+    return normalized
 
 
 def _runner_or_401(session: Session, *, runner_id: str, token: str) -> BuildRunner:

@@ -433,6 +433,54 @@ def test_runner_artifact_event_and_complete_flow_marks_build_succeeded(
     ]
 
 
+def test_runner_event_rejects_terminal_lifecycle_status(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    app = _create_app(db_session)
+    build = _create_agent_build(db_session, app=app)
+    client.post(
+        "/admin/api/build-runners/register",
+        headers=_runner_headers(),
+        json={
+            "runnerId": "runner-mac-1",
+            "name": "Mac mini 1",
+            "labels": ["ios-release"],
+            "version": "0.1.0",
+            "packageAgentVersion": "0.1.0",
+            "capabilities": {"platforms": ["ios"], "llmAdapters": ["codex"], "capacity": 1},
+        },
+    )
+    client.post(
+        "/admin/api/build-runners/poll",
+        headers=_runner_headers(),
+        json={"runnerId": "runner-mac-1", "timeoutSeconds": 0},
+    )
+
+    response = client.post(
+        f"/admin/api/build-runners/builds/{build.id}/events",
+        headers=_runner_headers(),
+        json={
+            "runnerId": "runner-mac-1",
+            "type": "build_finished",
+            "message": "done",
+            "lifecycleStatus": "succeeded",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {
+        "error": {
+            "code": "invalid_runner_event_lifecycle_status",
+            "message": "Runner event lifecycle_status 只支持非终态构建状态",
+            "detail": {"field": "lifecycle_status", "retryable": False},
+        }
+    }
+    db_session.refresh(build)
+    assert build.lifecycle_status == "assigned"
+    assert db_session.query(BuildEvent).filter_by(build_id=build.id).count() == 0
+
+
 def test_runner_complete_rejects_success_without_required_artifacts(
     client: TestClient,
     db_session: Session,
@@ -486,3 +534,49 @@ def test_runner_complete_rejects_success_without_required_artifacts(
             "detail": {"retryable": False},
         }
     }
+
+
+def test_runner_complete_rejects_invalid_terminal_status(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    app = _create_app(db_session)
+    build = _create_agent_build(db_session, app=app)
+    client.post(
+        "/admin/api/build-runners/register",
+        headers=_runner_headers(),
+        json={
+            "runnerId": "runner-mac-1",
+            "name": "Mac mini 1",
+            "labels": ["ios-release"],
+            "version": "0.1.0",
+            "packageAgentVersion": "0.1.0",
+            "capabilities": {"platforms": ["ios"], "llmAdapters": ["codex"], "capacity": 1},
+        },
+    )
+    client.post(
+        "/admin/api/build-runners/poll",
+        headers=_runner_headers(),
+        json={"runnerId": "runner-mac-1", "timeoutSeconds": 0},
+    )
+
+    response = client.post(
+        f"/admin/api/build-runners/builds/{build.id}/complete",
+        headers=_runner_headers(),
+        json={"runnerId": "runner-mac-1", "status": "done"},
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {
+        "error": {
+            "code": "invalid_runner_complete_status",
+            "message": "status 必须是受支持的终态构建状态",
+            "detail": {"field": "status", "retryable": False},
+        }
+    }
+    db_session.refresh(build)
+    assert build.lifecycle_status == "assigned"
+    assert build.finished_at is None
+    runner = db_session.get(BuildRunner, "runner-mac-1")
+    assert runner is not None
+    assert runner.current_build_id == build.id

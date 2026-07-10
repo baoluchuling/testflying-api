@@ -90,7 +90,12 @@ def _upgrade_artifacts() -> None:
 
     with op.batch_alter_table("artifacts", recreate="always") as batch_op:
         batch_op.add_column(
-            sa.Column("artifact_type", sa.String(length=30), nullable=False, server_default="package")
+            sa.Column(
+                "artifact_type",
+                sa.String(length=30),
+                nullable=False,
+                server_default="package",
+            )
         )
         batch_op.add_column(sa.Column("metadata_json", sa.JSON(), nullable=True))
 

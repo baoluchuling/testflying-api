@@ -42,6 +42,17 @@ type eventRequest struct {
 	Payload         map[string]interface{} `json:"payload,omitempty"`
 }
 
+type completeRequest struct {
+	RunnerID              string `json:"runnerId"`
+	Status                string `json:"status"`
+	Version               string `json:"version,omitempty"`
+	BuildNumber           string `json:"buildNumber,omitempty"`
+	Note                  string `json:"note,omitempty"`
+	FailureClassification string `json:"failureClassification,omitempty"`
+	FailureSummary        string `json:"failureSummary,omitempty"`
+	HumanAction           string `json:"humanAction,omitempty"`
+}
+
 func NewClient(baseURL string, token string, httpClient *http.Client) *Client {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
@@ -86,6 +97,10 @@ func (c *Client) PostEvent(
 	request eventRequest,
 ) error {
 	return c.postJSON(ctx, fmt.Sprintf("/admin/api/build-runners/builds/%s/events", buildID), request, nil)
+}
+
+func (c *Client) Complete(ctx context.Context, buildID string, request completeRequest) error {
+	return c.postJSON(ctx, fmt.Sprintf("/admin/api/build-runners/builds/%s/complete", buildID), request, nil)
 }
 
 func (c *Client) postJSON(ctx context.Context, path string, requestBody any, responseBody any) error {

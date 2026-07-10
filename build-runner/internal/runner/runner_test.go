@@ -3,9 +3,12 @@ package runner
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -116,61 +119,144 @@ func TestRunOnceNoBuildOnlyHeartbeatsAndPolls(t *testing.T) {
 	}
 }
 
-func TestRunOnceAssignedBuildRunsPackageAgentAndPostsBuildingEvents(t *testing.T) {
+func TestConfigValidateRequiresFieldsAndCapacityOne(t *testing.T) {
+	valid := Config{
+		RunnerID:            "runner-1",
+		Name:                "Runner 1",
+		Token:               "token",
+		ServerURL:           "https://example.test",
+		RootDir:             t.TempDir(),
+		PackageAgentBin:     "/tmp/package-agent",
+		Version:             "0.1.0",
+		PackageAgentVersion: "0.1.0",
+		Capacity:            1,
+	}
+	if err := valid.Validate(); err != nil {
+		t.Fatalf("Validate() unexpected error: %v", err)
+	}
+
+	cases := []struct {
+		name string
+		cfg  Config
+		want string
+	}{
+		{
+			name: "missing runner id",
+			cfg: func() Config {
+				cfg := valid
+				cfg.RunnerID = ""
+				return cfg
+			}(),
+			want: "RunnerID is required",
+		},
+		{
+			name: "missing name",
+			cfg: func() Config {
+				cfg := valid
+				cfg.Name = " "
+				return cfg
+			}(),
+			want: "Name is required",
+		},
+		{
+			name: "missing token",
+			cfg: func() Config {
+				cfg := valid
+				cfg.Token = ""
+				return cfg
+			}(),
+			want: "Token is required",
+		},
+		{
+			name: "missing server url",
+			cfg: func() Config {
+				cfg := valid
+				cfg.ServerURL = ""
+				return cfg
+			}(),
+			want: "ServerURL is required",
+		},
+		{
+			name: "missing root dir",
+			cfg: func() Config {
+				cfg := valid
+				cfg.RootDir = ""
+				return cfg
+			}(),
+			want: "RootDir is required",
+		},
+		{
+			name: "missing package agent bin",
+			cfg: func() Config {
+				cfg := valid
+				cfg.PackageAgentBin = ""
+				return cfg
+			}(),
+			want: "PackageAgentBin is required",
+		},
+		{
+			name: "missing capacity",
+			cfg: func() Config {
+				cfg := valid
+				cfg.Capacity = 0
+				return cfg
+			}(),
+			want: "Capacity is required",
+		},
+		{
+			name: "capacity must stay one",
+			cfg: func() Config {
+				cfg := valid
+				cfg.Capacity = 2
+				return cfg
+			}(),
+			want: "Capacity must be 1 in the current implementation",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.cfg.Validate()
+			if err == nil {
+				t.Fatal("Validate() error = nil, want error")
+			}
+			if err.Error() != tc.want {
+				t.Fatalf("Validate() error = %q, want %q", err.Error(), tc.want)
+			}
+		})
+	}
+}
+
+func TestRunOnceAssignedBuildRunsPackageAgentPostsEventsAndCompletesNeedsHuman(t *testing.T) {
 	root := t.TempDir()
-	packageAgentBin := filepath.Join(root, "fake-package-agent.sh")
-	if err := os.WriteFile(packageAgentBin, []byte(`#!/bin/sh
-set -eu
-
-INPUT=""
-OUTPUT=""
-
-while [ "$#" -gt 0 ]; do
-	case "$1" in
-		build)
-			shift
-			;;
-		--input)
-			INPUT="$2"
-			shift 2
-			;;
-		--output)
-			OUTPUT="$2"
-			shift 2
-			;;
-		*)
-			echo "unexpected arg: $1" >&2
-			exit 1
-			;;
-	esac
-done
-
-mkdir -p "$OUTPUT"
-printf 'input=%s\noutput=%s\n' "$INPUT" "$OUTPUT" > "$OUTPUT/invocation.txt"
-cat > "$OUTPUT/report.json" <<'EOF'
-{
-  "status": "ok",
-  "classification": "success",
+	packageAgentBin := writeFakePackageAgent(t, root, 0, `{
+  "status": "success",
+  "classification": "build_succeeded",
   "summary": "fake package-agent completed",
   "packagePaths": ["app.ipa"],
   "symbolsPaths": ["app.dSYM.zip"],
   "logPaths": ["runner.log"],
   "maxAttempts": 5
-}
-EOF
-`), 0o755); err != nil {
-		t.Fatal(err)
-	}
+}`)
 
 	type capturedEvent struct {
 		Type            string                 `json:"type"`
 		LifecycleStatus string                 `json:"lifecycleStatus"`
 		Payload         map[string]interface{} `json:"payload"`
 	}
+	type capturedComplete struct {
+		RunnerID              string `json:"runnerId"`
+		Status                string `json:"status"`
+		Note                  string `json:"note"`
+		FailureClassification string `json:"failureClassification"`
+		FailureSummary        string `json:"failureSummary"`
+		HumanAction           string `json:"humanAction"`
+	}
 
 	var heartbeatBody heartbeatRequest
 	var pollBody pollRequest
 	events := make([]capturedEvent, 0, 2)
+	completes := make([]capturedComplete, 0, 1)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -202,6 +288,14 @@ EOF
 				t.Fatalf("decode event: %v", err)
 			}
 			events = append(events, event)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		case "/admin/api/build-runners/builds/build-123/complete":
+			var complete capturedComplete
+			if err := json.NewDecoder(r.Body).Decode(&complete); err != nil {
+				t.Fatalf("decode complete: %v", err)
+			}
+			completes = append(completes, complete)
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"ok":true}`))
 		default:
@@ -309,4 +403,212 @@ EOF
 	if reportPayload["maxAttempts"] != float64(BuildRetryLimit) {
 		t.Fatalf("report maxAttempts = %#v", reportPayload["maxAttempts"])
 	}
+
+	if len(completes) != 1 {
+		t.Fatalf("complete count = %d, want 1", len(completes))
+	}
+	if completes[0].RunnerID != cfg.RunnerID {
+		t.Fatalf("complete runnerId = %q, want %q", completes[0].RunnerID, cfg.RunnerID)
+	}
+	if completes[0].Status != "needs_human" {
+		t.Fatalf("complete status = %q, want %q", completes[0].Status, "needs_human")
+	}
+	if completes[0].FailureClassification != terminalNeedsHumanArtifactUploadClassification {
+		t.Fatalf(
+			"complete failureClassification = %q, want %q",
+			completes[0].FailureClassification,
+			terminalNeedsHumanArtifactUploadClassification,
+		)
+	}
+	if completes[0].FailureSummary != terminalNeedsHumanArtifactUploadSummary {
+		t.Fatalf("complete failureSummary = %q", completes[0].FailureSummary)
+	}
+	if completes[0].Note != terminalNeedsHumanArtifactUploadSummary {
+		t.Fatalf("complete note = %q", completes[0].Note)
+	}
+	if completes[0].HumanAction != terminalNeedsHumanArtifactUploadAction {
+		t.Fatalf("complete humanAction = %q", completes[0].HumanAction)
+	}
+}
+
+func TestRunOnceAssignedBuildCompletesFailedWhenPackageAgentExitsNonZero(t *testing.T) {
+	root := t.TempDir()
+	packageAgentBin := writeFakePackageAgent(t, root, 7, `{
+  "status": "failed",
+  "classification": "codesign_failed",
+  "summary": "codesign step failed",
+  "packagePaths": [],
+  "symbolsPaths": [],
+  "logPaths": ["runner.log"],
+  "maxAttempts": 5
+}`)
+
+	type capturedEvent struct {
+		Type            string                 `json:"type"`
+		LifecycleStatus string                 `json:"lifecycleStatus"`
+		Message         string                 `json:"message"`
+		Payload         map[string]interface{} `json:"payload"`
+	}
+	type capturedComplete struct {
+		RunnerID              string `json:"runnerId"`
+		Status                string `json:"status"`
+		Note                  string `json:"note"`
+		FailureClassification string `json:"failureClassification"`
+		FailureSummary        string `json:"failureSummary"`
+	}
+
+	events := make([]capturedEvent, 0, 2)
+	completes := make([]capturedComplete, 0, 1)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/admin/api/build-runners/heartbeat":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		case "/admin/api/build-runners/poll":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"build":{
+				"id":"build-123",
+				"appId":"app-1",
+				"platform":"ios",
+				"environment":"development",
+				"gitUrl":"https://example.com/repo.git",
+				"gitRef":"main",
+				"repoSubpath":"ios/app",
+				"artifactType":"ipa",
+				"credentialRefs":{"git":"git-main"}
+			}}`))
+		case "/admin/api/build-runners/builds/build-123/events":
+			var event capturedEvent
+			if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
+				t.Fatalf("decode event: %v", err)
+			}
+			events = append(events, event)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		case "/admin/api/build-runners/builds/build-123/complete":
+			var complete capturedComplete
+			if err := json.NewDecoder(r.Body).Decode(&complete); err != nil {
+				t.Fatalf("decode complete: %v", err)
+			}
+			completes = append(completes, complete)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	cfg := Config{
+		RunnerID:            "runner-1",
+		Name:                "Runner 1",
+		Token:               "token",
+		ServerURL:           server.URL,
+		RootDir:             root,
+		PackageAgentBin:     packageAgentBin,
+		Version:             "0.1.0",
+		PackageAgentVersion: "0.1.0",
+		Labels:              []string{"ios-release"},
+		Platforms:           []string{"ios"},
+		LLMAdapters:         []string{"codex"},
+		Capacity:            1,
+	}
+
+	err := RunOnce(context.Background(), cfg, server.Client())
+	if err == nil {
+		t.Fatal("RunOnce() error = nil, want error")
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("RunOnce() error type = %T, want *os.ExitError", err)
+	}
+	if exitErr.ExitCode() != 7 {
+		t.Fatalf("RunOnce() exit code = %d, want 7", exitErr.ExitCode())
+	}
+
+	if len(events) != 2 {
+		t.Fatalf("event count = %d, want 2", len(events))
+	}
+	if events[0].Type != "runner.build.started" {
+		t.Fatalf("first event type = %q", events[0].Type)
+	}
+	if events[1].Type != "runner.build.failed" {
+		t.Fatalf("second event type = %q, want %q", events[1].Type, "runner.build.failed")
+	}
+	if events[1].Message != "package-agent failed: exit status 7" {
+		t.Fatalf("second event message = %q", events[1].Message)
+	}
+	if events[1].Payload["error"] != "exit status 7" {
+		t.Fatalf("second event error payload = %#v", events[1].Payload["error"])
+	}
+	reportPayload, ok := events[1].Payload["report"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("second event report payload type = %T", events[1].Payload["report"])
+	}
+	if reportPayload["classification"] != "codesign_failed" {
+		t.Fatalf("report classification = %#v", reportPayload["classification"])
+	}
+	if reportPayload["summary"] != "codesign step failed" {
+		t.Fatalf("report summary = %#v", reportPayload["summary"])
+	}
+
+	if len(completes) != 1 {
+		t.Fatalf("complete count = %d, want 1", len(completes))
+	}
+	if completes[0].Status != "failed" {
+		t.Fatalf("complete status = %q, want %q", completes[0].Status, "failed")
+	}
+	if completes[0].FailureClassification != "codesign_failed" {
+		t.Fatalf("complete failureClassification = %q", completes[0].FailureClassification)
+	}
+	if completes[0].FailureSummary != "codesign step failed" {
+		t.Fatalf("complete failureSummary = %q", completes[0].FailureSummary)
+	}
+	if completes[0].Note != "codesign step failed" {
+		t.Fatalf("complete note = %q", completes[0].Note)
+	}
+}
+
+func writeFakePackageAgent(t *testing.T, root string, exitCode int, reportJSON string) string {
+	t.Helper()
+
+	packageAgentBin := filepath.Join(root, "fake-package-agent.sh")
+	script := fmt.Sprintf(`#!/bin/sh
+set -eu
+
+INPUT=""
+OUTPUT=""
+
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+		build)
+			shift
+			;;
+		--input)
+			INPUT="$2"
+			shift 2
+			;;
+		--output)
+			OUTPUT="$2"
+			shift 2
+			;;
+		*)
+			echo "unexpected arg: $1" >&2
+			exit 1
+			;;
+	esac
+done
+
+mkdir -p "$OUTPUT"
+printf 'input=%%s\noutput=%%s\n' "$INPUT" "$OUTPUT" > "$OUTPUT/invocation.txt"
+cat > "$OUTPUT/report.json" <<'EOF'
+%s
+EOF
+exit %d
+`, reportJSON, exitCode)
+	if err := os.WriteFile(packageAgentBin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return packageAgentBin
 }

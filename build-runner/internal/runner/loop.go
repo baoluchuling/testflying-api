@@ -7,6 +7,12 @@ import (
 	"os"
 )
 
+const (
+	terminalNeedsHumanArtifactUploadClassification = "artifact_upload_pending"
+	terminalNeedsHumanArtifactUploadSummary        = "package-agent completed but the runner cannot upload required artifacts yet."
+	terminalNeedsHumanArtifactUploadAction         = "Upload package, symbols, report, and log artifacts before marking the build succeeded."
+)
+
 type BuildAssignment struct {
 	ID             string            `json:"id"`
 	AppID          string            `json:"appId"`
@@ -101,17 +107,70 @@ func handleBuild(ctx context.Context, client *Client, cfg Config, build BuildAss
 			Message:  fmt.Sprintf("package-agent failed: %v", runErr),
 			Payload:  payload,
 		})
+		completeErr := client.Complete(ctx, build.ID, failedCompletionRequest(cfg.RunnerID, runErr, reportErr, payload["report"]))
+		if postErr != nil && completeErr != nil {
+			return fmt.Errorf(
+				"package-agent error: %v; event post error: %v; complete error: %w",
+				runErr,
+				postErr,
+				completeErr,
+			)
+		}
 		if postErr != nil {
 			return fmt.Errorf("package-agent error: %v; event post error: %w", runErr, postErr)
+		}
+		if completeErr != nil {
+			return fmt.Errorf("package-agent error: %v; complete error: %w", runErr, completeErr)
 		}
 		return runErr
 	}
 
-	return client.PostEvent(ctx, build.ID, eventRequest{
+	if err := client.PostEvent(ctx, build.ID, eventRequest{
 		RunnerID:        cfg.RunnerID,
 		Type:            "runner.build.finished",
 		Message:         "package-agent finished.",
 		LifecycleStatus: "building",
 		Payload:         payload,
-	})
+	}); err != nil {
+		return err
+	}
+
+	return client.Complete(ctx, build.ID, needsHumanCompletionRequest(cfg.RunnerID))
+}
+
+func failedCompletionRequest(
+	runnerID string,
+	runErr error,
+	reportErr error,
+	reportValue interface{},
+) completeRequest {
+	request := completeRequest{
+		RunnerID: runnerID,
+		Status:   "failed",
+	}
+	if report, ok := reportValue.(AgentReport); ok {
+		request.Note = report.Summary
+		request.FailureClassification = report.Classification
+		request.FailureSummary = report.Summary
+		return request
+	}
+
+	request.Note = fmt.Sprintf("package-agent failed: %v", runErr)
+	request.FailureClassification = "package_agent_failed"
+	request.FailureSummary = request.Note
+	if reportErr != nil {
+		request.FailureSummary = fmt.Sprintf("%s; report unavailable: %v", request.FailureSummary, reportErr)
+	}
+	return request
+}
+
+func needsHumanCompletionRequest(runnerID string) completeRequest {
+	return completeRequest{
+		RunnerID:              runnerID,
+		Status:                "needs_human",
+		Note:                  terminalNeedsHumanArtifactUploadSummary,
+		FailureClassification: terminalNeedsHumanArtifactUploadClassification,
+		FailureSummary:        terminalNeedsHumanArtifactUploadSummary,
+		HumanAction:           terminalNeedsHumanArtifactUploadAction,
+	}
 }

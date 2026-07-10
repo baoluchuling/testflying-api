@@ -16,6 +16,7 @@ mkdir -p "${INSTALL_ROOT}" "${LOG_ROOT}" "$(dirname "${PLIST}")"
 cp "${PACKAGE_DIR}/testflying-build-runner" "${INSTALL_ROOT}/testflying-build-runner"
 cp "${PACKAGE_DIR}/config.json" "${INSTALL_ROOT}/config.json"
 chmod +x "${INSTALL_ROOT}/testflying-build-runner"
+chmod 600 "${INSTALL_ROOT}/config.json"
 
 cat > "${INSTALL_ROOT}/run-build-runner.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -108,6 +109,8 @@ cat > "${PLIST}" <<PLIST
     <string>${INSTALL_ROOT}</string>
   </array>
   <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
   <true/>
   <key>WorkingDirectory</key>
   <string>${INSTALL_ROOT}</string>

@@ -155,6 +155,13 @@ def test_build_runners_state_lists_runner_status_and_capabilities(
     }
 
 
+def test_build_runners_state_requires_basic_auth(client: TestClient) -> None:
+    response = client.get("/admin/api/build-runners")
+
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == "Basic"
+
+
 def test_runner_reregister_rejects_token_takeover(client: TestClient, db_session: Session) -> None:
     app = _create_app(db_session)
     build = _create_agent_build(db_session, app=app)

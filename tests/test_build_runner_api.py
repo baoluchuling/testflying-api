@@ -1,15 +1,24 @@
 from __future__ import annotations
 
 from base64 import b64encode
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
-
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from testflying_api.build_platform import hash_runner_token
-from testflying_api.schema import App, Artifact, Build, BuildEvent, BuildRunner
+from testflying_api.schema import (
+    App,
+    Artifact,
+    Build,
+    BuildEvent,
+    BuildRunner,
+    Notification,
+    WebhookDelivery,
+)
 
 
 def _admin_headers(password: str = "dev-token") -> dict[str, str]:
@@ -334,7 +343,6 @@ def test_runner_poll_assigns_matching_queued_build_and_enforces_capacity(
             "capabilities": {"platforms": ["ios"], "llmAdapters": ["codex"], "capacity": 1},
         },
     )
-
     response = client.post(
         "/admin/api/build-runners/poll",
         headers=_runner_headers(),
@@ -489,6 +497,11 @@ def test_runner_poll_terminalizes_queued_builds_at_retry_cap(
             "capabilities": {"platforms": ["ios"], "llmAdapters": ["codex"], "capacity": 1},
         },
     )
+    client.app.state.settings = replace(
+        client.app.state.settings,
+        dingtalk_webhook_url="https://oapi.dingtalk.test/robot/send?access_token=abc",
+        dingtalk_secret="SEC-test",
+    )
 
     response = client.post(
         "/admin/api/build-runners/poll",
@@ -505,6 +518,15 @@ def test_runner_poll_terminalizes_queued_builds_at_retry_cap(
     assert capped_build.attempt_count == 5
     assert eligible_build.lifecycle_status == "assigned"
     assert eligible_build.attempt_count == 1
+    assert db_session.scalar(
+        select(Notification).where(Notification.build_id == capped_build.id)
+    ) is not None
+    assert db_session.scalar(
+        select(WebhookDelivery).where(
+            WebhookDelivery.event_key
+            == f"build:{capped_build.id}:needs_human:dingtalk"
+        )
+    ) is not None
 
 
 def test_runner_poll_returns_same_assignment_with_valid_lease(
@@ -952,6 +974,11 @@ def test_runner_complete_redacts_runner_supplied_fields_before_persisting(
         headers=_runner_headers(),
         json={"runnerId": "runner-mac-1", "timeoutSeconds": 0},
     )
+    client.app.state.settings = replace(
+        client.app.state.settings,
+        dingtalk_webhook_url="https://oapi.dingtalk.test/robot/send?access_token=abc",
+        dingtalk_secret="SEC-test",
+    )
 
     response = client.post(
         f"/admin/api/build-runners/builds/{build.id}/complete",
@@ -973,6 +1000,15 @@ def test_runner_complete_redacts_runner_supplied_fields_before_persisting(
     assert "summary-secret" not in persisted
     assert "action-secret" not in persisted
     assert persisted.count("[REDACTED]") == 3
+    notification = db_session.scalar(select(Notification).where(Notification.build_id == build.id))
+    delivery = db_session.scalar(
+        select(WebhookDelivery).where(
+            WebhookDelivery.event_key == f"build:{build.id}:needs_human:dingtalk"
+        )
+    )
+    assert notification is not None
+    assert delivery is not None
+    assert "summary-secret" not in str(delivery.payload_json)
 
 
 @pytest.mark.parametrize(

@@ -40,6 +40,21 @@ describe('ordinary admin pages', () => {
     expect(screen.queryByText('构建完成')).toBeNull();
   });
 
+  it('shows the dingtalk robot environment setup guide', async () => {
+    render(<NotificationsPage />);
+
+    expect(await screen.findByText('钉钉机器人配置')).toBeTruthy();
+    expect(screen.getByText('已配置')).toBeTruthy();
+    expect(screen.getByText(/TESTFLYING_DINGTALK_WEBHOOK_URL/)).toBeTruthy();
+    expect(screen.getByText(/TESTFLYING_DINGTALK_SECRET/)).toBeTruthy();
+    expect(screen.getByText(/安全设置选择“加签”/)).toBeTruthy();
+    expect(screen.getByText(/failed/)).toBeTruthy();
+    expect(screen.getByText(/needs_human/)).toBeTruthy();
+    expect(screen.getByText(/待发送 2/)).toBeTruthy();
+    expect(screen.getByText(/失败 1/)).toBeTruthy();
+    expect(screen.queryByRole('textbox')).toBeNull();
+  });
+
   it('jumps to API docs sections from the index', async () => {
     const user = userEvent.setup();
 
@@ -61,6 +76,14 @@ function notificationsState(activeType: string) {
       { type: 'build', label: '构建', count: 1 },
       { type: 'device', label: '设备', count: 1 }
     ],
+    dingtalk: {
+      configured: true,
+      webhookConfigured: true,
+      secretConfigured: true,
+      triggers: ['failed', 'needs_human'],
+      pendingDeliveryCount: 2,
+      deadDeliveryCount: 1
+    },
     notifications:
       activeType === 'device'
         ? [

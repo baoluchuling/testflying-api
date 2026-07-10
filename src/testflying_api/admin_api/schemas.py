@@ -846,11 +846,21 @@ class NotificationTypeCount(AdminApiModel):
     count: int
 
 
+class DingTalkConfigState(AdminApiModel):
+    configured: bool
+    webhook_configured: bool
+    secret_configured: bool
+    triggers: list[str]
+    pending_delivery_count: int
+    dead_delivery_count: int
+
+
 class NotificationsState(AdminApiModel):
     notifications: list[NotificationItem]
     type_counts: list[NotificationTypeCount]
     active_type: str
     total: int
+    dingtalk: DingTalkConfigState
 
 
 class ApiDocParamItem(AdminApiModel):

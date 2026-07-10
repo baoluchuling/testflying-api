@@ -711,11 +711,21 @@ export type NotificationTypeCount = {
   count: number;
 };
 
+export type DingTalkConfigState = {
+  configured: boolean;
+  webhookConfigured: boolean;
+  secretConfigured: boolean;
+  triggers: string[];
+  pendingDeliveryCount: number;
+  deadDeliveryCount: number;
+};
+
 export type NotificationsState = {
   notifications: NotificationItem[];
   typeCounts: NotificationTypeCount[];
   activeType: string;
   total: number;
+  dingtalk: DingTalkConfigState;
 };
 
 export type ApiDocParam = {

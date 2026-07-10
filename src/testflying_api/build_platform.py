@@ -26,6 +26,7 @@ from testflying_api.admin_api.schemas import (
     BuildItem,
     BuildSettingItem,
 )
+from testflying_api.build_notifications import enqueue_terminal_build_notifications
 from testflying_api.domain import (
     ArtifactType,
     BuildLifecycleStatus,
@@ -59,7 +60,8 @@ _RUNNER_TOKEN_DIGEST_PREFIX = "hmac-sha256:"
 _RUNNER_ASSIGNMENT_LEASE_SECONDS = 15 * 60
 _FAILURE_CLASSIFICATION_ALLOWED_RE = re.compile(r"[^a-z0-9_:-]+")
 _FAILURE_CLASSIFICATION_SECRET_RE = re.compile(
-    r"(?i)(-----begin [a-z0-9 ]*private key-----|\b(password|token|secret|api[_-]?key|private[_-]?key)\b\s*[:=])"
+    r"(?i)(-----begin [a-z0-9 ]*private key-----|"
+    r"\b(password|token|secret|api[_-]?key|private[_-]?key)\b\s*[:=])"
 )
 _FAILURE_CLASSIFICATION_MAX_LENGTH = 80
 _FAILURE_CLASSIFICATION_FALLBACK = "runner_reported_failure"
@@ -317,12 +319,23 @@ def poll_runner_build(
     runner_id: str,
     token: str,
     token_pepper: str,
+    dingtalk_enabled: bool = False,
+    public_base_url: str = "",
 ) -> Build | None:
     runner = _runner_or_401(session, runner_id=runner_id, token=token, token_pepper=token_pepper)
     now = datetime.now(UTC)
     runner.last_seen_at = now
-    _recover_expired_assignments(session, now=now)
-    _terminalize_retry_cap_builds(session)
+    _recover_expired_assignments(
+        session,
+        now=now,
+        dingtalk_enabled=dingtalk_enabled,
+        public_base_url=public_base_url,
+    )
+    _terminalize_retry_cap_builds(
+        session,
+        dingtalk_enabled=dingtalk_enabled,
+        public_base_url=public_base_url,
+    )
     session.flush()
     if runner.current_build_id:
         build = session.get(Build, runner.current_build_id)
@@ -497,6 +510,8 @@ def complete_runner_build(
     failure_classification: str | None = None,
     failure_summary: str | None = None,
     human_action: str | None = None,
+    dingtalk_enabled: bool = False,
+    public_base_url: str = "",
 ) -> Build:
     build, runner = _runner_build_pair(
         session,
@@ -552,6 +567,12 @@ def complete_runner_build(
             "buildNumber": build.build_number or "",
             "commitSha": build.commit_sha or "",
         },
+    )
+    enqueue_terminal_build_notifications(
+        session,
+        build,
+        dingtalk_enabled=dingtalk_enabled,
+        public_base_url=public_base_url,
     )
     session.add_all([build, runner, event])
     session.commit()
@@ -737,7 +758,13 @@ def _build_with_relations(session: Session, build_id: str) -> Build:
     ).one()
 
 
-def _recover_expired_assignments(session: Session, *, now: datetime) -> None:
+def _recover_expired_assignments(
+    session: Session,
+    *,
+    now: datetime,
+    dingtalk_enabled: bool,
+    public_base_url: str,
+) -> None:
     expired_builds = session.scalars(
         select(Build).where(
             Build.source == "agent",
@@ -762,14 +789,24 @@ def _recover_expired_assignments(session: Session, *, now: datetime) -> None:
         build.runner_id = None
         build.assignment_lease_expires_at = None
         if build.attempt_count >= 5:
-            _mark_retry_cap_needs_human(build)
+            _mark_retry_cap_needs_human(
+                session,
+                build,
+                dingtalk_enabled=dingtalk_enabled,
+                public_base_url=public_base_url,
+            )
         else:
             build.lifecycle_status = BuildLifecycleStatus.QUEUED.value
             build.status = "pending"
         session.add(build)
 
 
-def _terminalize_retry_cap_builds(session: Session) -> None:
+def _terminalize_retry_cap_builds(
+    session: Session,
+    *,
+    dingtalk_enabled: bool,
+    public_base_url: str,
+) -> None:
     capped_builds = session.scalars(
         select(Build).where(
             Build.source == "agent",
@@ -778,17 +815,34 @@ def _terminalize_retry_cap_builds(session: Session) -> None:
         )
     ).all()
     for build in capped_builds:
-        _mark_retry_cap_needs_human(build)
+        _mark_retry_cap_needs_human(
+            session,
+            build,
+            dingtalk_enabled=dingtalk_enabled,
+            public_base_url=public_base_url,
+        )
         session.add(build)
 
 
-def _mark_retry_cap_needs_human(build: Build) -> None:
+def _mark_retry_cap_needs_human(
+    session: Session,
+    build: Build,
+    *,
+    dingtalk_enabled: bool,
+    public_base_url: str,
+) -> None:
     build.lifecycle_status = BuildLifecycleStatus.NEEDS_HUMAN.value
     build.status = "pending"
     build.failure_classification = "retry_cap_reached"
     build.failure_summary = "Automatic build assignment reached the retry cap."
     build.human_action = "Inspect runner availability and build logs before manually retrying."
     build.finished_at = build.finished_at or datetime.now(UTC)
+    enqueue_terminal_build_notifications(
+        session,
+        build,
+        dingtalk_enabled=dingtalk_enabled,
+        public_base_url=public_base_url,
+    )
 
 
 def sanitize_failure_classification(value: str | None) -> str | None:

@@ -1670,6 +1670,79 @@ select {
   gap: 10px;
 }
 
+.dingtalk-setup {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 18px;
+  padding: 16px 0 18px;
+  border-bottom: 1px solid #d9dee5;
+}
+
+.dingtalk-setup-head,
+.dingtalk-delivery-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dingtalk-setup-head > div {
+  display: grid;
+  gap: 4px;
+}
+
+.dingtalk-setup-head strong {
+  font-size: 15px;
+}
+
+.dingtalk-setup-head span,
+.dingtalk-trigger-note,
+.dingtalk-setup-steps {
+  color: #53606e;
+  font-size: 13px;
+}
+
+.dingtalk-delivery-stats {
+  justify-content: flex-start;
+}
+
+.dingtalk-delivery-stats span {
+  color: #29323d;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.dingtalk-setup-steps {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 20px;
+}
+
+.dingtalk-env-example {
+  max-width: 100%;
+  margin: 0;
+  padding: 12px;
+  overflow-x: auto;
+  border: 1px solid #cfd6df;
+  border-radius: 6px;
+  background: #f6f8fa;
+  color: #1f2933;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.dingtalk-trigger-note {
+  margin: 0;
+}
+
+.dingtalk-trigger-note code {
+  color: #8a3b12;
+}
+
 .simple-list-row,
 .notification-row {
   display: grid;

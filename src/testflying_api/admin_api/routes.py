@@ -8,7 +8,7 @@ from typing import Annotated, Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from testflying_api import build_platform
@@ -71,6 +71,7 @@ from testflying_api.admin_api.schemas import (
     DeveloperAccountSummary,
     DeviceItem,
     DevicesState,
+    DingTalkConfigState,
     LlmConfigState,
     LlmFeatureBindingItem,
     LlmFeatureBindingSaveRequest,
@@ -159,6 +160,7 @@ from testflying_api.schema import (
     StoreReview,
     StoreReviewAnalysisRun,
     StoreReviewFetchRun,
+    WebhookDelivery,
 )
 from testflying_api.store_image_requirements import validate_store_image
 from testflying_api.store_reviews import (
@@ -449,6 +451,8 @@ def runner_poll(
             runner_id=payload.runner_id,
             token=_runner_token(request),
             token_pepper=request.app.state.settings.static_token,
+            dingtalk_enabled=request.app.state.settings.dingtalk_configured,
+            public_base_url=request.app.state.settings.public_base_url,
         )
         return RunnerPollResponse(build=_runner_build_payload(build) if build else None)
     except ApiError as error:
@@ -540,6 +544,8 @@ def runner_build_complete(
             failure_classification=payload.failure_classification,
             failure_summary=payload.failure_summary,
             human_action=payload.human_action,
+            dingtalk_enabled=request.app.state.settings.dingtalk_configured,
+            public_base_url=request.app.state.settings.public_base_url,
         )
         return {"ok": True}
     except ApiError as error:
@@ -565,6 +571,7 @@ def devices_state(
     response_model_by_alias=True,
 )
 def notifications_state(
+    request: Request,
     session: SessionDep,
     _: AdminDep,
     type: Annotated[str, Query()] = "all",
@@ -581,6 +588,14 @@ def notifications_state(
         type_counts=_notification_type_counts(notifications),
         active_type=normalized_type,
         total=len(filtered),
+        dingtalk=DingTalkConfigState(
+            configured=request.app.state.settings.dingtalk_configured,
+            webhook_configured=bool(request.app.state.settings.dingtalk_webhook_url),
+            secret_configured=bool(request.app.state.settings.dingtalk_secret),
+            triggers=["failed", "needs_human"],
+            pending_delivery_count=_webhook_delivery_count(session, status="pending"),
+            dead_delivery_count=_webhook_delivery_count(session, status="dead"),
+        ),
     )
 
 
@@ -1895,6 +1910,18 @@ def _notification_type_counts(notifications: list[Notification]) -> list[Notific
         )
         for type_key in ["all", *sorted(key for key in counts if key != "all")]
     ]
+
+
+def _webhook_delivery_count(session: Session, *, status: str) -> int:
+    return int(
+        session.scalar(
+            select(func.count(WebhookDelivery.id)).where(
+                WebhookDelivery.channel == "dingtalk",
+                WebhookDelivery.status == status,
+            )
+        )
+        or 0
+    )
 
 
 def _public_api_markdown() -> str:

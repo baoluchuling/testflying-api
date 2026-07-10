@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from base64 import b64encode
+from dataclasses import replace
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from testflying_api.schema import WebhookDelivery
 from testflying_api.seed import seed_demo_catalog
 
 
@@ -84,6 +86,51 @@ def test_admin_api_notifications_filters_by_type(
         "build",
         "device",
     }
+
+
+def test_admin_api_notifications_returns_dingtalk_status_without_secrets(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    client.app.state.settings = replace(
+        client.app.state.settings,
+        dingtalk_webhook_url=(
+            "https://oapi.dingtalk.test/robot/send?access_token=never-return-this"
+        ),
+        dingtalk_secret="SEC-never-return-this",
+    )
+    db_session.add_all(
+        [
+            WebhookDelivery(
+                id="delivery-pending",
+                channel="dingtalk",
+                event_key="build:pending:failed:dingtalk",
+                status="pending",
+                payload_json={},
+            ),
+            WebhookDelivery(
+                id="delivery-dead",
+                channel="dingtalk",
+                event_key="build:dead:failed:dingtalk",
+                status="dead",
+                payload_json={},
+            ),
+        ]
+    )
+    db_session.commit()
+
+    response = client.get("/admin/api/notifications", headers=_admin_headers())
+
+    assert response.status_code == 200
+    assert response.json()["dingtalk"] == {
+        "configured": True,
+        "webhookConfigured": True,
+        "secretConfigured": True,
+        "triggers": ["failed", "needs_human"],
+        "pendingDeliveryCount": 1,
+        "deadDeliveryCount": 1,
+    }
+    assert "never-return-this" not in response.text
 
 
 def test_admin_api_docs_returns_public_endpoint_cards(client: TestClient) -> None:

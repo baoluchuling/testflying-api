@@ -107,6 +107,52 @@ def test_runner_heartbeat_registers_capabilities(client: TestClient, db_session:
     assert runner.labels_json == ["ios-release"]
 
 
+def test_runner_reregister_rejects_token_takeover(client: TestClient, db_session: Session) -> None:
+    app = _create_app(db_session)
+    build = _create_agent_build(db_session, app=app)
+    runner = BuildRunner(
+        id="runner-mac-1",
+        name="Mac mini 1",
+        token_hash="runner-token",
+        labels_json=["ios-release"],
+        capabilities_json={"platforms": ["ios"], "llmAdapters": ["codex"], "capacity": 1},
+        status="busy",
+        version="0.1.0",
+        package_agent_version="0.1.0",
+        current_build_id=build.id,
+    )
+    db_session.add(runner)
+    db_session.commit()
+
+    response = client.post(
+        "/admin/api/build-runners/register",
+        headers=_runner_headers("replacement-token"),
+        json={
+            "runnerId": "runner-mac-1",
+            "name": "Hijack attempt",
+            "labels": ["android-release"],
+            "version": "9.9.9",
+            "packageAgentVersion": "9.9.9",
+            "capabilities": {"platforms": ["android"], "llmAdapters": ["codex"], "capacity": 1},
+        },
+    )
+
+    assert response.status_code == 401
+    assert response.json() == {
+        "error": {
+            "code": "invalid_runner_token",
+            "message": "Runner token 不正确",
+            "detail": {"retryable": False},
+        }
+    }
+    db_session.refresh(runner)
+    assert runner.token_hash == "runner-token"
+    assert runner.name == "Mac mini 1"
+    assert runner.labels_json == ["ios-release"]
+    assert runner.capabilities_json["platforms"] == ["ios"]
+    assert runner.current_build_id == build.id
+
+
 def test_runner_poll_assigns_matching_queued_build_and_enforces_capacity(
     client: TestClient,
     db_session: Session,
@@ -160,6 +206,137 @@ def test_runner_poll_assigns_matching_queued_build_and_enforces_capacity(
     assert second_response.json() == {"build": None}
     db_session.refresh(second_build)
     assert second_build.lifecycle_status == "queued"
+
+
+def test_runner_poll_requires_explicit_platform_capability(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    app = _create_app(db_session)
+    build_without_platforms = _create_agent_build(
+        db_session,
+        build_id="build-agent-no-platforms",
+        app=app,
+    )
+    build_with_wrong_platform = _create_agent_build(
+        db_session,
+        build_id="build-agent-wrong-platform",
+        app=app,
+    )
+    build_matching = _create_agent_build(
+        db_session,
+        build_id="build-agent-matching-platform",
+        app=app,
+    )
+
+    client.post(
+        "/admin/api/build-runners/register",
+        headers=_runner_headers(),
+        json={
+            "runnerId": "runner-mac-1",
+            "name": "Mac mini 1",
+            "labels": ["ios-release"],
+            "version": "0.1.0",
+            "packageAgentVersion": "0.1.0",
+            "capabilities": {"llmAdapters": ["codex"], "capacity": 1},
+        },
+    )
+
+    no_platforms_response = client.post(
+        "/admin/api/build-runners/poll",
+        headers=_runner_headers(),
+        json={"runnerId": "runner-mac-1", "timeoutSeconds": 0},
+    )
+
+    assert no_platforms_response.status_code == 200
+    assert no_platforms_response.json() == {"build": None}
+    db_session.refresh(build_without_platforms)
+    assert build_without_platforms.lifecycle_status == "queued"
+
+    client.post(
+        "/admin/api/build-runners/register",
+        headers=_runner_headers(),
+        json={
+            "runnerId": "runner-mac-1",
+            "name": "Mac mini 1",
+            "labels": ["ios-release"],
+            "version": "0.1.0",
+            "packageAgentVersion": "0.1.0",
+            "capabilities": {"platforms": ["android"], "llmAdapters": ["codex"], "capacity": 1},
+        },
+    )
+
+    wrong_platform_response = client.post(
+        "/admin/api/build-runners/poll",
+        headers=_runner_headers(),
+        json={"runnerId": "runner-mac-1", "timeoutSeconds": 0},
+    )
+
+    assert wrong_platform_response.status_code == 200
+    assert wrong_platform_response.json() == {"build": None}
+    db_session.refresh(build_with_wrong_platform)
+    assert build_with_wrong_platform.lifecycle_status == "queued"
+
+    client.post(
+        "/admin/api/build-runners/register",
+        headers=_runner_headers(),
+        json={
+            "runnerId": "runner-mac-1",
+            "name": "Mac mini 1",
+            "labels": ["ios-release"],
+            "version": "0.1.0",
+            "packageAgentVersion": "0.1.0",
+            "capabilities": {"platforms": ["ios"], "llmAdapters": ["codex"], "capacity": 1},
+        },
+    )
+
+    matching_response = client.post(
+        "/admin/api/build-runners/poll",
+        headers=_runner_headers(),
+        json={"runnerId": "runner-mac-1", "timeoutSeconds": 0},
+    )
+
+    assert matching_response.status_code == 200
+    assert matching_response.json()["build"]["id"] == "build-agent-no-platforms"
+    db_session.refresh(build_matching)
+    assert build_matching.lifecycle_status == "queued"
+
+
+def test_runner_poll_skips_builds_at_retry_cap(client: TestClient, db_session: Session) -> None:
+    app = _create_app(db_session)
+    capped_build = _create_agent_build(db_session, build_id="build-agent-capped", app=app)
+    capped_build.attempt_count = 5
+    eligible_build = _create_agent_build(db_session, build_id="build-agent-eligible", app=app)
+    db_session.add_all([capped_build, eligible_build])
+    db_session.commit()
+
+    client.post(
+        "/admin/api/build-runners/register",
+        headers=_runner_headers(),
+        json={
+            "runnerId": "runner-mac-1",
+            "name": "Mac mini 1",
+            "labels": ["ios-release"],
+            "version": "0.1.0",
+            "packageAgentVersion": "0.1.0",
+            "capabilities": {"platforms": ["ios"], "llmAdapters": ["codex"], "capacity": 1},
+        },
+    )
+
+    response = client.post(
+        "/admin/api/build-runners/poll",
+        headers=_runner_headers(),
+        json={"runnerId": "runner-mac-1", "timeoutSeconds": 0},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["build"]["id"] == "build-agent-eligible"
+    db_session.refresh(capped_build)
+    db_session.refresh(eligible_build)
+    assert capped_build.lifecycle_status == "queued"
+    assert capped_build.attempt_count == 5
+    assert eligible_build.lifecycle_status == "assigned"
+    assert eligible_build.attempt_count == 1
 
 
 def test_runner_artifact_event_and_complete_flow_marks_build_succeeded(

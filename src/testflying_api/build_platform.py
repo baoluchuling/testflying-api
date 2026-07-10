@@ -207,9 +207,13 @@ def register_runner(
     package_agent_version: str,
     capabilities: dict[str, object],
 ) -> BuildRunner:
-    runner = session.get(BuildRunner, runner_id) or BuildRunner(id=runner_id)
+    runner = session.get(BuildRunner, runner_id)
+    normalized_token = _require_non_blank(token, field="token", label="token")
+    if runner is not None and runner.token_hash != normalized_token:
+        raise ApiError("invalid_runner_token", "Runner token 不正确", status_code=401)
+    runner = runner or BuildRunner(id=runner_id)
     runner.name = _require_non_blank(name, field="name", label="name")
-    runner.token_hash = _require_non_blank(token, field="token", label="token")
+    runner.token_hash = normalized_token
     runner.labels_json = [label.strip() for label in labels if label.strip()]
     runner.capabilities_json = dict(capabilities)
     runner.status = "busy" if runner.current_build_id else "online"
@@ -272,7 +276,7 @@ def poll_runner_build(session: Session, *, runner_id: str, token: str) -> Build 
         required_labels = set((build.runner_labels_json or {}).get("required", []))
         if required_labels and not required_labels.issubset(runner_labels):
             continue
-        if runner_platforms and build.platform not in runner_platforms:
+        if build.platform not in runner_platforms:
             continue
         build.lifecycle_status = BuildLifecycleStatus.ASSIGNED.value
         build.runner_id = runner.id

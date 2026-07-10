@@ -740,6 +740,22 @@ class RunnerPollResponse(AdminApiModel):
     build: RunnerBuildPayload | None
 
 
+class RunnerUpdateCheckRequest(AdminApiModel):
+    platform: str
+    arch: str
+    runner_version: str
+    package_agent_version: str
+
+
+class RunnerUpdateCheckResponse(AdminApiModel):
+    update_available: bool
+    version: str = ""
+    runner_version: str = ""
+    package_agent_version: str = ""
+    bundle_url: str = ""
+    sha256: str = ""
+
+
 class BuildRunnerItem(AdminApiModel):
     id: str
     name: str

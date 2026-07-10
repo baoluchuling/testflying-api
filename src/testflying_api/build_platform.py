@@ -681,6 +681,21 @@ def verify_runner_token(token: str, stored_hash: str, *, token_pepper: str) -> b
     return hmac.compare_digest(stored_hash, expected)
 
 
+def authenticate_runner(
+    session: Session,
+    *,
+    runner_id: str,
+    token: str,
+    token_pepper: str,
+) -> BuildRunner:
+    return _runner_or_401(
+        session,
+        runner_id=runner_id,
+        token=token,
+        token_pepper=token_pepper,
+    )
+
+
 def _normalize_repo_subpath(value: str) -> str:
     raw_value = value.strip()
     if raw_value in {"", "."}:

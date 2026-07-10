@@ -8,10 +8,11 @@ from typing import Annotated, Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from testflying_api import build_platform
+from testflying_api import build_platform, runner_releases
 from testflying_api.admin.security import require_admin
 from testflying_api.admin.services import (
     bind_app_to_account,
@@ -106,6 +107,8 @@ from testflying_api.admin_api.schemas import (
     RunnerPollResponse,
     RunnerProvisionRequest,
     RunnerProvisionResponse,
+    RunnerUpdateCheckRequest,
+    RunnerUpdateCheckResponse,
     StoreAppBuildItem,
     StoreAppItem,
     StoreAppsAccountSummary,
@@ -455,6 +458,89 @@ def runner_poll(
             public_base_url=request.app.state.settings.public_base_url,
         )
         return RunnerPollResponse(build=_runner_build_payload(build) if build else None)
+    except ApiError as error:
+        raise _admin_api_error(error) from error
+
+
+@router.post(
+    "/build-runners/{runner_id}/updates/check",
+    response_model=RunnerUpdateCheckResponse,
+    response_model_by_alias=True,
+)
+def runner_update_check(
+    runner_id: str,
+    payload: RunnerUpdateCheckRequest,
+    request: Request,
+    session: SessionDep,
+) -> RunnerUpdateCheckResponse:
+    try:
+        build_platform.authenticate_runner(
+            session,
+            runner_id=runner_id,
+            token=_runner_token(request),
+            token_pepper=request.app.state.settings.static_token,
+        )
+        manifest = runner_releases.RunnerReleaseManifest.load(
+            request.app.state.settings.runner_release_root,
+            payload.platform,
+            payload.arch,
+        )
+        if (
+            payload.runner_version == manifest.runner_version
+            and payload.package_agent_version == manifest.package_agent_version
+        ):
+            return RunnerUpdateCheckResponse(update_available=False)
+        bundle_url = (
+            f"/admin/api/build-runners/{runner_id}/updates/"
+            f"{manifest.platform}/{manifest.arch}/{manifest.version}/bundle"
+        )
+        return RunnerUpdateCheckResponse(
+            update_available=True,
+            version=manifest.version,
+            runner_version=manifest.runner_version,
+            package_agent_version=manifest.package_agent_version,
+            bundle_url=bundle_url,
+            sha256=manifest.sha256,
+        )
+    except ApiError as error:
+        raise _admin_api_error(error) from error
+
+
+@router.get(
+    "/build-runners/{runner_id}/updates/{platform}/{arch}/{version}/bundle",
+    response_class=FileResponse,
+)
+def runner_update_bundle(
+    runner_id: str,
+    platform: str,
+    arch: str,
+    version: str,
+    request: Request,
+    session: SessionDep,
+) -> FileResponse:
+    try:
+        build_platform.authenticate_runner(
+            session,
+            runner_id=runner_id,
+            token=_runner_token(request),
+            token_pepper=request.app.state.settings.static_token,
+        )
+        manifest = runner_releases.RunnerReleaseManifest.load(
+            request.app.state.settings.runner_release_root,
+            platform,
+            arch,
+        )
+        if manifest.version != version:
+            raise ApiError(
+                "runner_release_not_found",
+                "Runner release 不存在",
+                status_code=404,
+            )
+        return FileResponse(
+            manifest.bundle_path,
+            media_type="application/zip",
+            filename=manifest.bundle_file,
+        )
     except ApiError as error:
         raise _admin_api_error(error) from error
 

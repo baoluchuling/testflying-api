@@ -13,4 +13,5 @@ __pycache__/
 build/
 dist/
 data/
+outputs/build-runner-installer/
 connector/testflying-connector

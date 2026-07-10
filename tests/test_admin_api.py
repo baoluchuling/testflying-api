@@ -32,6 +32,7 @@ def test_admin_api_bootstrap_returns_shell_metadata(client: TestClient) -> None:
         {"key": "llm-config", "label": "LLM 配置", "path": "/admin/llm-config"},
         {"key": "api-docs", "label": "接口文档", "path": "/admin/api-docs"},
         {"key": "builds", "label": "构建", "path": "/admin/builds"},
+        {"key": "build-runners", "label": "构建节点", "path": "/admin/build-runners"},
         {"key": "devices", "label": "设备", "path": "/admin/devices"},
         {"key": "app-logs", "label": "App 日志", "path": "/admin/app-logs"},
         {"key": "notifications", "label": "通知", "path": "/admin/notifications"},

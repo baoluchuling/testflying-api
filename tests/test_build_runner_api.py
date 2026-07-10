@@ -3,6 +3,8 @@ from __future__ import annotations
 from base64 import b64encode
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -971,6 +973,57 @@ def test_runner_complete_redacts_runner_supplied_fields_before_persisting(
     assert "summary-secret" not in persisted
     assert "action-secret" not in persisted
     assert persisted.count("[REDACTED]") == 3
+
+
+@pytest.mark.parametrize(
+    ("failure_classification", "expected"),
+    [
+        ("token=secret", "runner_reported_failure"),
+        ("-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----", "runner_reported_failure"),
+    ],
+)
+def test_runner_complete_sanitizes_failure_classification_before_persisting(
+    client: TestClient,
+    db_session: Session,
+    failure_classification: str,
+    expected: str,
+) -> None:
+    app = _create_app(db_session)
+    build = _create_agent_build(db_session, app=app)
+    _provision_runner_record(db_session)
+    client.post(
+        "/admin/api/build-runners/register",
+        headers=_runner_headers(),
+        json={
+            "runnerId": "runner-mac-1",
+            "name": "Mac mini 1",
+            "labels": ["ios-release"],
+            "version": "0.1.0",
+            "packageAgentVersion": "0.1.0",
+            "capabilities": {"platforms": ["ios"], "llmAdapters": ["codex"], "capacity": 1},
+        },
+    )
+    client.post(
+        "/admin/api/build-runners/poll",
+        headers=_runner_headers(),
+        json={"runnerId": "runner-mac-1", "timeoutSeconds": 0},
+    )
+
+    response = client.post(
+        f"/admin/api/build-runners/builds/{build.id}/complete",
+        headers=_runner_headers(),
+        json={
+            "runnerId": "runner-mac-1",
+            "status": "needs_human",
+            "failureClassification": failure_classification,
+        },
+    )
+
+    assert response.status_code == 200
+    db_session.refresh(build)
+    assert build.failure_classification == expected
+    assert "secret" not in (build.failure_classification or "")
+    assert "PRIVATE KEY" not in (build.failure_classification or "")
 
 
 def test_runner_complete_rejects_success_without_required_artifacts(

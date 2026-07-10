@@ -25,16 +25,22 @@ class LlmPlan:
     actions: list[PlanAction]
 
 
+@dataclass(frozen=True)
+class PlannerCommand:
+    args: list[str]
+    stdin: str | None
+
+
 def request_llm_plan(
     adapter: LlmAdapter,
     build_input: BuildInput,
     *,
     timeout_seconds: int = 120,
 ) -> LlmPlan:
-    prompt = _planner_prompt(build_input)
+    command = planner_command(adapter, _planner_prompt(build_input))
     result = subprocess.run(
-        [adapter.executable],
-        input=prompt,
+        command.args,
+        input=command.stdin,
         capture_output=True,
         text=True,
         timeout=timeout_seconds,
@@ -47,6 +53,23 @@ def request_llm_plan(
     except json.JSONDecodeError as exc:
         raise ValueError("planner did not return valid JSON") from exc
     return parse_llm_plan(payload)
+
+
+def planner_command(adapter: LlmAdapter, prompt: str) -> PlannerCommand:
+    if adapter.name == "injected_llm_planner":
+        return PlannerCommand(args=[adapter.executable], stdin=prompt)
+    if adapter.name == "codex_cli":
+        return PlannerCommand(args=[adapter.executable, "exec", "--json"], stdin=prompt)
+    if adapter.name == "claude_cli":
+        return PlannerCommand(args=[adapter.executable, "-p", prompt], stdin=None)
+    if adapter.name == "llm_runtime":
+        # Local contract: `llm-runtime package-agent-plan-json` reads the JSON prompt from
+        # stdin and returns only plan JSON on stdout.
+        return PlannerCommand(
+            args=[adapter.executable, "package-agent-plan-json"],
+            stdin=prompt,
+        )
+    return PlannerCommand(args=[adapter.executable], stdin=prompt)
 
 
 def parse_llm_plan(payload: object) -> LlmPlan:

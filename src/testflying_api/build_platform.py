@@ -57,6 +57,12 @@ _RUNNER_REQUIRED_ARTIFACTS = {
 _RUNNER_ALLOWED_ARTIFACTS = _RUNNER_REQUIRED_ARTIFACTS
 _RUNNER_TOKEN_DIGEST_PREFIX = "hmac-sha256:"
 _RUNNER_ASSIGNMENT_LEASE_SECONDS = 15 * 60
+_FAILURE_CLASSIFICATION_ALLOWED_RE = re.compile(r"[^a-z0-9_:-]+")
+_FAILURE_CLASSIFICATION_SECRET_RE = re.compile(
+    r"(?i)(-----begin [a-z0-9 ]*private key-----|\b(password|token|secret|api[_-]?key|private[_-]?key)\b\s*[:=])"
+)
+_FAILURE_CLASSIFICATION_MAX_LENGTH = 80
+_FAILURE_CLASSIFICATION_FALLBACK = "runner_reported_failure"
 _TERMINAL_BUILD_LIFECYCLE_STATUSES = {
     BuildLifecycleStatus.SUCCEEDED.value,
     BuildLifecycleStatus.FAILED.value,
@@ -524,9 +530,7 @@ def complete_runner_build(
     if note is not None and note.strip():
         build.note = redact_text(note.strip())
     build.lifecycle_status = normalized_status
-    build.failure_classification = (
-        failure_classification.strip() if failure_classification else None
-    )
+    build.failure_classification = sanitize_failure_classification(failure_classification)
     build.failure_summary = redact_text(failure_summary.strip()) if failure_summary else None
     build.human_action = redact_text(human_action.strip()) if human_action else None
     build.started_at = _ensure_utc_datetime(build.started_at) or datetime.now(UTC)
@@ -785,6 +789,23 @@ def _mark_retry_cap_needs_human(build: Build) -> None:
     build.failure_summary = "Automatic build assignment reached the retry cap."
     build.human_action = "Inspect runner availability and build logs before manually retrying."
     build.finished_at = build.finished_at or datetime.now(UTC)
+
+
+def sanitize_failure_classification(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip().lower()
+    if not normalized:
+        return None
+    if _FAILURE_CLASSIFICATION_SECRET_RE.search(normalized) or any(
+        char.isspace() or char == "=" for char in normalized
+    ):
+        return _FAILURE_CLASSIFICATION_FALLBACK
+    normalized = _FAILURE_CLASSIFICATION_ALLOWED_RE.sub("_", normalized)
+    normalized = normalized.strip("_:-")
+    if not normalized:
+        return _FAILURE_CLASSIFICATION_FALLBACK
+    return normalized[:_FAILURE_CLASSIFICATION_MAX_LENGTH]
 
 
 def _is_active_assignment(build: Build, *, runner: BuildRunner, now: datetime) -> bool:

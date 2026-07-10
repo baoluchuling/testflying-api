@@ -570,6 +570,142 @@ func TestRunOnceAssignedBuildCompletesFailedWhenPackageAgentExitsNonZero(t *test
 	}
 }
 
+func TestRunOnceAssignedBuildCompletesNeedsHumanWhenPackageAgentExitsTwo(t *testing.T) {
+	root := t.TempDir()
+	packageAgentBin := writeFakePackageAgent(t, root, 2, `{
+  "status": "needs_human",
+  "classification": "missing_artifacts",
+  "summary": "Automatic success requires package, symbols, and logs.",
+  "humanAction": "Upload the missing package, symbols, and logs, then resolve the build.",
+  "packagePaths": [],
+  "symbolsPaths": [],
+  "logPaths": ["runner.log"],
+  "maxAttempts": 5
+}`)
+
+	type capturedEvent struct {
+		Type            string                 `json:"type"`
+		LifecycleStatus string                 `json:"lifecycleStatus"`
+		Message         string                 `json:"message"`
+		Payload         map[string]interface{} `json:"payload"`
+	}
+	type capturedComplete struct {
+		RunnerID              string `json:"runnerId"`
+		Status                string `json:"status"`
+		Note                  string `json:"note"`
+		FailureClassification string `json:"failureClassification"`
+		FailureSummary        string `json:"failureSummary"`
+		HumanAction           string `json:"humanAction"`
+	}
+
+	events := make([]capturedEvent, 0, 2)
+	completes := make([]capturedComplete, 0, 1)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/admin/api/build-runners/heartbeat":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		case "/admin/api/build-runners/poll":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"build":{
+				"id":"build-123",
+				"appId":"app-1",
+				"platform":"ios",
+				"environment":"development",
+				"gitUrl":"https://example.com/repo.git",
+				"gitRef":"main",
+				"repoSubpath":"ios/app",
+				"artifactType":"ipa",
+				"credentialRefs":{"git":"git-main"}
+			}}`))
+		case "/admin/api/build-runners/builds/build-123/events":
+			var event capturedEvent
+			if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
+				t.Fatalf("decode event: %v", err)
+			}
+			events = append(events, event)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		case "/admin/api/build-runners/builds/build-123/complete":
+			var complete capturedComplete
+			if err := json.NewDecoder(r.Body).Decode(&complete); err != nil {
+				t.Fatalf("decode complete: %v", err)
+			}
+			completes = append(completes, complete)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	cfg := Config{
+		RunnerID:            "runner-1",
+		Name:                "Runner 1",
+		Token:               "token",
+		ServerURL:           server.URL,
+		RootDir:             root,
+		PackageAgentBin:     packageAgentBin,
+		Version:             "0.1.0",
+		PackageAgentVersion: "0.1.0",
+		Labels:              []string{"ios-release"},
+		Platforms:           []string{"ios"},
+		LLMAdapters:         []string{"codex"},
+		Capacity:            1,
+	}
+
+	if err := RunOnce(context.Background(), cfg, server.Client()); err != nil {
+		t.Fatalf("RunOnce() error = %v, want nil", err)
+	}
+
+	if len(events) != 2 {
+		t.Fatalf("event count = %d, want 2", len(events))
+	}
+	if events[0].Type != "runner.build.started" {
+		t.Fatalf("first event type = %q", events[0].Type)
+	}
+	if events[1].Type != "runner.build.needs_human" {
+		t.Fatalf("second event type = %q, want %q", events[1].Type, "runner.build.needs_human")
+	}
+	if events[1].Message != "Upload the missing package, symbols, and logs, then resolve the build." {
+		t.Fatalf("second event message = %q", events[1].Message)
+	}
+	reportPayload, ok := events[1].Payload["report"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("second event report payload type = %T", events[1].Payload["report"])
+	}
+	if reportPayload["classification"] != "missing_artifacts" {
+		t.Fatalf("report classification = %#v", reportPayload["classification"])
+	}
+	if reportPayload["summary"] != "Automatic success requires package, symbols, and logs." {
+		t.Fatalf("report summary = %#v", reportPayload["summary"])
+	}
+	if reportPayload["humanAction"] != "Upload the missing package, symbols, and logs, then resolve the build." {
+		t.Fatalf("report humanAction = %#v", reportPayload["humanAction"])
+	}
+
+	if len(completes) != 1 {
+		t.Fatalf("complete count = %d, want 1", len(completes))
+	}
+	if completes[0].Status != "needs_human" {
+		t.Fatalf("complete status = %q, want needs_human", completes[0].Status)
+	}
+	if completes[0].FailureClassification != "missing_artifacts" {
+		t.Fatalf("complete failureClassification = %q", completes[0].FailureClassification)
+	}
+	if completes[0].FailureSummary != "Automatic success requires package, symbols, and logs." {
+		t.Fatalf("complete failureSummary = %q", completes[0].FailureSummary)
+	}
+	if completes[0].Note != "Automatic success requires package, symbols, and logs." {
+		t.Fatalf("complete note = %q", completes[0].Note)
+	}
+	if completes[0].HumanAction != "Upload the missing package, symbols, and logs, then resolve the build." {
+		t.Fatalf("complete humanAction = %q", completes[0].HumanAction)
+	}
+}
+
 func TestRunOnceAssignedBuildCompletesFailedWhenWorkspaceSetupFails(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "root-file")
 	if err := os.WriteFile(root, []byte("not a directory"), 0o600); err != nil {

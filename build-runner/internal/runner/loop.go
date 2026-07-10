@@ -2,9 +2,11 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 )
 
 const (
@@ -140,13 +142,10 @@ func handleBuild(ctx context.Context, client *Client, cfg Config, build BuildAss
 
 	if runErr != nil {
 		payload["error"] = runErr.Error()
-		postErr := client.PostEvent(ctx, build.ID, eventRequest{
-			RunnerID: cfg.RunnerID,
-			Type:     "runner.build.failed",
-			Message:  fmt.Sprintf("package-agent failed: %v", runErr),
-			Payload:  payload,
-		})
-		completeErr := client.Complete(ctx, build.ID, failedCompletionRequest(cfg.RunnerID, runErr, reportErr, payload["report"]))
+		event, request, returnErr := terminalPackageAgentOutcome(cfg.RunnerID, runErr, reportErr, payload["report"])
+		event.Payload = payload
+		postErr := client.PostEvent(ctx, build.ID, event)
+		completeErr := client.Complete(ctx, build.ID, request)
 		if postErr != nil && completeErr != nil {
 			return fmt.Errorf(
 				"package-agent error: %v; event post error: %v; complete error: %w",
@@ -161,7 +160,7 @@ func handleBuild(ctx context.Context, client *Client, cfg Config, build BuildAss
 		if completeErr != nil {
 			return fmt.Errorf("package-agent error: %v; complete error: %w", runErr, completeErr)
 		}
-		return runErr
+		return returnErr
 	}
 
 	if err := client.PostEvent(ctx, build.ID, eventRequest{
@@ -181,6 +180,29 @@ func handleBuild(ctx context.Context, client *Client, cfg Config, build BuildAss
 	}
 
 	return client.Complete(ctx, build.ID, needsHumanCompletionRequest(cfg.RunnerID))
+}
+
+func terminalPackageAgentOutcome(
+	runnerID string,
+	runErr error,
+	reportErr error,
+	reportValue interface{},
+) (eventRequest, completeRequest, error) {
+	if packageAgentExitCode(runErr) == 2 {
+		request := needsHumanCompletionFromReport(runnerID, runErr, reportErr, reportValue)
+		return eventRequest{
+			RunnerID: runnerID,
+			Type:     "runner.build.needs_human",
+			Message:  needsHumanEventMessage(request),
+		}, request, nil
+	}
+
+	request := failedCompletionRequest(runnerID, runErr, reportErr, reportValue)
+	return eventRequest{
+		RunnerID: runnerID,
+		Type:     "runner.build.failed",
+		Message:  fmt.Sprintf("package-agent failed: %v", runErr),
+	}, request, runErr
 }
 
 func failedCompletionRequest(
@@ -209,6 +231,37 @@ func failedCompletionRequest(
 	return request
 }
 
+func needsHumanCompletionFromReport(
+	runnerID string,
+	runErr error,
+	reportErr error,
+	reportValue interface{},
+) completeRequest {
+	request := completeRequest{
+		RunnerID: runnerID,
+		Status:   "needs_human",
+	}
+	if report, ok := reportValue.(AgentReport); ok {
+		request.Note = report.Summary
+		request.FailureClassification = report.Classification
+		request.FailureSummary = report.Summary
+		request.HumanAction = report.HumanAction
+		if request.HumanAction == "" {
+			request.HumanAction = "Inspect the package-agent report and complete the required manual build action."
+		}
+		return request
+	}
+
+	request.Note = fmt.Sprintf("package-agent requires human action: %v", runErr)
+	request.FailureClassification = "package_agent_needs_human"
+	request.FailureSummary = request.Note
+	request.HumanAction = "Inspect the package-agent report and complete the required manual build action."
+	if reportErr != nil {
+		request.FailureSummary = fmt.Sprintf("%s; report unavailable: %v", request.FailureSummary, reportErr)
+	}
+	return request
+}
+
 func needsHumanCompletionRequest(runnerID string) completeRequest {
 	return completeRequest{
 		RunnerID:              runnerID,
@@ -218,6 +271,16 @@ func needsHumanCompletionRequest(runnerID string) completeRequest {
 		FailureSummary:        terminalNeedsHumanArtifactUploadSummary,
 		HumanAction:           terminalNeedsHumanArtifactUploadAction,
 	}
+}
+
+func needsHumanEventMessage(request completeRequest) string {
+	if request.HumanAction != "" {
+		return request.HumanAction
+	}
+	if request.FailureSummary != "" {
+		return request.FailureSummary
+	}
+	return "package-agent requires human action."
 }
 
 func preAgentFailureRequest(
@@ -259,4 +322,12 @@ func completeWithOriginalError(
 		return fmt.Errorf("original error: %v; complete error: %w", originalErr, completeErr)
 	}
 	return originalErr
+}
+
+func packageAgentExitCode(err error) int {
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr.ExitCode()
+	}
+	return -1
 }

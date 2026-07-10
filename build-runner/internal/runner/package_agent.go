@@ -12,6 +12,7 @@ type AgentReport struct {
 	Status         string   `json:"status"`
 	Classification string   `json:"classification"`
 	Summary        string   `json:"summary"`
+	HumanAction    string   `json:"humanAction"`
 	PackagePaths   []string `json:"packagePaths"`
 	SymbolsPaths   []string `json:"symbolsPaths"`
 	LogPaths       []string `json:"logPaths"`

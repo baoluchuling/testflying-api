@@ -20,6 +20,7 @@ def test_catalog_schema_contains_no_user_state_tables() -> None:
         "developer_accounts",
         "developer_account_apps",
         "notifications",
+        "webhook_deliveries",
         "device_build_visibility",
         "store_connectors",
         "store_release_note_drafts",
@@ -40,6 +41,27 @@ def test_catalog_schema_contains_no_user_state_tables() -> None:
     assert "install_tasks" not in table_names
     assert "sort_orders" not in table_names
     assert "notification_reads" not in table_names
+
+
+def test_webhook_delivery_event_key_is_unique() -> None:
+    engine = create_engine_for_url("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+
+    constraints = inspect(engine).get_unique_constraints("webhook_deliveries")
+    columns = {column["name"] for column in inspect(engine).get_columns("webhook_deliveries")}
+
+    assert {
+        "channel",
+        "event_key",
+        "status",
+        "payload_json",
+        "attempt_count",
+        "next_attempt_at",
+        "last_error",
+        "created_at",
+        "delivered_at",
+    }.issubset(columns)
+    assert any(constraint["column_names"] == ["event_key"] for constraint in constraints)
 
 
 def test_store_connector_is_unique_per_account() -> None:

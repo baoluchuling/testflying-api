@@ -33,6 +33,15 @@ class Settings:
     review_analysis_openai_api_key: str | None
     review_analysis_openai_base_url: str
     review_analysis_openai_model: str
+    dingtalk_webhook_url: str | None
+    dingtalk_secret: str | None
+    dingtalk_timeout_seconds: float
+    dingtalk_dispatch_interval_seconds: float
+    runner_release_root: Path
+
+    @property
+    def dingtalk_configured(self) -> bool:
+        return bool(self.dingtalk_webhook_url and self.dingtalk_secret)
 
     @classmethod
     def from_environment(cls) -> Settings:
@@ -90,6 +99,25 @@ class Settings:
                 "TESTFLYING_REVIEW_ANALYSIS_OPENAI_MODEL",
                 os.getenv("TESTFLYING_TRANSLATION_OPENAI_MODEL", "gpt-4o-mini"),
             ),
+            dingtalk_webhook_url=_normalize_optional(
+                os.getenv("TESTFLYING_DINGTALK_WEBHOOK_URL"),
+            ),
+            dingtalk_secret=_normalize_optional(
+                os.getenv("TESTFLYING_DINGTALK_SECRET"),
+            ),
+            dingtalk_timeout_seconds=_positive_float(
+                os.getenv("TESTFLYING_DINGTALK_TIMEOUT_SECONDS"),
+                default=5.0,
+                field="TESTFLYING_DINGTALK_TIMEOUT_SECONDS",
+            ),
+            dingtalk_dispatch_interval_seconds=_positive_float(
+                os.getenv("TESTFLYING_DINGTALK_DISPATCH_INTERVAL_SECONDS"),
+                default=10.0,
+                field="TESTFLYING_DINGTALK_DISPATCH_INTERVAL_SECONDS",
+            ),
+            runner_release_root=Path(
+                os.getenv("TESTFLYING_RUNNER_RELEASE_ROOT", "./data/runner-releases"),
+            ),
         )
 
 
@@ -104,3 +132,15 @@ def _normalize_optional(raw_value: str | None) -> str | None:
         return None
     value = raw_value.strip()
     return value or None
+
+
+def _positive_float(raw_value: str | None, *, default: float, field: str) -> float:
+    if raw_value is None or not raw_value.strip():
+        return default
+    try:
+        value = float(raw_value)
+    except ValueError as error:
+        raise ValueError(f"{field} must be a positive number") from error
+    if value <= 0:
+        raise ValueError(f"{field} must be a positive number")
+    return value

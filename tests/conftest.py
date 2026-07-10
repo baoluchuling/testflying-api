@@ -64,6 +64,11 @@ def test_settings(tmp_path: Path) -> Settings:
         review_analysis_openai_api_key=None,
         review_analysis_openai_base_url="https://api.openai.com/v1",
         review_analysis_openai_model="gpt-4o-mini",
+        dingtalk_webhook_url=None,
+        dingtalk_secret=None,
+        dingtalk_timeout_seconds=5.0,
+        dingtalk_dispatch_interval_seconds=10.0,
+        runner_release_root=tmp_path / "runner-releases",
     )
 
 

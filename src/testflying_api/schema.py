@@ -279,6 +279,32 @@ class Notification(Base):
     )
 
 
+class WebhookDelivery(Base):
+    __tablename__ = "webhook_deliveries"
+    __table_args__ = (
+        UniqueConstraint("event_key", name="uq_webhook_deliveries_event_key"),
+    )
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    channel: Mapped[str] = mapped_column(String(30), nullable=False)
+    event_key: Mapped[str] = mapped_column(String(240), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="pending")
+    payload_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    next_attempt_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+    )
+    last_error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+    )
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class StoreConnector(Base):
     __tablename__ = "store_connectors"
     __table_args__ = (UniqueConstraint("developer_account_id"),)

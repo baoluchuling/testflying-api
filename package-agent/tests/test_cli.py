@@ -165,6 +165,10 @@ def test_cli_returns_success_only_with_required_artifacts(tmp_path: Path) -> Non
         encoding="utf-8",
     )
 
-    exit_code = main(["build", "--input", str(input_path), "--output", str(tmp_path / "output")])
+    output_dir = tmp_path / "output"
+    exit_code = main(["build", "--input", str(input_path), "--output", str(output_dir)])
 
     assert exit_code == 0
+    report = json.loads((output_dir / "report.json").read_text(encoding="utf-8"))
+    assert report["status"] == "success"
+    assert report["classification"] == "build_succeeded"

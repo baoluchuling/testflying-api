@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import shlex
 from dataclasses import dataclass
 
 
@@ -19,6 +20,18 @@ class PolicyDecision:
 
 ALLOWED_KINDS = {"inspect", "build", "env_repair", "artifact_collect"}
 BLOCKED_GIT_COMMANDS = {"commit", "push", "pull", "tag"}
+GIT_OPTIONS_WITH_VALUES = {
+    "-C",
+    "-c",
+    "--config-env",
+    "--exec-path",
+    "--git-dir",
+    "--namespace",
+    "--super-prefix",
+    "--work-tree",
+}
+SHELL_COMMAND_FLAGS = {"-c", "-ic", "-lc"}
+SHELL_LAUNCHERS = {"bash", "sh", "zsh"}
 PROTECTED_PATH_PATTERNS = (
     "lib/",
     "src/",
@@ -84,12 +97,7 @@ def evaluate_action(action: Action) -> PolicyDecision:
 
 
 def _contains_blocked_git_operation(command: list[str]) -> bool:
-    lowered = [token.lower() for token in command]
-    if lowered[:1] == ["git"] and len(lowered) > 1 and lowered[1] in BLOCKED_GIT_COMMANDS:
-        return True
-
-    command_text = " ".join(lowered)
-    return any(f"git {operation}" in command_text for operation in BLOCKED_GIT_COMMANDS)
+    return any(_blocked_git_operation_in_command(view) for view in _iter_command_views(command))
 
 
 def _touches_protected_project_files(command: list[str]) -> bool:
@@ -98,27 +106,84 @@ def _touches_protected_project_files(command: list[str]) -> bool:
 
 
 def _extract_write_targets(command: list[str]) -> set[str]:
-    lowered = [token.lower() for token in command]
-    command_text = " ".join(command)
     targets: set[str] = set()
 
-    for match in WRITE_REDIRECTION_RE.finditer(command_text):
-        targets.add(match.group(1))
+    for view in _iter_command_views(command):
+        lowered = [token.lower() for token in view]
+        command_text = " ".join(view)
 
-    for match in PYTHON_OPEN_WRITE_RE.finditer(command_text):
-        targets.add(match.group(1))
+        for match in WRITE_REDIRECTION_RE.finditer(command_text):
+            targets.add(match.group(1))
 
-    if lowered and lowered[0] in WRITE_OPERATIONS:
-        for token in command[1:]:
-            if token.startswith("-"):
-                continue
-            targets.update(_extract_path_like_values(token))
+        for match in PYTHON_OPEN_WRITE_RE.finditer(command_text):
+            targets.add(match.group(1))
 
-    if any(flag in lowered for flag in WRITE_FLAG_PATTERNS):
-        for token in command:
-            targets.update(_extract_path_like_values(token))
+        if lowered and lowered[0] in WRITE_OPERATIONS:
+            for token in view[1:]:
+                if token.startswith("-"):
+                    continue
+                targets.update(_extract_path_like_values(token))
+
+        if any(flag in lowered for flag in WRITE_FLAG_PATTERNS):
+            for token in view:
+                targets.update(_extract_path_like_values(token))
 
     return {target.lower() for target in targets}
+
+
+def _iter_command_views(command: list[str]) -> list[list[str]]:
+    views = [command]
+
+    if not command:
+        return views
+
+    launcher = command[0].rsplit("/", 1)[-1].lower()
+    if launcher not in SHELL_LAUNCHERS:
+        return views
+
+    for index, token in enumerate(command[:-1]):
+        if token.lower() not in SHELL_COMMAND_FLAGS:
+            continue
+        shell_text = command[index + 1]
+        try:
+            nested = shlex.split(shell_text)
+        except ValueError:
+            continue
+        if nested:
+            views.extend(_iter_command_views(nested))
+    return views
+
+
+def _blocked_git_operation_in_command(command: list[str]) -> bool:
+    lowered = [token.lower() for token in command]
+    if not lowered or lowered[0] != "git":
+        return False
+
+    subcommand_index = _git_subcommand_index(lowered)
+    return subcommand_index is not None and lowered[subcommand_index] in BLOCKED_GIT_COMMANDS
+
+
+def _git_subcommand_index(command: list[str]) -> int | None:
+    index = 1
+    while index < len(command):
+        token = command[index]
+        if token == "--":
+            index += 1
+            break
+        if not token.startswith("-"):
+            return index
+        if any(
+            token.startswith(f"{option}=")
+            for option in GIT_OPTIONS_WITH_VALUES
+            if option.startswith("--")
+        ):
+            index += 1
+            continue
+        if token in GIT_OPTIONS_WITH_VALUES:
+            index += 2
+            continue
+        index += 1
+    return index if index < len(command) else None
 
 
 def _extract_path_like_values(token: str) -> set[str]:

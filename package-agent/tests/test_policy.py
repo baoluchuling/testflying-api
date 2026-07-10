@@ -44,6 +44,36 @@ def test_policy_blocks_shell_wrapped_git_commit() -> None:
     assert decision == PolicyDecision(allowed=False, reason="blocked_git_operation")
 
 
+def test_policy_blocks_git_push_after_global_c_flag() -> None:
+    action = Action(kind="inspect", command=["git", "-C", "repo", "push", "origin", "main"])
+
+    decision = evaluate_action(action)
+
+    assert decision == PolicyDecision(allowed=False, reason="blocked_git_operation")
+
+
+def test_policy_blocks_git_commit_after_git_dir_option() -> None:
+    action = Action(
+        kind="inspect",
+        command=["git", "--git-dir=.git", "commit", "-m", "test"],
+    )
+
+    decision = evaluate_action(action)
+
+    assert decision == PolicyDecision(allowed=False, reason="blocked_git_operation")
+
+
+def test_policy_blocks_shell_wrapped_git_pull_after_global_option() -> None:
+    action = Action(
+        kind="inspect",
+        command=["bash", "-lc", "git -C repo pull --ff-only origin main"],
+    )
+
+    decision = evaluate_action(action)
+
+    assert decision == PolicyDecision(allowed=False, reason="blocked_git_operation")
+
+
 def test_policy_blocks_protected_build_file_change() -> None:
     action = Action(
         kind="env_repair",
@@ -81,6 +111,28 @@ def test_policy_blocks_build_script_rewrite() -> None:
     action = Action(
         kind="build",
         command=["bash", "-lc", "echo '#!/bin/sh' > scripts/build.sh"],
+    )
+
+    decision = evaluate_action(action)
+
+    assert decision == PolicyDecision(allowed=False, reason="project_modification_blocked")
+
+
+def test_policy_blocks_shell_wrapped_cp_to_protected_podfile() -> None:
+    action = Action(
+        kind="env_repair",
+        command=["bash", "-lc", "cp /tmp/a ios/Podfile"],
+    )
+
+    decision = evaluate_action(action)
+
+    assert decision == PolicyDecision(allowed=False, reason="project_modification_blocked")
+
+
+def test_policy_blocks_shell_wrapped_rm_of_android_source() -> None:
+    action = Action(
+        kind="build",
+        command=["bash", "-lc", "rm android/app/src/main/kotlin/MainActivity.kt"],
     )
 
     decision = evaluate_action(action)

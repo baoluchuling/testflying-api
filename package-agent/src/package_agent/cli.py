@@ -56,7 +56,7 @@ def _build_report(input_path: Path) -> AgentReport:
         build_input = BuildInput.from_dict(payload)
     except ValueError as exc:
         return AgentReport(
-            status="needs_human",
+            status="failed",
             classification="invalid_input",
             summary=str(exc),
         )

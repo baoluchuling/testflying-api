@@ -27,13 +27,15 @@ class BuildInput:
         max_attempts = payload.get("maxAttempts", MAX_BUILD_ATTEMPTS)
         if not isinstance(max_attempts, int) or max_attempts < 1:
             raise ValueError("maxAttempts must be a positive integer when provided")
+        if max_attempts > MAX_BUILD_ATTEMPTS:
+            raise ValueError(f"maxAttempts must be <= {MAX_BUILD_ATTEMPTS}")
 
         return cls(
             project_dir=str(payload["projectDir"]),
             platform=str(payload["platform"]),
             environment=str(payload["environment"]),
             artifact_type=str(payload["artifactType"]),
-            max_attempts=min(max_attempts, MAX_BUILD_ATTEMPTS),
+            max_attempts=max_attempts,
             package_paths=_string_list(payload.get("packagePaths")),
             symbols_paths=_string_list(payload.get("symbolsPaths")),
             log_paths=_string_list(payload.get("logPaths")),

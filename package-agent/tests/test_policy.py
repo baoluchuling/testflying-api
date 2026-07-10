@@ -55,6 +55,39 @@ def test_policy_blocks_protected_build_file_change() -> None:
     assert decision == PolicyDecision(allowed=False, reason="project_modification_blocked")
 
 
+def test_policy_blocks_build_action_that_writes_source_file() -> None:
+    action = Action(
+        kind="build",
+        command=["python3", "-c", "open('lib/main.dart','w').write('// rewritten')"],
+    )
+
+    decision = evaluate_action(action)
+
+    assert decision == PolicyDecision(allowed=False, reason="project_modification_blocked")
+
+
+def test_policy_blocks_env_repair_that_writes_source_directory() -> None:
+    action = Action(
+        kind="env_repair",
+        command=["cp", "/tmp/generated.dart", "src/generated/app.dart"],
+    )
+
+    decision = evaluate_action(action)
+
+    assert decision == PolicyDecision(allowed=False, reason="project_modification_blocked")
+
+
+def test_policy_blocks_build_script_rewrite() -> None:
+    action = Action(
+        kind="build",
+        command=["bash", "-lc", "echo '#!/bin/sh' > scripts/build.sh"],
+    )
+
+    decision = evaluate_action(action)
+
+    assert decision == PolicyDecision(allowed=False, reason="project_modification_blocked")
+
+
 def test_policy_allows_git_status_for_inspection() -> None:
     action = Action(kind="inspect", command=["git", "status", "--short"])
 

@@ -153,6 +153,11 @@ password: dev-token
 - `TESTFLYING_TRANSLATION_OPENAI_API_KEY`：翻译服务 API Key。未配置时不会复制源文案冒充翻译，会在页面提示翻译服务未配置。
 - `TESTFLYING_TRANSLATION_OPENAI_BASE_URL`：默认 `https://api.openai.com/v1`，可替换成兼容 OpenAI Chat Completions 的内部网关地址。
 - `TESTFLYING_TRANSLATION_OPENAI_MODEL`：默认 `gpt-4o-mini`，可按实际账号可用模型调整。
+- `TESTFLYING_DINGTALK_WEBHOOK_URL`：钉钉自定义机器人的 Webhook URL。必须和加签密钥同时配置；服务端不会通过管理 API 返回该值。
+- `TESTFLYING_DINGTALK_SECRET`：钉钉机器人安全设置中的加签密钥。只从服务端环境读取，不写入数据库或日志。
+- `TESTFLYING_DINGTALK_TIMEOUT_SECONDS`：单次钉钉请求超时，默认 `5` 秒。
+- `TESTFLYING_DINGTALK_DISPATCH_INTERVAL_SECONDS`：待发送通知扫描间隔，默认 `10` 秒。
+- `TESTFLYING_RUNNER_RELEASE_ROOT`：Runner 自动更新清单和 bundle 目录，Compose 默认为 `/app/data/runner-releases`。
 - `TESTFLYING_CONNECTOR_DEVELOPER_ACCOUNT_ID`：connector 绑定的开发者账号 ID。Docker Compose 会给 connector 增加 `connector-<账号 ID>` 网络别名。
 - `TESTFLYING_CONNECTOR_TOKEN`：中心后台调用 connector 的 Bearer token。
 - `TESTFLYING_CONNECTOR_GOOGLE_RATE_LIMIT_MAX_REQUESTS`：connector Google / Android 接口默认 `200` 次。

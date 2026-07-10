@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -8,6 +10,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session, sessionmaker
 
+from testflying_api import webhook_delivery
 from testflying_api.admin_legacy_redirects import admin_next_redirect_path
 from testflying_api.app_logs import AppLogHub
 from testflying_api.config import Settings
@@ -24,10 +27,34 @@ def create_app(
     artifact_storage: ArtifactStorage | None = None,
 ) -> FastAPI:
     app_settings = settings or Settings.from_environment()
+
+    @asynccontextmanager
+    async def lifespan(application: FastAPI):
+        stop_event = asyncio.Event()
+        delivery_task: asyncio.Task[None] | None = None
+        application.state.delivery_stop_event = stop_event
+        if app_settings.dingtalk_configured:
+            delivery_task = asyncio.create_task(
+                webhook_delivery.run_delivery_loop(
+                    application.state.session_factory,
+                    app_settings,
+                    stop_event,
+                )
+            )
+            await asyncio.sleep(0)
+        application.state.delivery_task = delivery_task
+        try:
+            yield
+        finally:
+            stop_event.set()
+            if delivery_task is not None:
+                await delivery_task
+
     app = FastAPI(
         title="testflying API",
         version="0.1.0",
         description="Backend API for internal app distribution workspace data.",
+        lifespan=lifespan,
     )
     app.state.settings = app_settings
     app.state.app_log_hub = AppLogHub()

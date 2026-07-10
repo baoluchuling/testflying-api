@@ -71,7 +71,7 @@ func handleBuild(ctx context.Context, client *Client, cfg Config, build BuildAss
 		RunnerID:        cfg.RunnerID,
 		Type:            "runner.build.started",
 		Message:         "Build runner started package-agent execution.",
-		LifecycleStatus: "running",
+		LifecycleStatus: "building",
 		Payload: map[string]interface{}{
 			"workspace": workspace,
 			"gitUrl":    build.GitURL,
@@ -111,7 +111,7 @@ func handleBuild(ctx context.Context, client *Client, cfg Config, build BuildAss
 		RunnerID:        cfg.RunnerID,
 		Type:            "runner.build.finished",
 		Message:         "package-agent finished.",
-		LifecycleStatus: "running",
+		LifecycleStatus: "building",
 		Payload:         payload,
 	})
 }

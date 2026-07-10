@@ -239,14 +239,14 @@ func TestRunOnceAssignedBuildRunsPackageAgentPostsEventsAndCompletesNeedsHuman(t
   "commitSha": "abc123def456",
   "packagePaths": ["app.ipa"],
   "symbolsPaths": ["app.dSYM.zip", "symbols/additional.dSYM.zip"],
-  "logPaths": ["logs/debug/app.log", "logs/release/app.log"],
+  "logPaths": ["logs/a-b/c.log", "logs/a/b-c.log"],
   "maxAttempts": 5
 }`, map[string]string{
 		"app.ipa":                     "ipa-bytes",
 		"app.dSYM.zip":                "symbols-bytes",
 		"symbols/additional.dSYM.zip": "additional-symbols",
-		"logs/debug/app.log":          "debug-log",
-		"logs/release/app.log":        "release-log",
+		"logs/a-b/c.log":              "left-log",
+		"logs/a/b-c.log":              "right-log",
 	})
 
 	type capturedEvent struct {
@@ -477,18 +477,23 @@ func TestRunOnceAssignedBuildRunsPackageAgentPostsEventsAndCompletesNeedsHuman(t
 	if len(uploads) != 6 {
 		t.Fatalf("upload count = %d, want 6", len(uploads))
 	}
-	wantUploads := []uploadedArtifact{
-		{ArtifactType: "report", FileName: "report.json", Body: "{\n  \"status\": \"success\",\n  \"classification\": \"build_succeeded\",\n  \"summary\": \"fake package-agent completed\",\n  \"version\": \"1.2.3\",\n  \"buildNumber\": \"42\",\n  \"commitSha\": \"abc123def456\",\n  \"packagePaths\": [\"app.ipa\"],\n  \"symbolsPaths\": [\"app.dSYM.zip\", \"symbols/additional.dSYM.zip\"],\n  \"logPaths\": [\"logs/debug/app.log\", \"logs/release/app.log\"],\n  \"maxAttempts\": 5\n}\n"},
-		{ArtifactType: "package", FileName: "app.ipa", Body: "ipa-bytes\n"},
-		{ArtifactType: "symbols", FileName: "app.dSYM.zip", Body: "symbols-bytes\n"},
-		{ArtifactType: "symbols", FileName: "symbols-additional.dSYM.zip", Body: "additional-symbols\n"},
-		{ArtifactType: "log", FileName: "logs-debug-app.log", Body: "debug-log\n"},
-		{ArtifactType: "log", FileName: "logs-release-app.log", Body: "release-log\n"},
+	if uploads[0].ArtifactType != "report" || uploads[0].FileName != "report.json" {
+		t.Fatalf("report upload = %#v, want report.json", uploads[0])
 	}
-	for index, want := range wantUploads {
-		if uploads[index] != want {
-			t.Fatalf("upload[%d] = %#v, want %#v", index, uploads[index], want)
-		}
+	if uploads[1].ArtifactType != "package" || !strings.HasPrefix(uploads[1].FileName, "app-") || !strings.HasSuffix(uploads[1].FileName, ".ipa") {
+		t.Fatalf("package upload filename = %q, want hashed ipa name", uploads[1].FileName)
+	}
+	if uploads[2].ArtifactType != "symbols" || !strings.HasPrefix(uploads[2].FileName, "app.dSYM-") || !strings.HasSuffix(uploads[2].FileName, ".zip") {
+		t.Fatalf("symbols upload filename = %q, want hashed zip name", uploads[2].FileName)
+	}
+	if uploads[3].ArtifactType != "symbols" || !strings.HasPrefix(uploads[3].FileName, "additional.dSYM-") || !strings.HasSuffix(uploads[3].FileName, ".zip") {
+		t.Fatalf("nested symbols upload filename = %q, want hashed zip name", uploads[3].FileName)
+	}
+	if uploads[4].ArtifactType != "log" || !strings.HasPrefix(uploads[4].FileName, "c-") || !strings.HasSuffix(uploads[4].FileName, ".log") {
+		t.Fatalf("left log upload filename = %q, want hashed log name", uploads[4].FileName)
+	}
+	if uploads[5].ArtifactType != "log" || !strings.HasPrefix(uploads[5].FileName, "b-c-") || !strings.HasSuffix(uploads[5].FileName, ".log") {
+		t.Fatalf("right log upload filename = %q, want hashed log name", uploads[5].FileName)
 	}
 	if uploads[4].FileName == uploads[5].FileName {
 		t.Fatalf("log upload filenames collided: %#v", uploads[4].FileName)

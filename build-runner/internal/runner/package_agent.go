@@ -2,6 +2,8 @@ package runner
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -167,5 +169,16 @@ func safeUploadFileName(outputDir string, artifactPath string) (string, error) {
 	if rel == "." || rel == "" {
 		return "", fmt.Errorf("path is not an artifact file")
 	}
-	return strings.ReplaceAll(rel, string(filepath.Separator), "-"), nil
+
+	base := filepath.Base(rel)
+	ext := filepath.Ext(base)
+	stem := strings.TrimSuffix(base, ext)
+	if stem == "" {
+		stem = "artifact"
+	}
+
+	sum := sha256.Sum256([]byte(rel))
+	shortHash := hex.EncodeToString(sum[:6])
+
+	return fmt.Sprintf("%s-%s%s", stem, shortHash, ext), nil
 }

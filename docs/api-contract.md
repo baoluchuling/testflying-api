@@ -163,42 +163,17 @@ versionCodes，再把目标 `storeTrack` / `storeVersionCode` 传给同步接口
 
 ## 管理后台
 
-```http
-GET /admin
-GET /admin/uploads
-POST /admin/uploads
-GET /admin/apps
-GET /admin/builds
-GET /admin/devices
-GET /admin/developer-accounts
-GET /admin/developer-accounts/new
-POST /admin/developer-accounts
-GET /admin/developer-accounts/{accountId}
-GET /admin/developer-accounts/{accountId}/edit
-POST /admin/developer-accounts/{accountId}
-POST /admin/developer-accounts/{accountId}/connector
-POST /admin/developer-accounts/{accountId}/connector/check
-POST /admin/developer-accounts/{accountId}/apps
-POST /admin/developer-accounts/{accountId}/apps/{appId}/settings
-POST /admin/developer-accounts/{accountId}/apps/{appId}/unbind
-GET /admin/developer-accounts/{accountId}/apps/{appId}/store-metadata
-POST /admin/developer-accounts/{accountId}/apps/{appId}/store-metadata
-POST /admin/developer-accounts/{accountId}/apps/{appId}/store-metadata/preflight
-POST /admin/developer-accounts/{accountId}/apps/{appId}/store-metadata/sync
-GET /admin/developer-accounts/{accountId}/apps/{appId}/release-notes
-POST /admin/developer-accounts/{accountId}/apps/{appId}/release-notes
-POST /admin/developer-accounts/{accountId}/apps/{appId}/release-notes/sync
-GET /admin/notifications
-```
-
-管理后台是给内部管理员使用的 server-side HTML 页面。它使用 HTTP Basic 认证：
+管理后台是给内部管理员使用的 React 单页应用，静态资源由 FastAPI 在 `/admin` 下提供；
+`/admin/<页面路径>` 由前端路由处理，不是对外稳定的 HTML 接口契约。它使用 HTTP Basic 认证：
 
 - 用户名：`TESTFLYING_ADMIN_USERNAME`，默认 `admin`。
 - 密码：复用 `TESTFLYING_STATIC_TOKEN`。
 
 后台上传表单复用 `POST /v1/test-distribution/uploads` 的业务逻辑，上传成功后同样会创建应用、构建、制品、iOS manifest 和通知。后台页面使用浏览器上传进度事件展示上传百分比；服务端收到完整文件后再解析包信息和写入数据库。MinIO Console 只管理对象存储文件，不能替代管理后台上传，因为直接上传到 MinIO 不会写入业务数据库。
 
-开发者账号后台支持新增/编辑账号、配置账号级 connector、检查 connector 连接状态、绑定/解绑 App、维护 App 商店标识，并在账号上下文中同步版本说明和商店元数据。每个开发者账号只能有一个 connector，保存后只能编辑原 connector；账号详情页进入时会自动检查一次连接状态。App 商店标识按平台收窄：iOS 只填 App Store Connect App ID，Android 只填 Google Play package name。商店元数据支持多语言编辑，语言列表只使用 connector 从商店 App 拉取的实际支持语言；页面默认优先使用 `en-US` 作为源文案语言，并按 App 平台展示术语：iOS 显示 App Store Connect 的 `Keywords`、`Promotional Text`、`Description`、`iPhone screenshots` 和 `iPad screenshots`；Android 显示 Google Play 的 `Full description`、`Feature graphic`、`Phone screenshots` 和 `Tablet screenshots`。标题、副标题、隐私政策 URL、支持 URL、营销 URL、App 图标和素材备注当前不支持设置。商店元数据和商店图按 App 级当前草稿保存，不再跟随版本；版本说明继续按商店版本保存。同步到商店前必须填写目标版本，并显式勾选同步范围：文案元数据、版本说明、商店图可以单独同步或组合同步。后台会把图片保存到对象存储，后续同步时将勾选的商店图放入 payload 的 `metadata.storeImages` 传给 connector。页面会保存同步历史快照，按版本、同步时间、语言、同步范围和状态展示。Apple App 额外提供营销页面控制台，自定义产品页面和产品页面优化独立于 App 版本，可以创建多个页面。商店同步页面进入时会自动预检查；相同账号、App、平台、版本、语言和操作的预检查结果缓存 5 分钟；商店元数据页的实时查询按钮可以绕过 5 分钟缓存，但同一请求 1 分钟内只允许触发一次；同步前中心后台会按平台校验商店文案字段长度和图片尺寸，校验失败时不调用 connector。商店侧截图上传适配由 connector 后续消费 `metadata.storeImages` 完成；connector 是独立 Go 服务，支持 Linux、macOS 和 Windows 单二进制运行，也支持 Docker 镜像部署；生产环境使用 `TESTFLYING_CONNECTOR_STORE_MODE=live` 并在 connector 部署机器挂载 Apple `.p8`，Google Play 可以挂载 service account JSON 或配置 `client_email` / `private_key` 拆分字段；中心后台不保存这些商店凭据。
+管理后台当前提供商店管理、构建、构建节点、设备、App 日志、通知、LLM 配置和接口文档。商店管理从应用直接进入，开发者账号用于维护账号、App 绑定和 connector 配置；商店同步的字段、图片、多语言和隔离规则见 `store-sync.md`。构建任务、macOS Runner、自动更新、制品验收和钉钉通知见 `build-delivery.md`。
+
+`/admin/api/*` 是后台自身的内部数据接口，可能随后台交互调整；第三方系统应使用 `docs/store-management-api.md` 中列出的对外商店管理 API，而不是依赖后台页面路径或内部 API。
 
 ## 设备
 

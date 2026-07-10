@@ -4,10 +4,18 @@
 
 当前仓库下分两个项目：
 
-- 根目录：中心化后台 `testflying-server`，负责测试包上传、分发目录、设备、开发者账号、商店同步草稿、预检查缓存和同步记录。
+- 根目录：中心化后台 `testflying-server`，负责测试包上传、分发目录、设备、开发者账号、商店同步草稿、构建任务、Runner 节点、预检查缓存和同步记录。
 - `connector/`：账号级子项目 `testflying-connector`，每个开发者账号单独部署一份，负责持有该账号商店凭证并执行商店 API 调用。
 
 中心后台只保存 connector 地址和调用 token，不保存 Apple `.p8` 或 Google service account 凭据。服务端只维护分发事实，不保存安装状态、下载进度、用户排序、通知已读等客户端状态。
+
+## 相关文档
+
+- [客户端集成边界](docs/client-integration.md)
+- [接口契约](docs/api-contract.md)
+- [商店同步设计](docs/store-sync.md)
+- [对外商店管理接口](docs/store-management-api.md)
+- [构建交付与 Runner 节点](docs/build-delivery.md)
 
 ## 当前能力
 
@@ -23,8 +31,11 @@
 - `POST /v1/store-management/developer-accounts/{accountId}/apps/{appId}/metadata-content-sets`：通过接口导入默认商店页文案和截图草稿，只保存到 testflying，不同步到真实商店后台。
 - `POST /v1/store-management/developer-accounts/{accountId}/apps/{appId}/store-versions/{version}/draft`：通过接口导入某个商店版本的文案元数据和版本说明，只保存到 testflying 草稿，不同步到真实商店后台。
 - `POST /v1/store-management/developer-accounts/{accountId}/apps/{appId}/marketing-pages`：通过接口创建自定义产品页面并导入文案和截图草稿，只保存到 testflying，不同步到真实商店后台。
-- `GET /admin`：内置管理后台，用于上传包、查看应用/构建/设备/账号/通知和复制安装资源链接。
-- 管理后台支持新增/编辑开发者账号、上传时绑定账号、绑定/解绑账号下 App、维护 App 商店标识、配置账号 connector，以及同步版本说明和商店元数据。商店元数据支持多语言、多套内容草稿和商店图图片上传预览。
+- `GET /admin`：内置单页管理后台，用于上传包、商店管理、构建、构建节点、设备、App 日志、通知、LLM 配置和接口文档。
+- 管理后台支持新增/编辑开发者账号、上传时绑定账号、绑定/解绑账号下 App、维护 App 商店标识、配置账号 connector，以及同步版本说明和商店元数据。商店内容按 App 维护当前草稿，版本说明按版本维护；商店图支持图片上传和预览。
+- 应用可以为开发环境和线上环境分别保存 Git 构建配置，并创建 Agent 构建任务。macOS Runner 按标签和平台领取任务，回传构建事件、包、符号文件、日志和报告。
+- `GET /admin/api/build-runners`：读取 Runner 节点状态、能力、版本、心跳与当前构建；节点安装、自动更新和运行边界见 `docs/build-delivery.md`。
+- Agent 构建进入 `failed` 或 `needs_human` 时会生成站内通知；配置钉钉 Webhook 与加签密钥后，会通过可重试的投递队列发送群通知。
 - `GET /admin/app-logs`：电脑端 App 日志查看页，展示连接二维码、在线设备、客户端异常和实时日志流。
 - `WS /push`：手机端主动连接的日志 WebSocket 入口，query 中的 `token` 会作为设备唯一标识；缺失时允许连接并标记为未知设备。
 - 商店同步页进入时会自动预检查，5 分钟内相同账号、App、平台、版本、语言和操作返回同一个预检查状态。
@@ -283,21 +294,16 @@ open http://localhost:8000/admin
 
 第一版后台支持上传 IPA/APK、查看应用/构建/设备/开发者账号/通知，以及复制 `installUrl`、`manifestUrl` 和 `downloadUrl`。上传页会显示上传进度；IPA/APK 的包名、应用名、版本号和构建号由服务端自动解析，必要时可以在后台覆盖应用名称。上传时可以选择开发者账号，并按平台填写 App Store Connect App ID 或 Google Play package name 等商店标识。设备审批和构建删除会放到后续管理能力里。
 
-商店同步第一版入口：
+商店同步当前流程：
 
-1. 进入 `开发者账号`。
-2. 新增或编辑开发者账号。
-3. 打开某个账号详情，配置该账号的 connector 地址和调用 token。若已配置 `TESTFLYING_CONNECTOR_BASE_URL_TEMPLATE`，connector 地址可以留空，由后台按账号 ID 自动生成。
-4. 账号详情页会自动检查 connector，也可以手动点击 `检查连接`。
-5. 上传新构建时直接选择账号，或者在账号详情里绑定已有 App。
-6. 在账号下维护 App 的商店标识；iOS 只填 App Store Connect App ID，Android 只填 Google Play package name。
-7. 进入 `商店元数据` 或 `管理版本说明`。
-8. 页面进入时自动检查目标商店版本是否存在、是否可编辑。
-9. 商店元数据页会从 connector 拉取支持语言；没有翻译时默认用当前语言内容填充。
-10. 商店元数据页可以创建多套商店内容草稿，并按套件切换打开。文案和商店图都跟随当前套件保存。
-11. 商店图支持拖拽图片、选择图片或拖入语言文件夹上传；后台会把图片保存到对象存储，并在同步 payload 中提供图片 URL。
-12. 5 分钟内相同账号、App、平台、版本、语言和操作返回同一个预检查状态。
-13. `canSync=true` 时可以手动同步草稿。
+1. 从顶部“商店管理”直接选择应用，进入默认商店页、营销页面或商店连接。
+2. 开发者账号页只维护账号、App 绑定和 connector 配置；connector 地址可以手填，也可以由 `TESTFLYING_CONNECTOR_BASE_URL_TEMPLATE` 按账号 ID 自动生成。
+3. iOS App 维护 App Store Connect App ID，Android App 维护 Google Play package name。
+4. 页面通过 connector 获取商店实际支持的语言；当前 App 商店草稿维护宣传文本、描述和商店图，版本说明按商店版本维护。
+5. 商店图支持拖拽图片、选择图片或拖入语言文件夹上传。非源语言可预览源语言回退图片，但只能删除自己上传的图片。
+6. 同步前选择本次同步范围；中心后台复用预检查缓存，并在提交前再次校验。
+
+详细的账号隔离、多语言、图片继承和同步规则见 `docs/store-sync.md`。
 
 运行测试：
 

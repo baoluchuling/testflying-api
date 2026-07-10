@@ -14,9 +14,30 @@ fi
 
 mkdir -p "${INSTALL_ROOT}" "${LOG_ROOT}" "$(dirname "${PLIST}")"
 cp "${PACKAGE_DIR}/testflying-build-runner" "${INSTALL_ROOT}/testflying-build-runner"
+if [[ ! -x "${PACKAGE_DIR}/package-agent" ]]; then
+  echo "Missing bundled package-agent at ${PACKAGE_DIR}/package-agent" >&2
+  exit 1
+fi
+cp "${PACKAGE_DIR}/package-agent" "${INSTALL_ROOT}/package-agent"
 cp "${PACKAGE_DIR}/config.json" "${INSTALL_ROOT}/config.json"
-chmod +x "${INSTALL_ROOT}/testflying-build-runner"
+chmod +x "${INSTALL_ROOT}/testflying-build-runner" "${INSTALL_ROOT}/package-agent"
 chmod 600 "${INSTALL_ROOT}/config.json"
+
+/usr/bin/python3 - "${INSTALL_ROOT}/config.json" "${INSTALL_ROOT}/package-agent" <<'PY'
+import json
+import os
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+config = json.loads(path.read_text(encoding="utf-8"))
+if not isinstance(config, dict):
+    raise SystemExit("config.json must be an object")
+config["packageAgentBin"] = sys.argv[2]
+temporary = path.with_suffix(".json.tmp")
+temporary.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+os.replace(temporary, path)
+PY
 
 cat > "${INSTALL_ROOT}/run-build-runner.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -25,6 +46,7 @@ set -euo pipefail
 INSTALL_ROOT="${1:?install root is required}"
 CONFIG_PATH="${INSTALL_ROOT}/config.json"
 BINARY_PATH="${INSTALL_ROOT}/testflying-build-runner"
+PACKAGE_AGENT_PATH="${INSTALL_ROOT}/package-agent"
 
 if [[ ! -f "${CONFIG_PATH}" ]]; then
   echo "Missing config.json at ${CONFIG_PATH}" >&2
@@ -33,6 +55,11 @@ fi
 
 if [[ ! -x "${BINARY_PATH}" ]]; then
   echo "Missing runner binary at ${BINARY_PATH}" >&2
+  exit 1
+fi
+
+if [[ ! -x "${PACKAGE_AGENT_PATH}" ]]; then
+  echo "Missing package-agent at ${PACKAGE_AGENT_PATH}" >&2
   exit 1
 fi
 
@@ -112,6 +139,8 @@ cat > "${PLIST}" <<PLIST
   <true/>
   <key>KeepAlive</key>
   <true/>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
   <key>WorkingDirectory</key>
   <string>${INSTALL_ROOT}</string>
   <key>StandardOutPath</key>

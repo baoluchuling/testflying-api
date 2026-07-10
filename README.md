@@ -168,6 +168,43 @@ password: dev-token
 
 这些公开 URL 会在上传时写入构建制品记录。修改环境变量后，已经上传过的构建不会自动改 URL；需要重新上传包，或者用 SQL 替换 `artifacts.download_url`、`artifacts.manifest_url` 和 `artifacts.install_url` 里的旧域名。
 
+## macOS 构建节点安装包
+
+每个节点使用后台签发的独立 Runner 配置生成安装包。配置至少需要非空的 `runnerId`、`name`、`token`、`serverUrl`、绝对路径 `rootDir`、`labels`、`platforms`，且 `capacity` 必须为 `1`：
+
+```json
+{
+  "runnerId": "runner-mac-1",
+  "name": "Mac Runner 1",
+  "token": "replace-with-runner-token",
+  "serverUrl": "https://testflying.example.com",
+  "rootDir": "/Users/build/TestFlyingRunner",
+  "labels": ["ios-release", "flutter"],
+  "platforms": ["ios", "android"],
+  "llmAdapters": ["codex", "claude"],
+  "capacity": 1
+}
+```
+
+在发布机生成节点安装包和自动更新 bundle：
+
+```bash
+scripts/build_runner_installer.sh \
+  /absolute/path/to/runner-config.json \
+  outputs/build-runner-installer \
+  0.2.0
+```
+
+输出包括：
+
+- `TestFlyingBuildRunner-0.2.0-darwin-<arch>.pkg`：节点用户双击安装。安装脚本会识别当前登录用户、写入用户 LaunchAgent，并立即启动 Runner。
+- `darwin/<arch>/release.json`、ZIP 和 `.sha256`：复制到 `TESTFLYING_RUNNER_RELEASE_ROOT` 后供 Runner 自动更新。
+- `build-runner-macos/`：无法使用 `.pkg` 时的 fallback，双击其中的 `install.command` 安装。
+
+安装包内已包含 Go Runner 和冻结后的 `package-agent`，节点不需要另装 Python 包。Runner 启动后只自动发现本机可用的 Codex CLI、Claude CLI 或 llm-runtime。自动更新同时替换两个二进制，LaunchAgent 会在更新进程正常退出后拉起新版本。
+
+节点安装包包含该节点的 Runner token，应按密钥产物限制访问，不要提交到 Git 或上传到公开制品库。签名证书、Provisioning Profile 或必须修改项目源码/构建脚本的错误不会由 agent 绕过；构建会进入 `needs_human` 并触发已配置的站内和钉钉通知。
+
 ## App 日志调试
 
 电脑端打开管理后台 `App 日志` 页面后，会显示二维码和连接参数。二维码内容格式为：

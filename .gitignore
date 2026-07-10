@@ -13,6 +13,8 @@ __pycache__/
 build/
 dist/
 data/
-outputs/build-runner-installer/
+outputs/build-runner-installer*/
+outputs/real-build-acceptance/
+package-agent/*.spec
 .worktrees/
 connector/testflying-connector

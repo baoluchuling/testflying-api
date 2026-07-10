@@ -2,7 +2,13 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AdminApp } from './AdminApp';
-import type { AppDetailState, BuildsState, DashboardState, StoreReviewsState } from './apiClient';
+import type {
+  AppDetailState,
+  BuildRunnersState,
+  BuildsState,
+  DashboardState,
+  StoreReviewsState
+} from './apiClient';
 
 const bootstrapPayload = {
   appName: 'testflying',
@@ -14,6 +20,7 @@ const bootstrapPayload = {
     { key: 'llm-config', label: 'LLM 配置', path: '/admin/llm-config' },
     { key: 'api-docs', label: '接口文档', path: '/admin/api-docs' },
     { key: 'builds', label: '构建', path: '/admin/builds' },
+    { key: 'build-runners', label: '构建节点', path: '/admin/build-runners' },
     { key: 'devices', label: '设备', path: '/admin/devices' },
     { key: 'app-logs', label: 'App 日志', path: '/admin/app-logs' },
     { key: 'notifications', label: '通知', path: '/admin/notifications' }
@@ -37,6 +44,9 @@ describe('AdminApp', () => {
       }
       if (url === '/admin/api/builds') {
         return jsonResponse(buildsState);
+      }
+      if (url === '/admin/api/build-runners') {
+        return jsonResponse(buildRunnersState);
       }
       if (url === '/admin/api/apps/app-1') {
         return jsonResponse(appDetailState);
@@ -76,6 +86,18 @@ describe('AdminApp', () => {
     expect(location.pathname).toBe('/admin/builds');
     expect(await screen.findByText('构建列表')).toBeTruthy();
     expect(screen.queryByText('新后台重构中')).toBeNull();
+  });
+
+  it('renders the build runners page inside the shell', async () => {
+    const user = userEvent.setup();
+
+    render(<AdminApp />);
+    await screen.findByText('服务健康');
+    await user.click(screen.getByRole('button', { name: '构建节点' }));
+
+    expect(location.pathname).toBe('/admin/build-runners');
+    expect(await screen.findByText('Mac mini 1')).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: '构建节点' })).toBeTruthy();
   });
 
   it('renders app detail inside the shell while keeping the apps nav active', async () => {
@@ -171,6 +193,26 @@ const appDetailState: AppDetailState = {
     production: null
   },
   builds: buildsState.builds
+};
+
+const buildRunnersState: BuildRunnersState = {
+  total: 1,
+  runners: [
+    {
+      id: 'runner-mac-1',
+      name: 'Mac mini 1',
+      status: 'online',
+      labels: ['ios-release'],
+      version: '0.1.0',
+      packageAgentVersion: '0.1.0',
+      lastSeenAtLabel: '2026-07-09 10:00',
+      currentBuildId: 'build-1',
+      capabilities: {
+        platforms: ['ios'],
+        llmAdapters: ['codex']
+      }
+    }
+  ]
 };
 
 function jsonResponse(payload: unknown): Promise<Response> {

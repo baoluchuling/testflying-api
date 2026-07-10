@@ -719,6 +719,23 @@ class RunnerPollResponse(AdminApiModel):
     build: RunnerBuildPayload | None
 
 
+class BuildRunnerItem(AdminApiModel):
+    id: str
+    name: str
+    status: str
+    labels: list[str]
+    version: str
+    package_agent_version: str
+    last_seen_at_label: str
+    current_build_id: str | None
+    capabilities: dict[str, Any]
+
+
+class BuildRunnersState(AdminApiModel):
+    runners: list[BuildRunnerItem]
+    total: int
+
+
 class RunnerEventRequest(AdminApiModel):
     runner_id: str
     type: str

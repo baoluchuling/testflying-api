@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from base64 import b64encode
+from datetime import UTC, datetime
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -105,6 +106,53 @@ def test_runner_heartbeat_registers_capabilities(client: TestClient, db_session:
     assert runner is not None
     assert runner.status == "online"
     assert runner.labels_json == ["ios-release"]
+
+
+def test_build_runners_state_lists_runner_status_and_capabilities(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    app = _create_app(db_session)
+    build = _create_agent_build(db_session, build_id="build-agent-active", app=app)
+    db_session.add(
+        BuildRunner(
+            id="runner-mac-1",
+            name="Mac mini 1",
+            token_hash="runner-token",
+            labels_json=["ios-release"],
+            capabilities_json={"platforms": ["ios"], "llmAdapters": ["codex"], "capacity": 1},
+            status="busy",
+            version="0.1.0",
+            package_agent_version="0.1.2",
+            last_seen_at=datetime(2026, 7, 10, 2, 30, tzinfo=UTC),
+            current_build_id=build.id,
+        )
+    )
+    db_session.commit()
+
+    response = client.get("/admin/api/build-runners", headers=_admin_headers())
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "runners": [
+            {
+                "id": "runner-mac-1",
+                "name": "Mac mini 1",
+                "status": "busy",
+                "labels": ["ios-release"],
+                "version": "0.1.0",
+                "packageAgentVersion": "0.1.2",
+                "lastSeenAtLabel": "2026-07-10 02:30",
+                "currentBuildId": "build-agent-active",
+                "capabilities": {
+                    "platforms": ["ios"],
+                    "llmAdapters": ["codex"],
+                    "capacity": 1,
+                },
+            }
+        ],
+        "total": 1,
+    }
 
 
 def test_runner_reregister_rejects_token_takeover(client: TestClient, db_session: Session) -> None:

@@ -54,6 +54,8 @@ from testflying_api.admin_api.schemas import (
     AppDetailState,
     AppLogsState,
     BuildItem,
+    BuildRunnerItem,
+    BuildRunnersState,
     BuildSettingSaveRequest,
     BuildsState,
     ConnectorActionResponse,
@@ -145,6 +147,7 @@ from testflying_api.schema import (
     Build,
     DeveloperAccount,
     Device,
+    BuildRunner,
     LlmFeatureBinding,
     LlmProfile,
     Notification,
@@ -207,6 +210,7 @@ def admin_bootstrap(_: AdminDep) -> AdminBootstrapResponse:
             AdminNavItem(key="llm-config", label="LLM 配置", path="/admin/llm-config"),
             AdminNavItem(key="api-docs", label="接口文档", path="/admin/api-docs"),
             AdminNavItem(key="builds", label="构建", path="/admin/builds"),
+            AdminNavItem(key="build-runners", label="构建节点", path="/admin/build-runners"),
             AdminNavItem(key="devices", label="设备", path="/admin/devices"),
             AdminNavItem(key="app-logs", label="App 日志", path="/admin/app-logs"),
             AdminNavItem(key="notifications", label="通知", path="/admin/notifications"),
@@ -248,6 +252,22 @@ def builds_state(
 ) -> BuildsState:
     builds = list_builds(session)
     return BuildsState(builds=[_build_item(build) for build in builds], total=len(builds))
+
+
+@router.get(
+    "/build-runners",
+    response_model=BuildRunnersState,
+    response_model_by_alias=True,
+)
+def build_runners_state(
+    session: SessionDep,
+    _: AdminDep,
+) -> BuildRunnersState:
+    runners = list(session.scalars(select(BuildRunner).order_by(BuildRunner.name.asc())))
+    return BuildRunnersState(
+        runners=[_build_runner_item(runner) for runner in runners],
+        total=len(runners),
+    )
 
 
 @router.get(
@@ -3489,6 +3509,20 @@ def _runner_build_payload(build: Build) -> RunnerBuildPayload:
         repo_subpath=str(runner_data.get("repoSubpath") or ""),
         artifact_type=str(runner_data.get("artifactType") or ""),
         credential_refs=credential_refs if isinstance(credential_refs, dict) else {},
+    )
+
+
+def _build_runner_item(runner: BuildRunner) -> BuildRunnerItem:
+    return BuildRunnerItem(
+        id=runner.id,
+        name=runner.name,
+        status=runner.status,
+        labels=[str(item).strip() for item in runner.labels_json or [] if str(item).strip()],
+        version=runner.version,
+        package_agent_version=runner.package_agent_version,
+        last_seen_at_label=format_datetime(runner.last_seen_at),
+        current_build_id=runner.current_build_id,
+        capabilities=dict(runner.capabilities_json or {}),
     )
 
 

@@ -7,6 +7,7 @@ export type AdminRouteKey =
   | 'llm-config'
   | 'api-docs'
   | 'builds'
+  | 'build-runners'
   | 'devices'
   | 'app-logs'
   | 'notifications';
@@ -52,6 +53,11 @@ export const routeTitles: Record<AdminRouteKey, { eyebrow: string; title: string
     title: '构建',
     summary: '查看所有上传构建和可复制的安装地址。'
   },
+  'build-runners': {
+    eyebrow: 'Build Automation',
+    title: '构建节点',
+    summary: '查看 Runner 在线状态、能力标签、版本和当前构建占用。'
+  },
   devices: {
     eyebrow: 'Internal Distribution',
     title: '设备',
@@ -75,12 +81,14 @@ export function routeKeyFromPath(pathname: string): AdminRouteKey {
   if (first === 'store-reviews') return 'store-reviews';
   if (first === 'llm-config') return 'llm-config';
   if (first === 'api-docs') return 'api-docs';
+  if (first === 'build-runners') return 'build-runners';
   if (first === 'app-logs') return 'app-logs';
   if (first === 'accounts') return 'accounts';
   if (
     first === 'uploads'
     || first === 'apps'
     || first === 'builds'
+    || first === 'build-runners'
     || first === 'devices'
     || first === 'notifications'
   ) {

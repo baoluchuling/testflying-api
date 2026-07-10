@@ -8,6 +8,7 @@ import { UploadPage } from '../pages/UploadPage';
 import { AppLogsPage } from '../pages/AppLogsPage';
 import { DashboardPage } from '../pages/DashboardPage';
 import { BuildsPage } from '../pages/BuildsPage';
+import { BuildRunnersPage } from '../pages/BuildRunnersPage';
 import { AppDetailPage } from '../pages/AppDetailPage';
 import { DevicesPage } from '../pages/DevicesPage';
 import { NotificationsPage } from '../pages/NotificationsPage';
@@ -22,6 +23,7 @@ const fallbackNav = [
   { key: 'llm-config', label: 'LLM 配置', path: '/admin/llm-config' },
   { key: 'api-docs', label: '接口文档', path: '/admin/api-docs' },
   { key: 'builds', label: '构建', path: '/admin/builds' },
+  { key: 'build-runners', label: '构建节点', path: '/admin/build-runners' },
   { key: 'devices', label: '设备', path: '/admin/devices' },
   { key: 'app-logs', label: 'App 日志', path: '/admin/app-logs' },
   { key: 'notifications', label: '通知', path: '/admin/notifications' }
@@ -147,6 +149,7 @@ export function AdminApp() {
         {activeRoute === 'llm-config' ? <LlmConfigPage /> : null}
         {activeRoute === 'api-docs' ? <ApiDocsPage /> : null}
         {activeRoute === 'builds' ? <BuildsPage /> : null}
+        {activeRoute === 'build-runners' ? <BuildRunnersPage /> : null}
         {activeRoute === 'devices' ? <DevicesPage /> : null}
         {activeRoute === 'app-logs' ? <AppLogsPage /> : null}
         {activeRoute === 'notifications' ? <NotificationsPage /> : null}

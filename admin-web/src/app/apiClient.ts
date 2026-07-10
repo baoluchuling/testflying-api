@@ -659,6 +659,23 @@ export type BuildsState = {
   total: number;
 };
 
+export type BuildRunnerItem = {
+  id: string;
+  name: string;
+  status: string;
+  labels: string[];
+  version: string;
+  packageAgentVersion: string;
+  lastSeenAtLabel: string;
+  currentBuildId: string | null;
+  capabilities: Record<string, unknown>;
+};
+
+export type BuildRunnersState = {
+  runners: BuildRunnerItem[];
+  total: number;
+};
+
 export type DeviceItem = {
   id: string;
   name: string;
@@ -1155,6 +1172,10 @@ export function loadUploadState(): Promise<UploadState> {
 
 export function loadBuildsState(): Promise<BuildsState> {
   return getJson<BuildsState>('/admin/api/builds');
+}
+
+export function loadBuildRunnersState(): Promise<BuildRunnersState> {
+  return getJson<BuildRunnersState>('/admin/api/build-runners');
 }
 
 export function loadAppDetailState(appId: string): Promise<AppDetailState> {

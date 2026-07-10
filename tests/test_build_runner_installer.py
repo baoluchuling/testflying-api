@@ -74,6 +74,8 @@ def test_installer_builds_two_binary_pkg_and_matching_release(tmp_path: Path) ->
     tool_log = Path(env["TEST_TOOL_LOG"]).read_text(encoding="utf-8")
     for command in ("go ", "python3.11 -m PyInstaller", "ditto ", "pkgbuild "):
         assert command in tool_log
+    fake_ditto = Path(env["PATH"].split(os.pathsep, 1)[0]) / "ditto"
+    assert "/usr/bin/ditto" not in fake_ditto.read_text(encoding="utf-8")
 
     fallback = output_dir / "build-runner-macos"
     assert (fallback / "testflying-build-runner").stat().st_mode & 0o111
@@ -148,6 +150,17 @@ def _fake_tool_environment(tmp_path: Path) -> dict[str, str]:
     bin_dir = tmp_path / "fake-bin"
     bin_dir.mkdir()
     log_path = tmp_path / "tools.log"
+    zip_program = (
+        "import sys\n"
+        "import zipfile\n"
+        "from pathlib import Path\n"
+        "source = Path(sys.argv[1])\n"
+        "target = Path(sys.argv[2])\n"
+        "with zipfile.ZipFile(target, 'w') as archive:\n"
+        "    for item in sorted(source.iterdir()):\n"
+        "        if item.is_file():\n"
+        "            archive.write(item, item.name)\n"
+    )
     _write_tool(
         bin_dir / "go",
         """
@@ -189,7 +202,10 @@ def _fake_tool_environment(tmp_path: Path) -> dict[str, str]:
         bin_dir / "ditto",
         """
         printf 'ditto %s\n' "$*" >> "$TEST_TOOL_LOG"
-        exec /usr/bin/ditto "$@"
+        arguments=("$@")
+        source="${arguments[$((${#arguments[@]} - 2))]}"
+        target="${arguments[$((${#arguments[@]} - 1))]}"
+        python3.11 -c "$TEST_FAKE_ZIP_PROGRAM" "$source" "$target"
         """,
     )
     _write_tool(
@@ -224,6 +240,7 @@ def _fake_tool_environment(tmp_path: Path) -> dict[str, str]:
     env = os.environ.copy()
     env["PATH"] = f"{bin_dir}:{env['PATH']}"
     env["TEST_TOOL_LOG"] = str(log_path)
+    env["TEST_FAKE_ZIP_PROGRAM"] = zip_program
     return env
 
 

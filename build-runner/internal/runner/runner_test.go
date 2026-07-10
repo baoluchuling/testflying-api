@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestWorkspacePathUsesBuildID(t *testing.T) {
@@ -166,6 +167,63 @@ func TestRunOnceNoBuildOnlyHeartbeatsAndPolls(t *testing.T) {
 	}
 }
 
+func TestRunChecksForUpdatesAndPollsUntilCanceled(t *testing.T) {
+	var updateCalls int
+	var heartbeatCalls int
+	var pollCalls int
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/admin/api/build-runners/runner-1/updates/check":
+			updateCalls++
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"updateAvailable":false}`))
+		case "/admin/api/build-runners/heartbeat":
+			heartbeatCalls++
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		case "/admin/api/build-runners/poll":
+			pollCalls++
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"build":null}`))
+			if pollCalls == 2 {
+				cancel()
+			}
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	cfg := Config{
+		RunnerID:            "runner-1",
+		Name:                "Runner 1",
+		Token:               "token",
+		ServerURL:           server.URL,
+		RootDir:             t.TempDir(),
+		PackageAgentBin:     "package-agent",
+		Version:             "0.1.0",
+		PackageAgentVersion: "0.1.0",
+		InstallDir:          t.TempDir(),
+		Platform:            "darwin",
+		Arch:                "arm64",
+		PollInterval:        time.Millisecond,
+		UpdateInterval:      time.Hour,
+		Capacity:            1,
+	}
+
+	if err := Run(ctx, cfg); err != nil {
+		t.Fatal(err)
+	}
+	if updateCalls != 1 {
+		t.Fatalf("update calls = %d, want 1", updateCalls)
+	}
+	if heartbeatCalls != 2 || pollCalls != 2 {
+		t.Fatalf("heartbeat/poll calls = %d/%d, want 2/2", heartbeatCalls, pollCalls)
+	}
+}
+
 func TestConfigValidateRequiresFieldsAndCapacityOne(t *testing.T) {
 	valid := Config{
 		RunnerID:            "runner-1",
@@ -176,6 +234,11 @@ func TestConfigValidateRequiresFieldsAndCapacityOne(t *testing.T) {
 		PackageAgentBin:     "/tmp/package-agent",
 		Version:             "0.1.0",
 		PackageAgentVersion: "0.1.0",
+		InstallDir:          t.TempDir(),
+		Platform:            "darwin",
+		Arch:                "arm64",
+		PollInterval:        5 * time.Second,
+		UpdateInterval:      30 * time.Minute,
 		Capacity:            1,
 	}
 	if err := valid.Validate(); err != nil {
@@ -258,6 +321,42 @@ func TestConfigValidateRequiresFieldsAndCapacityOne(t *testing.T) {
 				return cfg
 			}(),
 			want: "Capacity must be 1 in the current implementation",
+		},
+		{
+			name: "poll interval must be positive",
+			cfg: func() Config {
+				cfg := valid
+				cfg.PollInterval = 0
+				return cfg
+			}(),
+			want: "PollInterval must be positive",
+		},
+		{
+			name: "update interval must be positive",
+			cfg: func() Config {
+				cfg := valid
+				cfg.UpdateInterval = -time.Second
+				return cfg
+			}(),
+			want: "UpdateInterval must be positive",
+		},
+		{
+			name: "unsupported platform",
+			cfg: func() Config {
+				cfg := valid
+				cfg.Platform = "linux"
+				return cfg
+			}(),
+			want: "Platform must be darwin",
+		},
+		{
+			name: "unsupported architecture",
+			cfg: func() Config {
+				cfg := valid
+				cfg.Arch = "x86_64"
+				return cfg
+			}(),
+			want: "Arch must be arm64 or amd64",
 		},
 	}
 

@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
+	"time"
 )
 
 const (
@@ -38,11 +40,50 @@ func Run(ctx context.Context, cfg Config) error {
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
-	return RunOnce(ctx, cfg, http.DefaultClient)
+	client := NewClient(cfg.ServerURL, cfg.Token, http.DefaultClient)
+	nextUpdate := time.Time{}
+	ticker := time.NewTicker(cfg.PollInterval)
+	defer ticker.Stop()
+
+	for {
+		if time.Now().After(nextUpdate) {
+			manifest, err := client.CheckUpdate(ctx, cfg.RunnerID, updateRequestFromConfig(cfg))
+			if err != nil {
+				log.Printf("update check failed: %s", RedactText(err.Error()))
+			} else if manifest != nil {
+				err = InstallUpdate(ctx, client, cfg, *manifest)
+				if errors.Is(err, ErrUpdateInstalled) {
+					return err
+				}
+				if err != nil {
+					log.Printf("update install failed: %s", RedactText(err.Error()))
+				}
+			}
+			nextUpdate = time.Now().Add(cfg.UpdateInterval)
+		}
+
+		if err := RunOnce(ctx, cfg, client.httpClient); err != nil {
+			log.Printf("runner poll failed: %s", RedactText(err.Error()))
+		}
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+		}
+	}
+}
+
+func updateRequestFromConfig(cfg Config) UpdateCheckRequest {
+	return UpdateCheckRequest{
+		Platform:            cfg.Platform,
+		Arch:                cfg.Arch,
+		RunnerVersion:       cfg.Version,
+		PackageAgentVersion: cfg.PackageAgentVersion,
+	}
 }
 
 func RunOnce(ctx context.Context, cfg Config, httpClient *http.Client) error {
-	if err := cfg.Validate(); err != nil {
+	if err := cfg.validateBuildConfig(); err != nil {
 		return err
 	}
 

@@ -37,6 +37,30 @@ type pollResponse struct {
 	Build *BuildAssignment `json:"build"`
 }
 
+type UpdateCheckRequest struct {
+	Platform            string `json:"platform"`
+	Arch                string `json:"arch"`
+	RunnerVersion       string `json:"runnerVersion"`
+	PackageAgentVersion string `json:"packageAgentVersion"`
+}
+
+type UpdateManifest struct {
+	Version             string `json:"version"`
+	RunnerVersion       string `json:"runnerVersion"`
+	PackageAgentVersion string `json:"packageAgentVersion"`
+	BundleURL           string `json:"bundleUrl"`
+	SHA256              string `json:"sha256"`
+}
+
+type updateCheckResponse struct {
+	UpdateAvailable     bool   `json:"updateAvailable"`
+	Version             string `json:"version"`
+	RunnerVersion       string `json:"runnerVersion"`
+	PackageAgentVersion string `json:"packageAgentVersion"`
+	BundleURL           string `json:"bundleUrl"`
+	SHA256              string `json:"sha256"`
+}
+
 type eventRequest struct {
 	RunnerID        string                 `json:"runnerId"`
 	Type            string                 `json:"type"`
@@ -93,6 +117,28 @@ func (c *Client) Poll(ctx context.Context, runnerID string) (*BuildAssignment, e
 		return nil, err
 	}
 	return response.Build, nil
+}
+
+func (c *Client) CheckUpdate(
+	ctx context.Context,
+	runnerID string,
+	payload UpdateCheckRequest,
+) (*UpdateManifest, error) {
+	var response updateCheckResponse
+	path := fmt.Sprintf("/admin/api/build-runners/%s/updates/check", runnerID)
+	if err := c.postJSON(ctx, path, payload, &response); err != nil {
+		return nil, err
+	}
+	if !response.UpdateAvailable {
+		return nil, nil
+	}
+	return &UpdateManifest{
+		Version:             response.Version,
+		RunnerVersion:       response.RunnerVersion,
+		PackageAgentVersion: response.PackageAgentVersion,
+		BundleURL:           response.BundleURL,
+		SHA256:              response.SHA256,
+	}, nil
 }
 
 func (c *Client) PostEvent(
@@ -179,6 +225,31 @@ func (c *Client) UploadArtifact(
 		)
 	}
 	return nil
+}
+
+func (c *Client) download(ctx context.Context, path string) (io.ReadCloser, error) {
+	if !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") {
+		return nil, fmt.Errorf("update bundle path must be relative to the server")
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("Authorization", "Bearer "+c.token)
+	response, err := c.httpClient.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	if response.StatusCode >= 300 {
+		defer response.Body.Close()
+		data, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
+		return nil, fmt.Errorf(
+			"update bundle request failed: status=%d body=%s",
+			response.StatusCode,
+			strings.TrimSpace(string(data)),
+		)
+	}
+	return response.Body, nil
 }
 
 func (c *Client) postJSON(ctx context.Context, path string, requestBody any, responseBody any) error {

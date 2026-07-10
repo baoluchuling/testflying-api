@@ -3,6 +3,7 @@ package runner
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
 const BuildRetryLimit = 5
@@ -16,6 +17,11 @@ type Config struct {
 	PackageAgentBin     string
 	Version             string
 	PackageAgentVersion string
+	InstallDir          string
+	Platform            string
+	Arch                string
+	PollInterval        time.Duration
+	UpdateInterval      time.Duration
 	Labels              []string
 	Platforms           []string
 	LLMAdapters         []string
@@ -23,6 +29,28 @@ type Config struct {
 }
 
 func (c Config) Validate() error {
+	if err := c.validateBuildConfig(); err != nil {
+		return err
+	}
+	if strings.TrimSpace(c.InstallDir) == "" {
+		return fmt.Errorf("InstallDir is required")
+	}
+	if c.PollInterval <= 0 {
+		return fmt.Errorf("PollInterval must be positive")
+	}
+	if c.UpdateInterval <= 0 {
+		return fmt.Errorf("UpdateInterval must be positive")
+	}
+	if c.Platform != "darwin" {
+		return fmt.Errorf("Platform must be darwin")
+	}
+	if c.Arch != "arm64" && c.Arch != "amd64" {
+		return fmt.Errorf("Arch must be arm64 or amd64")
+	}
+	return nil
+}
+
+func (c Config) validateBuildConfig() error {
 	required := map[string]string{
 		"RunnerID":        c.RunnerID,
 		"Name":            c.Name,

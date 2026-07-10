@@ -11,6 +11,12 @@ const (
 	terminalNeedsHumanArtifactUploadClassification = "artifact_upload_pending"
 	terminalNeedsHumanArtifactUploadSummary        = "package-agent completed but the runner cannot upload required artifacts yet."
 	terminalNeedsHumanArtifactUploadAction         = "Upload package, symbols, report, and log artifacts before marking the build succeeded."
+	preAgentWorkspaceFailureClassification         = "workspace_setup_failed"
+	preAgentInputFailureClassification             = "build_input_write_failed"
+	preAgentStartEventFailureClassification        = "start_event_post_failed"
+	postAgentFinishEventFailureClassification      = "finish_event_post_failed"
+	postAgentFinishEventFailureSummary             = "package-agent completed, but the runner could not persist the finish event or verify artifacts."
+	postAgentFinishEventFailureAction              = "Inspect the runner workspace output and verify required artifacts before resolving the build."
 )
 
 type BuildAssignment struct {
@@ -57,7 +63,18 @@ func handleBuild(ctx context.Context, client *Client, cfg Config, build BuildAss
 	workspace := WorkspacePath(cfg.RootDir, build.ID)
 	outputDir := OutputPath(workspace)
 	if err := os.MkdirAll(outputDir, 0o755); err != nil {
-		return err
+		return completeWithOriginalError(
+			ctx,
+			client,
+			build.ID,
+			preAgentFailureRequest(
+				cfg.RunnerID,
+				preAgentWorkspaceFailureClassification,
+				fmt.Sprintf("failed to create build workspace %q", outputDir),
+				err,
+			),
+			err,
+		)
 	}
 
 	inputPath, err := WriteBuildInput(workspace, BuildInput{
@@ -70,7 +87,18 @@ func handleBuild(ctx context.Context, client *Client, cfg Config, build BuildAss
 		MaxAttempts:    BuildRetryLimit,
 	})
 	if err != nil {
-		return err
+		return completeWithOriginalError(
+			ctx,
+			client,
+			build.ID,
+			preAgentFailureRequest(
+				cfg.RunnerID,
+				preAgentInputFailureClassification,
+				fmt.Sprintf("failed to write build input for workspace %q", workspace),
+				err,
+			),
+			err,
+		)
 	}
 
 	if err := client.PostEvent(ctx, build.ID, eventRequest{
@@ -84,7 +112,18 @@ func handleBuild(ctx context.Context, client *Client, cfg Config, build BuildAss
 			"gitRef":    build.GitRef,
 		},
 	}); err != nil {
-		return err
+		return completeWithOriginalError(
+			ctx,
+			client,
+			build.ID,
+			preAgentFailureRequest(
+				cfg.RunnerID,
+				preAgentStartEventFailureClassification,
+				"failed to post runner.build.started before package-agent execution",
+				err,
+			),
+			err,
+		)
 	}
 
 	runErr := RunPackageAgent(ctx, cfg.PackageAgentBin, inputPath, outputDir)
@@ -132,7 +171,13 @@ func handleBuild(ctx context.Context, client *Client, cfg Config, build BuildAss
 		LifecycleStatus: "building",
 		Payload:         payload,
 	}); err != nil {
-		return err
+		return completeWithOriginalError(
+			ctx,
+			client,
+			build.ID,
+			finishEventFailureCompletionRequest(cfg.RunnerID, err),
+			err,
+		)
 	}
 
 	return client.Complete(ctx, build.ID, needsHumanCompletionRequest(cfg.RunnerID))
@@ -173,4 +218,45 @@ func needsHumanCompletionRequest(runnerID string) completeRequest {
 		FailureSummary:        terminalNeedsHumanArtifactUploadSummary,
 		HumanAction:           terminalNeedsHumanArtifactUploadAction,
 	}
+}
+
+func preAgentFailureRequest(
+	runnerID string,
+	classification string,
+	summary string,
+	cause error,
+) completeRequest {
+	note := fmt.Sprintf("%s: %v", summary, cause)
+	return completeRequest{
+		RunnerID:              runnerID,
+		Status:                "failed",
+		Note:                  note,
+		FailureClassification: classification,
+		FailureSummary:        note,
+	}
+}
+
+func finishEventFailureCompletionRequest(runnerID string, cause error) completeRequest {
+	note := fmt.Sprintf("%s: %v", postAgentFinishEventFailureSummary, cause)
+	return completeRequest{
+		RunnerID:              runnerID,
+		Status:                "needs_human",
+		Note:                  note,
+		FailureClassification: postAgentFinishEventFailureClassification,
+		FailureSummary:        note,
+		HumanAction:           postAgentFinishEventFailureAction,
+	}
+}
+
+func completeWithOriginalError(
+	ctx context.Context,
+	client *Client,
+	buildID string,
+	request completeRequest,
+	originalErr error,
+) error {
+	if completeErr := client.Complete(ctx, buildID, request); completeErr != nil {
+		return fmt.Errorf("original error: %v; complete error: %w", originalErr, completeErr)
+	}
+	return originalErr
 }

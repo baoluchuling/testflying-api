@@ -570,6 +570,293 @@ func TestRunOnceAssignedBuildCompletesFailedWhenPackageAgentExitsNonZero(t *test
 	}
 }
 
+func TestRunOnceAssignedBuildCompletesFailedWhenWorkspaceSetupFails(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "root-file")
+	if err := os.WriteFile(root, []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	type capturedComplete struct {
+		RunnerID              string `json:"runnerId"`
+		Status                string `json:"status"`
+		Note                  string `json:"note"`
+		FailureClassification string `json:"failureClassification"`
+		FailureSummary        string `json:"failureSummary"`
+	}
+
+	completes := make([]capturedComplete, 0, 1)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/admin/api/build-runners/heartbeat":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		case "/admin/api/build-runners/poll":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"build":{
+				"id":"build-123",
+				"appId":"app-1",
+				"platform":"ios",
+				"environment":"development",
+				"gitUrl":"https://example.com/repo.git",
+				"gitRef":"main",
+				"repoSubpath":"ios/app",
+				"artifactType":"ipa",
+				"credentialRefs":{"git":"git-main"}
+			}}`))
+		case "/admin/api/build-runners/builds/build-123/complete":
+			var complete capturedComplete
+			if err := json.NewDecoder(r.Body).Decode(&complete); err != nil {
+				t.Fatalf("decode complete: %v", err)
+			}
+			completes = append(completes, complete)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		case "/admin/api/build-runners/builds/build-123/events":
+			t.Fatal("events should not be posted when workspace setup fails")
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	cfg := Config{
+		RunnerID:            "runner-1",
+		Name:                "Runner 1",
+		Token:               "token",
+		ServerURL:           server.URL,
+		RootDir:             root,
+		PackageAgentBin:     "/path/to/package-agent",
+		Version:             "0.1.0",
+		PackageAgentVersion: "0.1.0",
+		Labels:              []string{"ios-release"},
+		Platforms:           []string{"ios"},
+		LLMAdapters:         []string{"codex"},
+		Capacity:            1,
+	}
+
+	err := RunOnce(context.Background(), cfg, server.Client())
+	if err == nil {
+		t.Fatal("RunOnce() error = nil, want error")
+	}
+	if len(completes) != 1 {
+		t.Fatalf("complete count = %d, want 1", len(completes))
+	}
+	if completes[0].Status != "failed" {
+		t.Fatalf("complete status = %q, want failed", completes[0].Status)
+	}
+	if completes[0].FailureClassification != preAgentWorkspaceFailureClassification {
+		t.Fatalf("complete failureClassification = %q", completes[0].FailureClassification)
+	}
+	if !strings.Contains(completes[0].Note, "failed to create build workspace") {
+		t.Fatalf("complete note = %q", completes[0].Note)
+	}
+	if completes[0].FailureSummary != completes[0].Note {
+		t.Fatalf("complete failureSummary = %q, want note match", completes[0].FailureSummary)
+	}
+}
+
+func TestRunOnceAssignedBuildCompletesFailedWhenStartEventPostFails(t *testing.T) {
+	root := t.TempDir()
+
+	type capturedComplete struct {
+		RunnerID              string `json:"runnerId"`
+		Status                string `json:"status"`
+		Note                  string `json:"note"`
+		FailureClassification string `json:"failureClassification"`
+		FailureSummary        string `json:"failureSummary"`
+	}
+
+	var eventCalls int
+	completes := make([]capturedComplete, 0, 1)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/admin/api/build-runners/heartbeat":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		case "/admin/api/build-runners/poll":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"build":{
+				"id":"build-123",
+				"appId":"app-1",
+				"platform":"ios",
+				"environment":"development",
+				"gitUrl":"https://example.com/repo.git",
+				"gitRef":"main",
+				"repoSubpath":"ios/app",
+				"artifactType":"ipa",
+				"credentialRefs":{"git":"git-main"}
+			}}`))
+		case "/admin/api/build-runners/builds/build-123/events":
+			eventCalls++
+			http.Error(w, "start event rejected", http.StatusBadGateway)
+		case "/admin/api/build-runners/builds/build-123/complete":
+			var complete capturedComplete
+			if err := json.NewDecoder(r.Body).Decode(&complete); err != nil {
+				t.Fatalf("decode complete: %v", err)
+			}
+			completes = append(completes, complete)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	cfg := Config{
+		RunnerID:            "runner-1",
+		Name:                "Runner 1",
+		Token:               "token",
+		ServerURL:           server.URL,
+		RootDir:             root,
+		PackageAgentBin:     "/path/to/package-agent",
+		Version:             "0.1.0",
+		PackageAgentVersion: "0.1.0",
+		Labels:              []string{"ios-release"},
+		Platforms:           []string{"ios"},
+		LLMAdapters:         []string{"codex"},
+		Capacity:            1,
+	}
+
+	err := RunOnce(context.Background(), cfg, server.Client())
+	if err == nil {
+		t.Fatal("RunOnce() error = nil, want error")
+	}
+	if eventCalls != 1 {
+		t.Fatalf("event calls = %d, want 1", eventCalls)
+	}
+	if len(completes) != 1 {
+		t.Fatalf("complete count = %d, want 1", len(completes))
+	}
+	if completes[0].Status != "failed" {
+		t.Fatalf("complete status = %q, want failed", completes[0].Status)
+	}
+	if completes[0].FailureClassification != preAgentStartEventFailureClassification {
+		t.Fatalf("complete failureClassification = %q", completes[0].FailureClassification)
+	}
+	if !strings.Contains(completes[0].Note, "failed to post runner.build.started") {
+		t.Fatalf("complete note = %q", completes[0].Note)
+	}
+}
+
+func TestRunOnceAssignedBuildCompletesNeedsHumanWhenFinishEventPostFails(t *testing.T) {
+	root := t.TempDir()
+	packageAgentBin := writeFakePackageAgent(t, root, 0, `{
+  "status": "success",
+  "classification": "build_succeeded",
+  "summary": "fake package-agent completed",
+  "packagePaths": ["app.ipa"],
+  "symbolsPaths": ["app.dSYM.zip"],
+  "logPaths": ["runner.log"],
+  "maxAttempts": 5
+}`)
+
+	type capturedEvent struct {
+		Type string `json:"type"`
+	}
+	type capturedComplete struct {
+		RunnerID              string `json:"runnerId"`
+		Status                string `json:"status"`
+		Note                  string `json:"note"`
+		FailureClassification string `json:"failureClassification"`
+		FailureSummary        string `json:"failureSummary"`
+		HumanAction           string `json:"humanAction"`
+	}
+
+	events := make([]capturedEvent, 0, 2)
+	completes := make([]capturedComplete, 0, 1)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/admin/api/build-runners/heartbeat":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		case "/admin/api/build-runners/poll":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"build":{
+				"id":"build-123",
+				"appId":"app-1",
+				"platform":"ios",
+				"environment":"development",
+				"gitUrl":"https://example.com/repo.git",
+				"gitRef":"main",
+				"repoSubpath":"ios/app",
+				"artifactType":"ipa",
+				"credentialRefs":{"git":"git-main"}
+			}}`))
+		case "/admin/api/build-runners/builds/build-123/events":
+			var event capturedEvent
+			if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
+				t.Fatalf("decode event: %v", err)
+			}
+			events = append(events, event)
+			if event.Type == "runner.build.finished" {
+				http.Error(w, "finish event rejected", http.StatusBadGateway)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		case "/admin/api/build-runners/builds/build-123/complete":
+			var complete capturedComplete
+			if err := json.NewDecoder(r.Body).Decode(&complete); err != nil {
+				t.Fatalf("decode complete: %v", err)
+			}
+			completes = append(completes, complete)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	cfg := Config{
+		RunnerID:            "runner-1",
+		Name:                "Runner 1",
+		Token:               "token",
+		ServerURL:           server.URL,
+		RootDir:             root,
+		PackageAgentBin:     packageAgentBin,
+		Version:             "0.1.0",
+		PackageAgentVersion: "0.1.0",
+		Labels:              []string{"ios-release"},
+		Platforms:           []string{"ios"},
+		LLMAdapters:         []string{"codex"},
+		Capacity:            1,
+	}
+
+	err := RunOnce(context.Background(), cfg, server.Client())
+	if err == nil {
+		t.Fatal("RunOnce() error = nil, want error")
+	}
+	if len(events) != 2 {
+		t.Fatalf("event count = %d, want 2", len(events))
+	}
+	if events[0].Type != "runner.build.started" || events[1].Type != "runner.build.finished" {
+		t.Fatalf("event types = %#v", events)
+	}
+	if len(completes) != 1 {
+		t.Fatalf("complete count = %d, want 1", len(completes))
+	}
+	if completes[0].Status != "needs_human" {
+		t.Fatalf("complete status = %q, want needs_human", completes[0].Status)
+	}
+	if completes[0].FailureClassification != postAgentFinishEventFailureClassification {
+		t.Fatalf("complete failureClassification = %q", completes[0].FailureClassification)
+	}
+	if !strings.Contains(completes[0].Note, postAgentFinishEventFailureSummary) {
+		t.Fatalf("complete note = %q", completes[0].Note)
+	}
+	if completes[0].FailureSummary != completes[0].Note {
+		t.Fatalf("complete failureSummary = %q, want note match", completes[0].FailureSummary)
+	}
+	if completes[0].HumanAction != postAgentFinishEventFailureAction {
+		t.Fatalf("complete humanAction = %q", completes[0].HumanAction)
+	}
+}
+
 func writeFakePackageAgent(t *testing.T, root string, exitCode int, reportJSON string) string {
 	t.Helper()
 

@@ -218,7 +218,7 @@ func handleBuild(ctx context.Context, client *Client, cfg Config, build BuildAss
 		)
 	}
 	for _, upload := range uploads {
-		if err := client.UploadArtifact(ctx, build.ID, cfg.RunnerID, upload.ArtifactType, upload.Path); err != nil {
+		if err := client.UploadArtifact(ctx, build.ID, cfg.RunnerID, upload.ArtifactType, upload.Path, upload.UploadName); err != nil {
 			return completeWithOriginalError(
 				ctx,
 				client,

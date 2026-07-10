@@ -239,14 +239,14 @@ func TestRunOnceAssignedBuildRunsPackageAgentPostsEventsAndCompletesNeedsHuman(t
   "commitSha": "abc123def456",
   "packagePaths": ["app.ipa"],
   "symbolsPaths": ["app.dSYM.zip", "symbols/additional.dSYM.zip"],
-  "logPaths": ["runner.log", "logs/xcode.log"],
+  "logPaths": ["logs/debug/app.log", "logs/release/app.log"],
   "maxAttempts": 5
 }`, map[string]string{
 		"app.ipa":                     "ipa-bytes",
 		"app.dSYM.zip":                "symbols-bytes",
 		"symbols/additional.dSYM.zip": "additional-symbols",
-		"runner.log":                  "runner-log",
-		"logs/xcode.log":              "xcode-log",
+		"logs/debug/app.log":          "debug-log",
+		"logs/release/app.log":        "release-log",
 	})
 
 	type capturedEvent struct {
@@ -478,17 +478,20 @@ func TestRunOnceAssignedBuildRunsPackageAgentPostsEventsAndCompletesNeedsHuman(t
 		t.Fatalf("upload count = %d, want 6", len(uploads))
 	}
 	wantUploads := []uploadedArtifact{
-		{ArtifactType: "report", FileName: "report.json", Body: "{\n  \"status\": \"success\",\n  \"classification\": \"build_succeeded\",\n  \"summary\": \"fake package-agent completed\",\n  \"version\": \"1.2.3\",\n  \"buildNumber\": \"42\",\n  \"commitSha\": \"abc123def456\",\n  \"packagePaths\": [\"app.ipa\"],\n  \"symbolsPaths\": [\"app.dSYM.zip\", \"symbols/additional.dSYM.zip\"],\n  \"logPaths\": [\"runner.log\", \"logs/xcode.log\"],\n  \"maxAttempts\": 5\n}\n"},
+		{ArtifactType: "report", FileName: "report.json", Body: "{\n  \"status\": \"success\",\n  \"classification\": \"build_succeeded\",\n  \"summary\": \"fake package-agent completed\",\n  \"version\": \"1.2.3\",\n  \"buildNumber\": \"42\",\n  \"commitSha\": \"abc123def456\",\n  \"packagePaths\": [\"app.ipa\"],\n  \"symbolsPaths\": [\"app.dSYM.zip\", \"symbols/additional.dSYM.zip\"],\n  \"logPaths\": [\"logs/debug/app.log\", \"logs/release/app.log\"],\n  \"maxAttempts\": 5\n}\n"},
 		{ArtifactType: "package", FileName: "app.ipa", Body: "ipa-bytes\n"},
 		{ArtifactType: "symbols", FileName: "app.dSYM.zip", Body: "symbols-bytes\n"},
-		{ArtifactType: "symbols", FileName: "additional.dSYM.zip", Body: "additional-symbols\n"},
-		{ArtifactType: "log", FileName: "runner.log", Body: "runner-log\n"},
-		{ArtifactType: "log", FileName: "xcode.log", Body: "xcode-log\n"},
+		{ArtifactType: "symbols", FileName: "symbols-additional.dSYM.zip", Body: "additional-symbols\n"},
+		{ArtifactType: "log", FileName: "logs-debug-app.log", Body: "debug-log\n"},
+		{ArtifactType: "log", FileName: "logs-release-app.log", Body: "release-log\n"},
 	}
 	for index, want := range wantUploads {
 		if uploads[index] != want {
 			t.Fatalf("upload[%d] = %#v, want %#v", index, uploads[index], want)
 		}
+	}
+	if uploads[4].FileName == uploads[5].FileName {
+		t.Fatalf("log upload filenames collided: %#v", uploads[4].FileName)
 	}
 }
 

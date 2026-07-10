@@ -113,6 +113,7 @@ func (c *Client) UploadArtifact(
 	runnerID string,
 	artifactType string,
 	filePath string,
+	uploadName string,
 ) error {
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -128,7 +129,11 @@ func (c *Client) UploadArtifact(
 	if err := writer.WriteField("artifactType", artifactType); err != nil {
 		return err
 	}
-	part, err := writer.CreateFormFile("file", filepath.Base(filePath))
+	fileName := uploadName
+	if fileName == "" {
+		fileName = filepath.Base(filePath)
+	}
+	part, err := writer.CreateFormFile("file", fileName)
 	if err != nil {
 		return err
 	}

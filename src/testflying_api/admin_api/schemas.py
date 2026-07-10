@@ -630,6 +630,8 @@ class BuildAppSummary(AdminApiModel):
 
 
 class BuildArtifactItem(AdminApiModel):
+    artifact_type: str = ""
+    artifact_type_label: str = ""
     file_name: str
     size_label: str
     install_url: str
@@ -657,6 +659,11 @@ class BuildItem(AdminApiModel):
     expires_at: str | None
     expires_at_label: str
     artifact: BuildArtifactItem | None
+    artifacts: list[BuildArtifactItem] = Field(default_factory=list)
+    failure_classification: str = ""
+    failure_summary: str = ""
+    human_action: str = ""
+    recent_events: list[BuildEventItem] = Field(default_factory=list)
 
 
 class BuildSettingItem(AdminApiModel):
@@ -698,6 +705,20 @@ class RunnerHeartbeatRequest(AdminApiModel):
     capabilities: dict[str, Any] = Field(default_factory=dict)
 
 
+class RunnerProvisionRequest(AdminApiModel):
+    runner_id: str
+    name: str
+    labels: list[str] = Field(default_factory=list)
+    version: str = ""
+    package_agent_version: str = ""
+    capabilities: dict[str, Any] = Field(default_factory=dict)
+
+
+class RunnerProvisionResponse(AdminApiModel):
+    runner: BuildRunnerItem
+    token: str
+
+
 class RunnerPollRequest(AdminApiModel):
     runner_id: str
     timeout_seconds: float = 0
@@ -734,6 +755,12 @@ class BuildRunnerItem(AdminApiModel):
 class BuildRunnersState(AdminApiModel):
     runners: list[BuildRunnerItem]
     total: int
+
+
+class BuildEventItem(AdminApiModel):
+    type: str
+    message: str
+    created_at_label: str
 
 
 class RunnerEventRequest(AdminApiModel):

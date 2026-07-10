@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from testflying_api.build_platform import hash_runner_token
 from testflying_api.schema import App, Artifact, Build, BuildRunner
 
 
@@ -21,7 +22,7 @@ def _create_assigned_build(db_session: Session) -> Build:
     runner = BuildRunner(
         id="runner-mac-1",
         name="Mac mini 1",
-        token_hash="runner-token",
+        token_hash=hash_runner_token("runner-token", token_pepper="dev-token"),
         labels_json=["ios-release"],
         capabilities_json={"platforms": ["ios"], "llmAdapters": ["codex"], "capacity": 1},
         status="busy",

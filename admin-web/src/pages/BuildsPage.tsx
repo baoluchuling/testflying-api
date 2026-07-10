@@ -91,7 +91,7 @@ function BuildRow({
       <span>{build.platformLabel}</span>
       <span>
         <strong>{build.sourceLabel || build.environmentLabel}</strong>
-        <small>{build.lifecycleStatusLabel || build.lifecycleStatus || build.status}</small>
+        <small>{build.failureSummary || build.lifecycleStatusLabel || build.lifecycleStatus || build.status}</small>
       </span>
       <span>
         <strong>{artifacts[0]?.sizeLabel ?? '-'}</strong>

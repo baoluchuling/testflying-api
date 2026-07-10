@@ -64,6 +64,8 @@ describe('AppDetailPage', () => {
     expect(screen.getByRole('button', { name: '立即构建' })).toBeTruthy();
     expect(screen.getByText('构建历史')).toBeTruthy();
     expect(screen.getByText('build 45')).toBeTruthy();
+    expect(screen.getByText('missing_artifacts')).toBeTruthy();
+    expect(screen.getByText('Automatic success requires package, symbols, and logs.')).toBeTruthy();
   });
 
   it('submits a quick build request', async () => {
@@ -188,7 +190,17 @@ const appDetailState = {
       expiresAt: null,
       expiresAtLabel: '-',
       artifact: null,
-      artifacts: []
+      artifacts: [],
+      failureClassification: 'missing_artifacts',
+      failureSummary: 'Automatic success requires package, symbols, and logs.',
+      humanAction: 'Upload missing artifacts.',
+      recentEvents: [
+        {
+          type: 'runner.build.needs_human',
+          message: 'Upload missing artifacts.',
+          createdAtLabel: '2026-07-09 10:01'
+        }
+      ]
     }
   ]
 };

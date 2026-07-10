@@ -587,7 +587,15 @@ export type BuildItem = {
   expiresAt: string | null;
   expiresAtLabel: string;
   artifact: BuildArtifact | null;
-  artifacts?: BuildArtifact[];
+  artifacts: BuildArtifact[];
+  failureClassification: string;
+  failureSummary: string;
+  humanAction: string;
+  recentEvents: {
+    type: string;
+    message: string;
+    createdAtLabel: string;
+  }[];
 };
 
 export type BuildSettingItem = {

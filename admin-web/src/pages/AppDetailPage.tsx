@@ -331,6 +331,7 @@ function BuildSettingCard({
 
 function BuildHistoryRow({ build }: { build: BuildItem }) {
   const artifacts = buildArtifacts(build);
+  const diagnostic = build.failureSummary || build.humanAction || build.recentEvents[0]?.message || '';
 
   return (
     <div className="build-history-row">
@@ -350,6 +351,12 @@ function BuildHistoryRow({ build }: { build: BuildItem }) {
         <span>{build.gitRef || '-'}</span>
         <small>{artifacts.length ? `${artifacts.length} 个产物` : '无产物'}</small>
       </div>
+      {diagnostic ? (
+        <div className="build-diagnostic">
+          <span>{build.failureClassification || 'diagnostic'}</span>
+          <small>{diagnostic}</small>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from testflying_api.schema import App, Build
+from testflying_api.schema import App, Artifact, Build, BuildEvent
 
 
 def _admin_headers(password: str = "dev-token") -> dict[str, str]:
@@ -59,6 +59,85 @@ def test_admin_app_detail_returns_build_history_and_empty_settings(
     assert payload["settings"]["production"] is None
 
 
+def test_admin_app_detail_returns_all_artifacts_and_failure_diagnostics(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    app = _create_app(db_session)
+    build = Build(
+        id="build-agent-needs-human",
+        app_id=app.id,
+        version="",
+        build_number="",
+        channel="dev",
+        environment="development",
+        requested_environment="development",
+        platform="ios",
+        source="agent",
+        lifecycle_status="needs_human",
+        status="pending",
+        git_ref="main",
+        failure_classification="missing_artifacts",
+        failure_summary="Automatic success requires package, symbols, and logs.",
+        human_action="Upload missing artifacts.",
+    )
+    db_session.add(build)
+    for artifact_type, file_name in [
+        ("package", "app.ipa"),
+        ("symbols", "symbols.zip"),
+        ("report", "report.json"),
+        ("log", "runner.log"),
+    ]:
+        db_session.add(
+            Artifact(
+                id=f"artifact-{artifact_type}",
+                build_id=build.id,
+                artifact_type=artifact_type,
+                file_name=file_name,
+                content_type="application/octet-stream",
+                storage_backend="local",
+                storage_key=f"{build.id}/{file_name}",
+                download_url=f"https://dist.example.test/{file_name}",
+                install_url=(
+                    f"https://dist.example.test/{file_name}"
+                    if artifact_type == "package"
+                    else ""
+                ),
+                size_bytes=10,
+            )
+        )
+    db_session.add(
+        BuildEvent(
+            id="event-needs-human",
+            build_id=build.id,
+            runner_id=None,
+            type="runner.build.needs_human",
+            message="Upload missing artifacts.",
+            payload_json={},
+        )
+    )
+    db_session.commit()
+
+    response = client.get(f"/admin/api/apps/{app.id}", headers=_admin_headers())
+
+    assert response.status_code == 200
+    build_payload = response.json()["builds"][0]
+    assert build_payload["failureClassification"] == "missing_artifacts"
+    assert (
+        build_payload["failureSummary"]
+        == "Automatic success requires package, symbols, and logs."
+    )
+    assert build_payload["humanAction"] == "Upload missing artifacts."
+    assert [item["artifactType"] for item in build_payload["artifacts"]] == [
+        "log",
+        "package",
+        "report",
+        "symbols",
+    ]
+    assert build_payload["artifact"]["fileName"] == "app.ipa"
+    assert build_payload["recentEvents"][0]["type"] == "runner.build.needs_human"
+
+
 def test_admin_app_detail_returns_admin_error_for_missing_app(
     client: TestClient,
 ) -> None:
@@ -99,11 +178,39 @@ def test_admin_can_save_development_build_settings(
     assert response.status_code == 200
     payload = response.json()
     assert payload["build"] is None
-    assert payload["state"]["settings"]["development"]["gitUrl"] == "git@example.com:mobile/demo.git"
+    assert (
+        payload["state"]["settings"]["development"]["gitUrl"]
+        == "git@example.com:mobile/demo.git"
+    )
     assert payload["state"]["settings"]["development"]["runnerLabels"] == [
         "ios-release",
         "mac-mini-1",
     ]
+
+
+@pytest.mark.parametrize("repo_subpath", ["../escape", "/tmp/project", "ios\\Runner"])
+def test_admin_save_build_setting_rejects_repo_subpath_traversal(
+    client: TestClient,
+    db_session: Session,
+    repo_subpath: str,
+) -> None:
+    app = _create_app(db_session)
+
+    response = client.put(
+        f"/admin/api/apps/{app.id}/build-settings/development",
+        headers=_admin_headers(),
+        json={
+            "gitUrl": "git@example.com:mobile/demo.git",
+            "repoSubpath": repo_subpath,
+            "runnerLabels": ["ios-release"],
+            "credentialRefs": {"git": "git-main"},
+            "artifactType": "ipa",
+            "optionalDefaults": {},
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "invalid_repo_subpath"
 
 
 def test_admin_can_save_production_build_settings_with_valid_credential_refs(
@@ -167,6 +274,30 @@ def test_admin_can_create_queued_agent_build_from_app_detail(
     assert created["gitRef"] == "main"
     assert created["version"] == ""
     assert created["buildNumber"] == ""
+
+
+def test_admin_create_agent_build_rejects_repo_subpath_traversal(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    app = _create_app(db_session)
+
+    response = client.post(
+        f"/admin/api/apps/{app.id}/builds",
+        headers=_admin_headers(),
+        json={
+            "environment": "development",
+            "gitUrl": "git@example.com:mobile/demo.git",
+            "gitRef": "main",
+            "repoSubpath": "../escape",
+            "runnerLabels": ["ios-release"],
+            "credentialRefs": {"git": "git-main"},
+            "artifactType": "ipa",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "invalid_repo_subpath"
 
 
 @pytest.mark.parametrize("credential_ref", ["git-main", "ios-dev", "mac-mini-1"])

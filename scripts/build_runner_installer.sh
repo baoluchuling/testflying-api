@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -36,6 +37,7 @@ else
 }
 EOF
 fi
+chmod 600 "${STAGING_DIR}/config.json"
 
 cp "${PACKAGING_DIR}/install.command" "${STAGING_DIR}/install.command"
 chmod +x "${STAGING_DIR}/install.command" "${STAGING_DIR}/testflying-build-runner"

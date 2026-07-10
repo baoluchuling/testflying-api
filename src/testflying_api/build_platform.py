@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import hmac
 import re
+import secrets
 from datetime import UTC, datetime
+from hashlib import sha256
+from pathlib import PurePosixPath
 from uuid import uuid4
 
 from sqlalchemy import select
@@ -18,6 +22,7 @@ from testflying_api.admin_api.schemas import (
     AppDetailState,
     BuildAppSummary,
     BuildArtifactItem,
+    BuildEventItem,
     BuildItem,
     BuildSettingItem,
 )
@@ -48,6 +53,8 @@ _RUNNER_REQUIRED_ARTIFACTS = {
     ArtifactType.REPORT.value,
     ArtifactType.LOG.value,
 }
+_RUNNER_ALLOWED_ARTIFACTS = _RUNNER_REQUIRED_ARTIFACTS
+_RUNNER_TOKEN_DIGEST_PREFIX = "hmac-sha256:"
 _TERMINAL_BUILD_LIFECYCLE_STATUSES = {
     BuildLifecycleStatus.SUCCEEDED.value,
     BuildLifecycleStatus.FAILED.value,
@@ -55,7 +62,9 @@ _TERMINAL_BUILD_LIFECYCLE_STATUSES = {
     BuildLifecycleStatus.CANCELLED.value,
 }
 _RUNNER_EVENT_LIFECYCLE_STATUSES = {
-    status.value for status in BuildLifecycleStatus if status.value not in _TERMINAL_BUILD_LIFECYCLE_STATUSES
+    status.value
+    for status in BuildLifecycleStatus
+    if status.value not in _TERMINAL_BUILD_LIFECYCLE_STATUSES
 }
 
 
@@ -126,6 +135,7 @@ def save_build_setting(
         field="artifact_type",
         label="artifact_type",
     )
+    normalized_repo_subpath = _normalize_repo_subpath(repo_subpath)
     normalized_credential_refs = _normalize_credential_refs(credential_refs)
     existing = session.scalar(
         select(AppBuildSetting).where(
@@ -139,7 +149,7 @@ def save_build_setting(
         environment=normalized_environment,
     )
     setting.git_url = normalized_git_url
-    setting.repo_subpath = repo_subpath.strip()
+    setting.repo_subpath = normalized_repo_subpath
     setting.runner_labels_json = [label.strip() for label in runner_labels if label.strip()]
     setting.credential_refs_json = normalized_credential_refs
     setting.artifact_type = normalized_artifact_type
@@ -171,6 +181,7 @@ def create_agent_build(
         field="artifact_type",
         label="artifact_type",
     )
+    normalized_repo_subpath = _normalize_repo_subpath(repo_subpath)
     normalized_credential_refs = _normalize_credential_refs(credential_refs)
     build = Build(
         id=f"build-agent-{uuid4().hex[:12]}",
@@ -187,7 +198,7 @@ def create_agent_build(
         git_ref=normalized_git_ref,
         runner_labels_json={
             "required": [label.strip() for label in runner_labels if label.strip()],
-            "repoSubpath": repo_subpath.strip(),
+            "repoSubpath": normalized_repo_subpath,
             "credentialRefs": normalized_credential_refs,
             "artifactType": normalized_artifact_type,
         },
@@ -205,6 +216,36 @@ def create_agent_build(
     ).one()
 
 
+def provision_runner(
+    session: Session,
+    *,
+    runner_id: str,
+    name: str,
+    labels: list[str],
+    version: str,
+    package_agent_version: str,
+    capabilities: dict[str, object],
+    token_pepper: str,
+) -> tuple[BuildRunner, str]:
+    normalized_runner_id = _require_non_blank(
+        runner_id,
+        field="runner_id",
+        label="runner_id",
+    )
+    token = secrets.token_urlsafe(32)
+    runner = session.get(BuildRunner, normalized_runner_id) or BuildRunner(id=normalized_runner_id)
+    runner.name = _require_non_blank(name, field="name", label="name")
+    runner.token_hash = hash_runner_token(token, token_pepper=token_pepper)
+    runner.labels_json = [label.strip() for label in labels if label.strip()]
+    runner.capabilities_json = dict(capabilities)
+    runner.status = "busy" if runner.current_build_id else "offline"
+    runner.version = version.strip()
+    runner.package_agent_version = package_agent_version.strip()
+    session.add(runner)
+    session.commit()
+    return runner, token
+
+
 def register_runner(
     session: Session,
     *,
@@ -215,14 +256,15 @@ def register_runner(
     version: str,
     package_agent_version: str,
     capabilities: dict[str, object],
+    token_pepper: str,
 ) -> BuildRunner:
     runner = session.get(BuildRunner, runner_id)
     normalized_token = _require_non_blank(token, field="token", label="token")
-    if runner is not None and runner.token_hash != normalized_token:
+    if runner is None:
+        raise ApiError("unknown_runner", "Runner 未预配", status_code=401)
+    if not verify_runner_token(normalized_token, runner.token_hash, token_pepper=token_pepper):
         raise ApiError("invalid_runner_token", "Runner token 不正确", status_code=401)
-    runner = runner or BuildRunner(id=runner_id)
     runner.name = _require_non_blank(name, field="name", label="name")
-    runner.token_hash = normalized_token
     runner.labels_json = [label.strip() for label in labels if label.strip()]
     runner.capabilities_json = dict(capabilities)
     runner.status = "busy" if runner.current_build_id else "online"
@@ -244,6 +286,7 @@ def heartbeat_runner(
     version: str,
     package_agent_version: str,
     capabilities: dict[str, object],
+    token_pepper: str,
 ) -> BuildRunner:
     return register_runner(
         session,
@@ -254,17 +297,25 @@ def heartbeat_runner(
         version=version,
         package_agent_version=package_agent_version,
         capabilities=capabilities,
+        token_pepper=token_pepper,
     )
 
 
-def poll_runner_build(session: Session, *, runner_id: str, token: str) -> Build | None:
-    runner = _runner_or_401(session, runner_id=runner_id, token=token)
+def poll_runner_build(
+    session: Session,
+    *,
+    runner_id: str,
+    token: str,
+    token_pepper: str,
+) -> Build | None:
+    runner = _runner_or_401(session, runner_id=runner_id, token=token, token_pepper=token_pepper)
     runner.last_seen_at = datetime.now(UTC)
     if runner.current_build_id:
         runner.status = "busy"
         session.add(runner)
         session.commit()
-        return None
+        build = session.get(Build, runner.current_build_id)
+        return _build_with_relations(session, build.id) if build is not None else None
 
     runner_platforms = {
         str(item).strip()
@@ -309,12 +360,19 @@ def append_build_event(
     build_id: str,
     runner_id: str,
     token: str,
+    token_pepper: str,
     event_type: str,
     message: str,
     lifecycle_status: str | None = None,
     payload: dict[str, object] | None = None,
 ) -> BuildEvent:
-    build, runner = _runner_build_pair(session, build_id=build_id, runner_id=runner_id, token=token)
+    build, runner = _runner_build_pair(
+        session,
+        build_id=build_id,
+        runner_id=runner_id,
+        token=token,
+        token_pepper=token_pepper,
+    )
     normalized_type = _require_non_blank(event_type, field="type", label="type")
     normalized_message = _require_non_blank(message, field="message", label="message")
     normalized_lifecycle_status = _normalize_runner_event_lifecycle_status(lifecycle_status)
@@ -342,17 +400,31 @@ def upload_build_artifact(
     build_id: str,
     runner_id: str,
     token: str,
+    token_pepper: str,
     artifact_type: str,
     file_name: str,
     content: bytes,
     content_type: str,
 ) -> Artifact:
-    build, runner = _runner_build_pair(session, build_id=build_id, runner_id=runner_id, token=token)
+    build, runner = _runner_build_pair(
+        session,
+        build_id=build_id,
+        runner_id=runner_id,
+        token=token,
+        token_pepper=token_pepper,
+    )
     normalized_type = _require_non_blank(
         artifact_type,
         field="artifact_type",
         label="artifact_type",
     ).lower()
+    if normalized_type not in _RUNNER_ALLOWED_ARTIFACTS:
+        raise ApiError(
+            "invalid_artifact_type",
+            "Runner artifact_type 不受支持",
+            status_code=422,
+            extra={"field": "artifact_type"},
+        )
     stored = storage.save(
         build.id,
         file_name=file_name,
@@ -394,6 +466,7 @@ def complete_runner_build(
     build_id: str,
     runner_id: str,
     token: str,
+    token_pepper: str,
     status: str,
     version: str | None = None,
     build_number: str | None = None,
@@ -403,7 +476,13 @@ def complete_runner_build(
     failure_summary: str | None = None,
     human_action: str | None = None,
 ) -> Build:
-    build, runner = _runner_build_pair(session, build_id=build_id, runner_id=runner_id, token=token)
+    build, runner = _runner_build_pair(
+        session,
+        build_id=build_id,
+        runner_id=runner_id,
+        token=token,
+        token_pepper=token_pepper,
+    )
     normalized_status = _normalize_complete_status(status)
     artifacts = session.scalars(select(Artifact).where(Artifact.build_id == build.id)).all()
     if normalized_status == BuildLifecycleStatus.SUCCEEDED.value:
@@ -460,6 +539,7 @@ def complete_runner_build(
 
 def build_item(build: Build) -> BuildItem:
     artifact = build.package_artifact()
+    artifacts = sorted(build.artifacts, key=lambda item: (item.artifact_type, item.file_name))
     app = build.app
     if app is None:
         raise AdminApiError("build_app_not_found", "构建关联的应用不存在", status_code=500)
@@ -483,16 +563,15 @@ def build_item(build: Build) -> BuildItem:
         expires_at=_optional_iso_datetime(build.expires_at),
         expires_at_label=format_datetime(build.expires_at),
         artifact=(
-            BuildArtifactItem(
-                file_name=artifact.file_name,
-                size_label=format_size(artifact.size_bytes),
-                install_url=artifact.install_url,
-                download_url=artifact.download_url,
-                manifest_url=artifact.manifest_url,
-            )
+            _artifact_item(artifact)
             if artifact
             else None
         ),
+        artifacts=[_artifact_item(item) for item in artifacts],
+        failure_classification=build.failure_classification or "",
+        failure_summary=build.failure_summary or "",
+        human_action=build.human_action or "",
+        recent_events=[_event_item(event) for event in _recent_events_for_build(build)],
     )
 
 
@@ -543,6 +622,46 @@ def _require_non_blank(value: str, *, field: str, label: str) -> str:
         f"{label} 不能为空",
         status_code=422,
         extra={"field": field},
+    )
+
+
+def hash_runner_token(token: str, *, token_pepper: str) -> str:
+    digest = hmac.new(
+        token_pepper.encode("utf-8"),
+        token.encode("utf-8"),
+        sha256,
+    ).hexdigest()
+    return f"{_RUNNER_TOKEN_DIGEST_PREFIX}{digest}"
+
+
+def verify_runner_token(token: str, stored_hash: str, *, token_pepper: str) -> bool:
+    expected = hash_runner_token(token, token_pepper=token_pepper)
+    return hmac.compare_digest(stored_hash, expected)
+
+
+def _normalize_repo_subpath(value: str) -> str:
+    raw_value = value.strip()
+    if raw_value in {"", "."}:
+        return ""
+    if "\\" in raw_value:
+        raise _invalid_repo_subpath("repoSubpath 不能包含反斜杠")
+    path = PurePosixPath(raw_value)
+    if path.is_absolute():
+        raise _invalid_repo_subpath("repoSubpath 必须是相对路径")
+    parts = [part for part in path.parts if part not in {"", "."}]
+    if any(part == ".." for part in parts):
+        raise _invalid_repo_subpath("repoSubpath 不能包含 ..")
+    if not parts:
+        return ""
+    return "/".join(parts)
+
+
+def _invalid_repo_subpath(message: str) -> ApiError:
+    return ApiError(
+        "invalid_repo_subpath",
+        message,
+        status_code=422,
+        extra={"field": "repo_subpath"},
     )
 
 
@@ -597,6 +716,41 @@ def _build_with_relations(session: Session, build_id: str) -> Build:
     ).one()
 
 
+def _artifact_item(artifact: Artifact) -> BuildArtifactItem:
+    return BuildArtifactItem(
+        artifact_type=artifact.artifact_type,
+        artifact_type_label=_artifact_type_label(artifact.artifact_type),
+        file_name=artifact.file_name,
+        size_label=format_size(artifact.size_bytes),
+        install_url=artifact.install_url,
+        download_url=artifact.download_url,
+        manifest_url=artifact.manifest_url,
+    )
+
+
+def _artifact_type_label(artifact_type: str) -> str:
+    labels = {
+        "package": "Package",
+        "symbols": "Symbols",
+        "report": "Report",
+        "log": "Log",
+    }
+    return labels.get(artifact_type, artifact_type)
+
+
+def _recent_events_for_build(build: Build) -> list[BuildEvent]:
+    events = sorted(build.events, key=lambda event: event.created_at, reverse=True)
+    return events[:5]
+
+
+def _event_item(event: BuildEvent) -> BuildEventItem:
+    return BuildEventItem(
+        type=event.type,
+        message=event.message,
+        created_at_label=format_datetime(event.created_at),
+    )
+
+
 def _normalize_runner_event_lifecycle_status(value: str | None) -> str | None:
     if value is None:
         return None
@@ -627,9 +781,17 @@ def _normalize_complete_status(value: str) -> str:
     return normalized
 
 
-def _runner_or_401(session: Session, *, runner_id: str, token: str) -> BuildRunner:
+def _runner_or_401(
+    session: Session,
+    *,
+    runner_id: str,
+    token: str,
+    token_pepper: str,
+) -> BuildRunner:
     runner = session.get(BuildRunner, runner_id)
-    if runner is None or runner.token_hash != token:
+    if runner is None:
+        raise ApiError("unknown_runner", "Runner 未预配", status_code=401)
+    if not verify_runner_token(token, runner.token_hash, token_pepper=token_pepper):
         raise ApiError("invalid_runner_token", "Runner token 不正确", status_code=401)
     return runner
 
@@ -640,8 +802,14 @@ def _runner_build_pair(
     build_id: str,
     runner_id: str,
     token: str,
+    token_pepper: str,
 ) -> tuple[Build, BuildRunner]:
-    runner = _runner_or_401(session, runner_id=runner_id, token=token)
+    runner = _runner_or_401(
+        session,
+        runner_id=runner_id,
+        token=token,
+        token_pepper=token_pepper,
+    )
     build = session.get(Build, build_id)
     if build is None:
         raise ApiError("build_not_found", "构建不存在", status_code=404)

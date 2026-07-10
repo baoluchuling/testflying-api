@@ -165,7 +165,11 @@ const buildsState: BuildsState = {
       expiresAt: null,
       expiresAtLabel: '-',
       artifact: null,
-      artifacts: []
+      artifacts: [],
+      failureClassification: '',
+      failureSummary: '',
+      humanAction: '',
+      recentEvents: []
     }
   ]
 };

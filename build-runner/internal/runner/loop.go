@@ -13,6 +13,8 @@ const (
 	postAgentArtifactUploadFailureClassification = "artifact_upload_failed"
 	postAgentArtifactUploadAction                = "Inspect the package-agent output directory, fix the missing or unreadable artifact, and rerun or manually resolve the build."
 	preAgentWorkspaceFailureClassification       = "workspace_setup_failed"
+	preAgentCheckoutFailureClassification        = "checkout_failed"
+	preAgentRepoSubpathFailureClassification     = "repo_subpath_invalid"
 	preAgentInputFailureClassification           = "build_input_write_failed"
 	preAgentStartEventFailureClassification      = "start_event_post_failed"
 	postAgentFinishEventFailureClassification    = "finish_event_post_failed"
@@ -78,12 +80,48 @@ func handleBuild(ctx context.Context, client *Client, cfg Config, build BuildAss
 		)
 	}
 
+	commitSHA, err := CheckoutSource(ctx, workspace, build.GitURL, build.GitRef)
+	if err != nil {
+		return completeWithOriginalError(
+			ctx,
+			client,
+			build.ID,
+			preAgentFailureRequest(
+				cfg.RunnerID,
+				preAgentCheckoutFailureClassification,
+				fmt.Sprintf("failed to checkout %q at %q", build.GitURL, build.GitRef),
+				err,
+			),
+			err,
+		)
+	}
+
+	projectDir, err := SafeProjectDirPath(workspace, build.RepoSubpath)
+	if err != nil {
+		return completeWithOriginalError(
+			ctx,
+			client,
+			build.ID,
+			preAgentFailureRequest(
+				cfg.RunnerID,
+				preAgentRepoSubpathFailureClassification,
+				fmt.Sprintf("invalid repoSubpath %q", build.RepoSubpath),
+				err,
+			),
+			err,
+		)
+	}
+
 	inputPath, err := WriteBuildInput(workspace, BuildInput{
 		BuildID:        build.ID,
-		ProjectDir:     ProjectDirPath(workspace, build.RepoSubpath),
+		ProjectDir:     projectDir,
 		Platform:       build.Platform,
 		Environment:    build.Environment,
 		ArtifactType:   build.ArtifactType,
+		GitURL:         build.GitURL,
+		GitRef:         build.GitRef,
+		RepoSubpath:    build.RepoSubpath,
+		CommitSHA:      commitSHA,
 		CredentialRefs: build.CredentialRefs,
 		MaxAttempts:    BuildRetryLimit,
 	})
@@ -111,6 +149,7 @@ func handleBuild(ctx context.Context, client *Client, cfg Config, build BuildAss
 			"workspace": workspace,
 			"gitUrl":    build.GitURL,
 			"gitRef":    build.GitRef,
+			"commitSha": commitSHA,
 		},
 	}); err != nil {
 		return completeWithOriginalError(
@@ -132,6 +171,7 @@ func handleBuild(ctx context.Context, client *Client, cfg Config, build BuildAss
 	payload := map[string]interface{}{
 		"workspace": workspace,
 		"outputDir": outputDir,
+		"commitSha": commitSHA,
 	}
 	if reportErr == nil {
 		payload["report"] = report

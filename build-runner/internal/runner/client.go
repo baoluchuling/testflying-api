@@ -100,10 +100,17 @@ func (c *Client) PostEvent(
 	buildID string,
 	request eventRequest,
 ) error {
+	request.Message = RedactText(request.Message)
+	if request.Payload != nil {
+		request.Payload = RedactMap(request.Payload)
+	}
 	return c.postJSON(ctx, fmt.Sprintf("/admin/api/build-runners/builds/%s/events", buildID), request, nil)
 }
 
 func (c *Client) Complete(ctx context.Context, buildID string, request completeRequest) error {
+	request.Note = RedactText(request.Note)
+	request.FailureSummary = RedactText(request.FailureSummary)
+	request.HumanAction = RedactText(request.HumanAction)
 	return c.postJSON(ctx, fmt.Sprintf("/admin/api/build-runners/builds/%s/complete", buildID), request, nil)
 }
 

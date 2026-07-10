@@ -103,6 +103,8 @@ from testflying_api.admin_api.schemas import (
     RunnerHeartbeatRequest,
     RunnerPollRequest,
     RunnerPollResponse,
+    RunnerProvisionRequest,
+    RunnerProvisionResponse,
     StoreAppBuildItem,
     StoreAppItem,
     StoreAppsAccountSummary,
@@ -145,9 +147,9 @@ from testflying_api.llm_config import (
 from testflying_api.schema import (
     App,
     Build,
+    BuildRunner,
     DeveloperAccount,
     Device,
-    BuildRunner,
     LlmFeatureBinding,
     LlmProfile,
     Notification,
@@ -362,6 +364,33 @@ def _runner_token(request: Request) -> str:
     return token
 
 
+@router.post(
+    "/build-runners/provision",
+    response_model=RunnerProvisionResponse,
+    response_model_by_alias=True,
+)
+def runner_provision(
+    payload: RunnerProvisionRequest,
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+) -> RunnerProvisionResponse:
+    try:
+        runner, token = build_platform.provision_runner(
+            session,
+            runner_id=payload.runner_id,
+            name=payload.name,
+            labels=payload.labels,
+            version=payload.version,
+            package_agent_version=payload.package_agent_version,
+            capabilities=payload.capabilities,
+            token_pepper=request.app.state.settings.static_token,
+        )
+        return RunnerProvisionResponse(runner=_build_runner_item(runner), token=token)
+    except ApiError as error:
+        raise _admin_api_error(error) from error
+
+
 @router.post("/build-runners/register", response_model=dict, response_model_by_alias=True)
 def runner_register(
     payload: RunnerHeartbeatRequest,
@@ -378,6 +407,7 @@ def runner_register(
             version=payload.version,
             package_agent_version=payload.package_agent_version,
             capabilities=payload.capabilities,
+            token_pepper=request.app.state.settings.static_token,
         )
         return {"ok": True}
     except ApiError as error:
@@ -400,6 +430,7 @@ def runner_heartbeat(
             version=payload.version,
             package_agent_version=payload.package_agent_version,
             capabilities=payload.capabilities,
+            token_pepper=request.app.state.settings.static_token,
         )
         return {"ok": True}
     except ApiError as error:
@@ -417,6 +448,7 @@ def runner_poll(
             session,
             runner_id=payload.runner_id,
             token=_runner_token(request),
+            token_pepper=request.app.state.settings.static_token,
         )
         return RunnerPollResponse(build=_runner_build_payload(build) if build else None)
     except ApiError as error:
@@ -440,6 +472,7 @@ def runner_build_event(
             build_id=build_id,
             runner_id=payload.runner_id,
             token=_runner_token(request),
+            token_pepper=request.app.state.settings.static_token,
             event_type=payload.type,
             message=payload.message,
             lifecycle_status=payload.lifecycle_status,
@@ -470,6 +503,7 @@ async def runner_build_artifact(
             build_id=build_id,
             runner_id=runner_id,
             token=_runner_token(request),
+            token_pepper=request.app.state.settings.static_token,
             artifact_type=artifact_type,
             file_name=file.filename or "",
             content=await file.read(),
@@ -497,6 +531,7 @@ def runner_build_complete(
             build_id=build_id,
             runner_id=payload.runner_id,
             token=_runner_token(request),
+            token_pepper=request.app.state.settings.static_token,
             status=payload.status,
             version=payload.version,
             build_number=payload.build_number,

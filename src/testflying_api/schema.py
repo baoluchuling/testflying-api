@@ -112,6 +112,10 @@ class Build(Base):
         back_populates="build",
         cascade="all, delete-orphan",
     )
+    events: Mapped[list[BuildEvent]] = relationship(
+        back_populates="build",
+        cascade="all, delete-orphan",
+    )
 
     def package_artifact(self) -> Artifact | None:
         return next(
@@ -185,6 +189,8 @@ class BuildEvent(Base):
         nullable=False,
         default=utc_now,
     )
+
+    build: Mapped[Build] = relationship(back_populates="events")
 
 
 class Device(Base):

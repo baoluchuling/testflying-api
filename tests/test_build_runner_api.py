@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from testflying_api.build_platform import hash_runner_token
 from testflying_api.schema import App, Artifact, Build, BuildEvent, BuildRunner
 
 
@@ -16,6 +17,32 @@ def _admin_headers(password: str = "dev-token") -> dict[str, str]:
 
 def _runner_headers(token: str = "runner-token") -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
+
+
+def _runner_token_hash(token: str = "runner-token") -> str:
+    return hash_runner_token(token, token_pepper="dev-token")
+
+
+def _provision_runner_record(
+    session: Session,
+    *,
+    runner_id: str = "runner-mac-1",
+    current_build_id: str | None = None,
+) -> BuildRunner:
+    runner = BuildRunner(
+        id=runner_id,
+        name="Mac mini 1",
+        token_hash=_runner_token_hash(),
+        labels_json=[],
+        capabilities_json={},
+        status="busy" if current_build_id else "offline",
+        version="",
+        package_agent_version="",
+        current_build_id=current_build_id,
+    )
+    session.add(runner)
+    session.commit()
+    return runner
 
 
 def _create_app(session: Session, *, app_id: str = "app-ios-demo", platform: str = "ios") -> App:
@@ -63,7 +90,37 @@ def _create_agent_build(
     return build
 
 
-def test_runner_register_creates_runner_record(client: TestClient, db_session: Session) -> None:
+def test_admin_provisions_runner_token_once(client: TestClient, db_session: Session) -> None:
+    response = client.post(
+        "/admin/api/build-runners/provision",
+        headers=_admin_headers(),
+        json={
+            "runnerId": "runner-mac-1",
+            "name": "Mac mini 1",
+            "labels": ["ios-release"],
+            "version": "0.1.0",
+            "packageAgentVersion": "0.1.0",
+            "capabilities": {"platforms": ["ios"], "llmAdapters": ["codex"], "capacity": 1},
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["runner"]["id"] == "runner-mac-1"
+    assert payload["runner"]["status"] == "offline"
+    assert payload["token"]
+    runner = db_session.get(BuildRunner, "runner-mac-1")
+    assert runner is not None
+    assert runner.token_hash.startswith("hmac-sha256:")
+    assert runner.token_hash != payload["token"]
+
+
+def test_runner_register_updates_provisioned_runner_record(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _provision_runner_record(db_session)
+
     response = client.post(
         "/admin/api/build-runners/register",
         headers=_runner_headers(),
@@ -82,12 +139,64 @@ def test_runner_register_creates_runner_record(client: TestClient, db_session: S
     runner = db_session.get(BuildRunner, "runner-mac-1")
     assert runner is not None
     assert runner.status == "online"
-    assert runner.token_hash == "runner-token"
+    assert runner.token_hash == _runner_token_hash()
     assert runner.labels_json == ["ios-release"]
     assert runner.capabilities_json["capacity"] == 1
 
 
-def test_runner_heartbeat_registers_capabilities(client: TestClient, db_session: Session) -> None:
+def test_runner_heartbeat_rejects_unknown_runner(client: TestClient) -> None:
+    response = client.post(
+        "/admin/api/build-runners/heartbeat",
+        headers=_runner_headers(),
+        json={
+            "runnerId": "runner-unknown",
+            "name": "Mac mini 1",
+            "labels": ["ios-release"],
+            "version": "0.1.0",
+            "packageAgentVersion": "0.1.0",
+            "capabilities": {"platforms": ["ios"], "llmAdapters": ["codex"], "capacity": 1},
+        },
+    )
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "unknown_runner"
+
+
+def test_runner_register_rejects_unknown_runner(client: TestClient) -> None:
+    response = client.post(
+        "/admin/api/build-runners/register",
+        headers=_runner_headers(),
+        json={
+            "runnerId": "runner-unknown",
+            "name": "Mac mini 1",
+            "labels": ["ios-release"],
+            "version": "0.1.0",
+            "packageAgentVersion": "0.1.0",
+            "capabilities": {"platforms": ["ios"], "llmAdapters": ["codex"], "capacity": 1},
+        },
+    )
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "unknown_runner"
+
+
+def test_runner_poll_rejects_unknown_runner(client: TestClient) -> None:
+    response = client.post(
+        "/admin/api/build-runners/poll",
+        headers=_runner_headers(),
+        json={"runnerId": "runner-unknown", "timeoutSeconds": 0},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "unknown_runner"
+
+
+def test_runner_heartbeat_updates_provisioned_capabilities(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _provision_runner_record(db_session)
+
     response = client.post(
         "/admin/api/build-runners/heartbeat",
         headers=_runner_headers(),
@@ -118,7 +227,7 @@ def test_build_runners_state_lists_runner_status_and_capabilities(
         BuildRunner(
             id="runner-mac-1",
             name="Mac mini 1",
-            token_hash="runner-token",
+            token_hash=_runner_token_hash(),
             labels_json=["ios-release"],
             capabilities_json={"platforms": ["ios"], "llmAdapters": ["codex"], "capacity": 1},
             status="busy",
@@ -165,17 +274,12 @@ def test_build_runners_state_requires_basic_auth(client: TestClient) -> None:
 def test_runner_reregister_rejects_token_takeover(client: TestClient, db_session: Session) -> None:
     app = _create_app(db_session)
     build = _create_agent_build(db_session, app=app)
-    runner = BuildRunner(
-        id="runner-mac-1",
-        name="Mac mini 1",
-        token_hash="runner-token",
-        labels_json=["ios-release"],
-        capabilities_json={"platforms": ["ios"], "llmAdapters": ["codex"], "capacity": 1},
-        status="busy",
-        version="0.1.0",
-        package_agent_version="0.1.0",
-        current_build_id=build.id,
-    )
+    runner = _provision_runner_record(db_session, current_build_id=build.id)
+    runner.labels_json = ["ios-release"]
+    runner.capabilities_json = {"platforms": ["ios"], "llmAdapters": ["codex"], "capacity": 1}
+    runner.status = "busy"
+    runner.version = "0.1.0"
+    runner.package_agent_version = "0.1.0"
     db_session.add(runner)
     db_session.commit()
 
@@ -201,7 +305,7 @@ def test_runner_reregister_rejects_token_takeover(client: TestClient, db_session
         }
     }
     db_session.refresh(runner)
-    assert runner.token_hash == "runner-token"
+    assert runner.token_hash == _runner_token_hash()
     assert runner.name == "Mac mini 1"
     assert runner.labels_json == ["ios-release"]
     assert runner.capabilities_json["platforms"] == ["ios"]
@@ -215,6 +319,7 @@ def test_runner_poll_assigns_matching_queued_build_and_enforces_capacity(
     app = _create_app(db_session)
     first_build = _create_agent_build(db_session, build_id="build-agent-queued-1", app=app)
     second_build = _create_agent_build(db_session, build_id="build-agent-queued-2", app=app)
+    _provision_runner_record(db_session)
     client.post(
         "/admin/api/build-runners/register",
         headers=_runner_headers(),
@@ -258,7 +363,7 @@ def test_runner_poll_assigns_matching_queued_build_and_enforces_capacity(
     )
 
     assert second_response.status_code == 200
-    assert second_response.json() == {"build": None}
+    assert second_response.json()["build"]["id"] == first_build.id
     db_session.refresh(second_build)
     assert second_build.lifecycle_status == "queued"
 
@@ -283,6 +388,7 @@ def test_runner_poll_requires_explicit_platform_capability(
         build_id="build-agent-matching-platform",
         app=app,
     )
+    _provision_runner_record(db_session)
 
     client.post(
         "/admin/api/build-runners/register",
@@ -365,6 +471,7 @@ def test_runner_poll_skips_builds_at_retry_cap(client: TestClient, db_session: S
     db_session.add_all([capped_build, eligible_build])
     db_session.commit()
 
+    _provision_runner_record(db_session)
     client.post(
         "/admin/api/build-runners/register",
         headers=_runner_headers(),
@@ -400,6 +507,7 @@ def test_runner_artifact_event_and_complete_flow_marks_build_succeeded(
 ) -> None:
     app = _create_app(db_session)
     build = _create_agent_build(db_session, app=app)
+    _provision_runner_record(db_session)
     client.post(
         "/admin/api/build-runners/register",
         headers=_runner_headers(),
@@ -497,6 +605,7 @@ def test_runner_artifact_upload_keeps_multiple_rows_for_same_type(
 ) -> None:
     app = _create_app(db_session)
     build = _create_agent_build(db_session, app=app)
+    _provision_runner_record(db_session)
     client.post(
         "/admin/api/build-runners/register",
         headers=_runner_headers(),
@@ -543,12 +652,50 @@ def test_runner_artifact_upload_keeps_multiple_rows_for_same_type(
     assert {artifact.file_name for artifact in log_artifacts} == {"runner.log", "xcode.log"}
 
 
+def test_runner_artifact_upload_rejects_unknown_type(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    app = _create_app(db_session)
+    build = _create_agent_build(db_session, app=app)
+    _provision_runner_record(db_session)
+    client.post(
+        "/admin/api/build-runners/register",
+        headers=_runner_headers(),
+        json={
+            "runnerId": "runner-mac-1",
+            "name": "Mac mini 1",
+            "labels": ["ios-release"],
+            "version": "0.1.0",
+            "packageAgentVersion": "0.1.0",
+            "capabilities": {"platforms": ["ios"], "llmAdapters": ["codex"], "capacity": 1},
+        },
+    )
+    client.post(
+        "/admin/api/build-runners/poll",
+        headers=_runner_headers(),
+        json={"runnerId": "runner-mac-1", "timeoutSeconds": 0},
+    )
+
+    response = client.post(
+        f"/admin/api/build-runners/builds/{build.id}/artifacts",
+        headers=_runner_headers(),
+        data={"runnerId": "runner-mac-1", "artifactType": "other"},
+        files={"file": ("other.bin", b"content", "application/octet-stream")},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "invalid_artifact_type"
+    assert db_session.query(Artifact).filter_by(build_id=build.id).count() == 0
+
+
 def test_runner_event_rejects_terminal_lifecycle_status(
     client: TestClient,
     db_session: Session,
 ) -> None:
     app = _create_app(db_session)
     build = _create_agent_build(db_session, app=app)
+    _provision_runner_record(db_session)
     client.post(
         "/admin/api/build-runners/register",
         headers=_runner_headers(),
@@ -597,6 +744,7 @@ def test_runner_complete_rejects_success_without_required_artifacts(
 ) -> None:
     app = _create_app(db_session)
     build = _create_agent_build(db_session, app=app)
+    _provision_runner_record(db_session)
     client.post(
         "/admin/api/build-runners/register",
         headers=_runner_headers(),
@@ -652,6 +800,7 @@ def test_runner_complete_rejects_invalid_terminal_status(
 ) -> None:
     app = _create_app(db_session)
     build = _create_agent_build(db_session, app=app)
+    _provision_runner_record(db_session)
     client.post(
         "/admin/api/build-runners/register",
         headers=_runner_headers(),

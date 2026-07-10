@@ -172,3 +172,90 @@ def test_cli_returns_success_only_with_required_artifacts(tmp_path: Path) -> Non
     report = json.loads((output_dir / "report.json").read_text(encoding="utf-8"))
     assert report["status"] == "success"
     assert report["classification"] == "build_succeeded"
+
+
+def test_cli_runs_project_config_command_and_collects_redacted_artifacts(tmp_path: Path) -> None:
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    (project_dir / "testflying-package-agent.json").write_text(
+        json.dumps(
+            {
+                "buildCommand": [
+                    "python3",
+                    "-c",
+                    (
+                        "from pathlib import Path; "
+                        "Path('dist').mkdir(); Path('logs').mkdir(); "
+                        "Path('dist/app.ipa').write_text('ipa'); "
+                        "Path('dist/app.dSYM.zip').write_text('symbols'); "
+                        "Path('logs/build.log').write_text('token=super-secret'); "
+                        "print('token=super-secret')"
+                    ),
+                ],
+                "packagePaths": ["dist/*.ipa"],
+                "symbolsPaths": ["dist/*.dSYM.zip"],
+                "logPaths": ["logs/*.log"],
+                "version": "1.2.3",
+                "buildNumber": "45",
+            }
+        ),
+        encoding="utf-8",
+    )
+    input_path = tmp_path / "build-input.json"
+    input_path.write_text(
+        json.dumps(
+            {
+                "buildId": "build-agent-1",
+                "projectDir": str(project_dir),
+                "platform": "ios",
+                "environment": "development",
+                "artifactType": "ipa",
+                "gitUrl": "file:///repo.git",
+                "gitRef": "main",
+                "repoSubpath": "",
+                "commitSha": "abc123",
+            }
+        ),
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "output"
+
+    exit_code = main(["build", "--input", str(input_path), "--output", str(output_dir)])
+
+    assert exit_code == 0
+    report = json.loads((output_dir / "report.json").read_text(encoding="utf-8"))
+    assert report["status"] == "success"
+    assert report["version"] == "1.2.3"
+    assert report["buildNumber"] == "45"
+    assert report["commitSha"] == "abc123"
+    assert Path(report["packagePaths"][0]).read_text(encoding="utf-8") == "ipa"
+    assert Path(report["symbolsPaths"][0]).read_text(encoding="utf-8") == "symbols"
+    assert len(report["logPaths"]) == 2
+    assert "[REDACTED]" in (output_dir / "command.log").read_text(encoding="utf-8")
+    assert "[REDACTED]" in Path(report["logPaths"][1]).read_text(encoding="utf-8")
+
+
+def test_cli_returns_needs_human_without_config_or_artifact_paths(tmp_path: Path) -> None:
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    input_path = tmp_path / "build-input.json"
+    input_path.write_text(
+        json.dumps(
+            {
+                "projectDir": str(project_dir),
+                "platform": "ios",
+                "environment": "development",
+                "artifactType": "ipa",
+            }
+        ),
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "output"
+
+    exit_code = main(["build", "--input", str(input_path), "--output", str(output_dir)])
+
+    assert exit_code == 2
+    report = json.loads((output_dir / "report.json").read_text(encoding="utf-8"))
+    assert report["status"] == "needs_human"
+    assert report["classification"] == "missing_build_plan"
+    assert "testflying-package-agent.json" in report["humanAction"]

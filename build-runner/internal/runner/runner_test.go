@@ -74,6 +74,52 @@ func TestWriteBuildInputCreatesJSON(t *testing.T) {
 	}
 }
 
+func TestSafeProjectDirPathRejectsTraversalAndSymlinkEscape(t *testing.T) {
+	root := t.TempDir()
+	workspace := WorkspacePath(root, "build-123")
+	projectRoot := CheckoutPath(workspace)
+	if err := os.MkdirAll(filepath.Join(projectRoot, "ios", "app"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(root, "outside")
+	if err := os.MkdirAll(outside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(projectRoot, "escape")); err != nil {
+		t.Fatal(err)
+	}
+
+	projectDir, err := SafeProjectDirPath(workspace, "ios/app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(filepath.ToSlash(projectDir), "/project/ios/app") {
+		t.Fatalf("projectDir = %q", projectDir)
+	}
+
+	for _, subpath := range []string{"../outside", "/tmp", "escape"} {
+		t.Run(subpath, func(t *testing.T) {
+			_, err := SafeProjectDirPath(workspace, subpath)
+			if err == nil {
+				t.Fatal("SafeProjectDirPath() error = nil, want error")
+			}
+		})
+	}
+}
+
+func TestRedactTextCoversSecrets(t *testing.T) {
+	input := "token=abc123456789\npassword: hunter2\nAuthorization: Bearer abcdefghijklmnop\nghp_abcdefghijklmnop\n-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----"
+	redacted := RedactText(input)
+	for _, secret := range []string{"abc123456789", "hunter2", "abcdefghijklmnop", "ghp_"} {
+		if strings.Contains(redacted, secret) {
+			t.Fatalf("redacted text still contains %q: %q", secret, redacted)
+		}
+	}
+	if strings.Count(redacted, "[REDACTED]") < 4 {
+		t.Fatalf("redacted text = %q", redacted)
+	}
+}
+
 func TestRunOnceNoBuildOnlyHeartbeatsAndPolls(t *testing.T) {
 	var heartbeatCalls int
 	var pollCalls int
@@ -230,6 +276,7 @@ func TestConfigValidateRequiresFieldsAndCapacityOne(t *testing.T) {
 
 func TestRunOnceAssignedBuildRunsPackageAgentPostsEventsAndCompletesNeedsHuman(t *testing.T) {
 	root := t.TempDir()
+	gitURL := createSourceRepo(t, root, []string{"ios/app/.keep"})
 	packageAgentBin := writeFakePackageAgentWithFiles(t, root, 0, `{
   "status": "success",
   "classification": "build_succeeded",
@@ -290,17 +337,7 @@ func TestRunOnceAssignedBuildRunsPackageAgentPostsEventsAndCompletesNeedsHuman(t
 				t.Fatalf("decode poll: %v", err)
 			}
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"build":{
-				"id":"build-123",
-				"appId":"app-1",
-				"platform":"ios",
-				"environment":"development",
-				"gitUrl":"https://example.com/repo.git",
-				"gitRef":"main",
-				"repoSubpath":"ios/app",
-				"artifactType":"ipa",
-				"credentialRefs":{"git":"git-main"}
-			}}`))
+			writeBuildAssignmentResponse(t, w, gitURL, "ios/app")
 		case "/admin/api/build-runners/builds/build-123/events":
 			var event capturedEvent
 			if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
@@ -388,8 +425,12 @@ func TestRunOnceAssignedBuildRunsPackageAgentPostsEventsAndCompletesNeedsHuman(t
 	if err := json.Unmarshal(inputData, &gotInput); err != nil {
 		t.Fatal(err)
 	}
-	if gotInput.ProjectDir != filepath.Join(workspace, "project", "ios", "app") {
-		t.Fatalf("projectDir = %q", gotInput.ProjectDir)
+	expectedProjectDir, err := filepath.EvalSymlinks(filepath.Join(workspace, "project", "ios", "app"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotInput.ProjectDir != expectedProjectDir {
+		t.Fatalf("projectDir = %q, want %q", gotInput.ProjectDir, expectedProjectDir)
 	}
 	if gotInput.MaxAttempts != BuildRetryLimit {
 		t.Fatalf("maxAttempts = %d, want %d", gotInput.MaxAttempts, BuildRetryLimit)
@@ -502,6 +543,7 @@ func TestRunOnceAssignedBuildRunsPackageAgentPostsEventsAndCompletesNeedsHuman(t
 
 func TestRunOnceAssignedBuildCompletesFailedWhenPackageAgentExitsNonZero(t *testing.T) {
 	root := t.TempDir()
+	gitURL := createSourceRepo(t, root, []string{"ios/app/.keep"})
 	packageAgentBin := writeFakePackageAgent(t, root, 7, `{
   "status": "failed",
   "classification": "codesign_failed",
@@ -536,17 +578,7 @@ func TestRunOnceAssignedBuildCompletesFailedWhenPackageAgentExitsNonZero(t *test
 			_, _ = w.Write([]byte(`{"ok":true}`))
 		case "/admin/api/build-runners/poll":
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"build":{
-				"id":"build-123",
-				"appId":"app-1",
-				"platform":"ios",
-				"environment":"development",
-				"gitUrl":"https://example.com/repo.git",
-				"gitRef":"main",
-				"repoSubpath":"ios/app",
-				"artifactType":"ipa",
-				"credentialRefs":{"git":"git-main"}
-			}}`))
+			writeBuildAssignmentResponse(t, w, gitURL, "ios/app")
 		case "/admin/api/build-runners/builds/build-123/events":
 			var event capturedEvent
 			if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
@@ -641,6 +673,7 @@ func TestRunOnceAssignedBuildCompletesFailedWhenPackageAgentExitsNonZero(t *test
 
 func TestRunOnceAssignedBuildCompletesNeedsHumanWhenPackageAgentExitsTwo(t *testing.T) {
 	root := t.TempDir()
+	gitURL := createSourceRepo(t, root, []string{"ios/app/.keep"})
 	packageAgentBin := writeFakePackageAgent(t, root, 2, `{
   "status": "needs_human",
   "classification": "missing_artifacts",
@@ -677,17 +710,7 @@ func TestRunOnceAssignedBuildCompletesNeedsHumanWhenPackageAgentExitsTwo(t *test
 			_, _ = w.Write([]byte(`{"ok":true}`))
 		case "/admin/api/build-runners/poll":
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"build":{
-				"id":"build-123",
-				"appId":"app-1",
-				"platform":"ios",
-				"environment":"development",
-				"gitUrl":"https://example.com/repo.git",
-				"gitRef":"main",
-				"repoSubpath":"ios/app",
-				"artifactType":"ipa",
-				"credentialRefs":{"git":"git-main"}
-			}}`))
+			writeBuildAssignmentResponse(t, w, gitURL, "ios/app")
 		case "/admin/api/build-runners/builds/build-123/events":
 			var event capturedEvent
 			if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
@@ -777,6 +800,7 @@ func TestRunOnceAssignedBuildCompletesNeedsHumanWhenPackageAgentExitsTwo(t *test
 
 func TestRunOnceAssignedBuildCompletesFailedWhenWorkspaceSetupFails(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "root-file")
+	gitURL := "file:///workspace-setup-fails-before-checkout"
 	if err := os.WriteFile(root, []byte("not a directory"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -798,17 +822,7 @@ func TestRunOnceAssignedBuildCompletesFailedWhenWorkspaceSetupFails(t *testing.T
 			_, _ = w.Write([]byte(`{"ok":true}`))
 		case "/admin/api/build-runners/poll":
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"build":{
-				"id":"build-123",
-				"appId":"app-1",
-				"platform":"ios",
-				"environment":"development",
-				"gitUrl":"https://example.com/repo.git",
-				"gitRef":"main",
-				"repoSubpath":"ios/app",
-				"artifactType":"ipa",
-				"credentialRefs":{"git":"git-main"}
-			}}`))
+			writeBuildAssignmentResponse(t, w, gitURL, "ios/app")
 		case "/admin/api/build-runners/builds/build-123/complete":
 			var complete capturedComplete
 			if err := json.NewDecoder(r.Body).Decode(&complete); err != nil {
@@ -863,6 +877,7 @@ func TestRunOnceAssignedBuildCompletesFailedWhenWorkspaceSetupFails(t *testing.T
 
 func TestRunOnceAssignedBuildCompletesFailedWhenStartEventPostFails(t *testing.T) {
 	root := t.TempDir()
+	gitURL := createSourceRepo(t, root, []string{"ios/app/.keep"})
 
 	type capturedComplete struct {
 		RunnerID              string `json:"runnerId"`
@@ -882,17 +897,7 @@ func TestRunOnceAssignedBuildCompletesFailedWhenStartEventPostFails(t *testing.T
 			_, _ = w.Write([]byte(`{"ok":true}`))
 		case "/admin/api/build-runners/poll":
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"build":{
-				"id":"build-123",
-				"appId":"app-1",
-				"platform":"ios",
-				"environment":"development",
-				"gitUrl":"https://example.com/repo.git",
-				"gitRef":"main",
-				"repoSubpath":"ios/app",
-				"artifactType":"ipa",
-				"credentialRefs":{"git":"git-main"}
-			}}`))
+			writeBuildAssignmentResponse(t, w, gitURL, "ios/app")
 		case "/admin/api/build-runners/builds/build-123/events":
 			eventCalls++
 			http.Error(w, "start event rejected", http.StatusBadGateway)
@@ -948,6 +953,7 @@ func TestRunOnceAssignedBuildCompletesFailedWhenStartEventPostFails(t *testing.T
 
 func TestRunOnceAssignedBuildCompletesNeedsHumanWhenFinishEventPostFails(t *testing.T) {
 	root := t.TempDir()
+	gitURL := createSourceRepo(t, root, []string{"ios/app/.keep"})
 	packageAgentBin := writeFakePackageAgentWithFiles(t, root, 0, `{
   "status": "success",
   "classification": "build_succeeded",
@@ -984,17 +990,7 @@ func TestRunOnceAssignedBuildCompletesNeedsHumanWhenFinishEventPostFails(t *test
 			_, _ = w.Write([]byte(`{"ok":true}`))
 		case "/admin/api/build-runners/poll":
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"build":{
-				"id":"build-123",
-				"appId":"app-1",
-				"platform":"ios",
-				"environment":"development",
-				"gitUrl":"https://example.com/repo.git",
-				"gitRef":"main",
-				"repoSubpath":"ios/app",
-				"artifactType":"ipa",
-				"credentialRefs":{"git":"git-main"}
-			}}`))
+			writeBuildAssignmentResponse(t, w, gitURL, "ios/app")
 		case "/admin/api/build-runners/builds/build-123/events":
 			var event capturedEvent
 			if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
@@ -1071,6 +1067,7 @@ func TestRunOnceAssignedBuildCompletesNeedsHumanWhenFinishEventPostFails(t *test
 
 func TestRunOnceAssignedBuildCompletesNeedsHumanWhenArtifactUploadFails(t *testing.T) {
 	root := t.TempDir()
+	gitURL := createSourceRepo(t, root, []string{"ios/app/.keep"})
 	packageAgentBin := writeFakePackageAgent(t, root, 0, `{
   "status": "success",
   "classification": "build_succeeded",
@@ -1100,17 +1097,7 @@ func TestRunOnceAssignedBuildCompletesNeedsHumanWhenArtifactUploadFails(t *testi
 			_, _ = w.Write([]byte(`{"ok":true}`))
 		case "/admin/api/build-runners/poll":
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"build":{
-				"id":"build-123",
-				"appId":"app-1",
-				"platform":"ios",
-				"environment":"development",
-				"gitUrl":"https://example.com/repo.git",
-				"gitRef":"main",
-				"repoSubpath":"ios/app",
-				"artifactType":"ipa",
-				"credentialRefs":{"git":"git-main"}
-			}}`))
+			writeBuildAssignmentResponse(t, w, gitURL, "ios/app")
 		case "/admin/api/build-runners/builds/build-123/events":
 			eventCalls++
 			w.Header().Set("Content-Type", "application/json")
@@ -1219,6 +1206,7 @@ func TestArtifactUploadsFromReportRejectsPathsOutsideOutputDir(t *testing.T) {
 
 func TestRunOnceAssignedBuildCompletesNeedsHumanWhenSuccessReportEscapesOutputDir(t *testing.T) {
 	root := t.TempDir()
+	gitURL := createSourceRepo(t, root, []string{"ios/app/.keep"})
 	packageAgentBin := writeFakePackageAgentWithFiles(t, root, 0, `{
   "status": "success",
   "classification": "build_succeeded",
@@ -1251,17 +1239,7 @@ func TestRunOnceAssignedBuildCompletesNeedsHumanWhenSuccessReportEscapesOutputDi
 			_, _ = w.Write([]byte(`{"ok":true}`))
 		case "/admin/api/build-runners/poll":
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"build":{
-				"id":"build-123",
-				"appId":"app-1",
-				"platform":"ios",
-				"environment":"development",
-				"gitUrl":"https://example.com/repo.git",
-				"gitRef":"main",
-				"repoSubpath":"ios/app",
-				"artifactType":"ipa",
-				"credentialRefs":{"git":"git-main"}
-			}}`))
+			writeBuildAssignmentResponse(t, w, gitURL, "ios/app")
 		case "/admin/api/build-runners/builds/build-123/events":
 			eventCalls++
 			w.Header().Set("Content-Type", "application/json")
@@ -1335,6 +1313,53 @@ func TestCompleteStatusFromReport(t *testing.T) {
 
 func writeFakePackageAgent(t *testing.T, root string, exitCode int, reportJSON string) string {
 	return writeFakePackageAgentWithFiles(t, root, exitCode, reportJSON, nil)
+}
+
+func writeBuildAssignmentResponse(t *testing.T, w http.ResponseWriter, gitURL string, repoSubpath string) {
+	t.Helper()
+	_, _ = fmt.Fprintf(w, `{"build":{
+		"id":"build-123",
+		"appId":"app-1",
+		"platform":"ios",
+		"environment":"development",
+		"gitUrl":%q,
+		"gitRef":"main",
+		"repoSubpath":%q,
+		"artifactType":"ipa",
+		"credentialRefs":{"git":"git-main"}
+	}}`, gitURL, repoSubpath)
+}
+
+func createSourceRepo(t *testing.T, root string, files []string) string {
+	t.Helper()
+	repo := filepath.Join(root, "source-repo")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range files {
+		path := filepath.Join(repo, file)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("fixture"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runTestGit(t, repo, "init", "-b", "main")
+	runTestGit(t, repo, "config", "user.email", "runner@example.test")
+	runTestGit(t, repo, "config", "user.name", "Runner Test")
+	runTestGit(t, repo, "add", ".")
+	runTestGit(t, repo, "commit", "-m", "fixture")
+	return repo
+}
+
+func runTestGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %s failed: %v: %s", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
+	}
 }
 
 func writeFakePackageAgentWithFiles(

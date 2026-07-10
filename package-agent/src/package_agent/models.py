@@ -12,6 +12,11 @@ class BuildInput:
     platform: str
     environment: str
     artifact_type: str
+    build_id: str | None = None
+    git_url: str = ""
+    git_ref: str = ""
+    repo_subpath: str = ""
+    commit_sha: str | None = None
     max_attempts: int = MAX_BUILD_ATTEMPTS
     package_paths: list[str] = field(default_factory=list)
     symbols_paths: list[str] = field(default_factory=list)
@@ -31,10 +36,17 @@ class BuildInput:
             raise ValueError(f"maxAttempts must be <= {MAX_BUILD_ATTEMPTS}")
 
         return cls(
+            build_id=str(payload["buildId"]) if isinstance(payload.get("buildId"), str) else None,
             project_dir=str(payload["projectDir"]),
             platform=str(payload["platform"]),
             environment=str(payload["environment"]),
             artifact_type=str(payload["artifactType"]),
+            git_url=str(payload.get("gitUrl") or ""),
+            git_ref=str(payload.get("gitRef") or ""),
+            repo_subpath=str(payload.get("repoSubpath") or ""),
+            commit_sha=(
+                str(payload["commitSha"]) if isinstance(payload.get("commitSha"), str) else None
+            ),
             max_attempts=max_attempts,
             package_paths=_string_list(payload.get("packagePaths")),
             symbols_paths=_string_list(payload.get("symbolsPaths")),
@@ -47,6 +59,7 @@ class AgentReport:
     status: str
     classification: str
     summary: str
+    human_action: str = ""
     package_paths: list[str] = field(default_factory=list)
     symbols_paths: list[str] = field(default_factory=list)
     log_paths: list[str] = field(default_factory=list)
@@ -62,6 +75,7 @@ class AgentReport:
             "status": payload["status"],
             "classification": payload["classification"],
             "summary": payload["summary"],
+            "humanAction": payload["human_action"],
             "packagePaths": payload["package_paths"],
             "symbolsPaths": payload["symbols_paths"],
             "logPaths": payload["log_paths"],
@@ -93,9 +107,11 @@ def classify_build(build_input: BuildInput, adapter_name: str | None) -> AgentRe
             status="success",
             classification="build_succeeded",
             summary="Required package, symbols, and logs are present.",
+            human_action="",
             package_paths=package_paths,
             symbols_paths=symbols_paths,
             log_paths=log_paths,
+            commit_sha=build_input.commit_sha,
             adapter=adapter_name,
             max_attempts=build_input.max_attempts,
         )
@@ -105,9 +121,14 @@ def classify_build(build_input: BuildInput, adapter_name: str | None) -> AgentRe
             status="needs_human",
             classification="llm_unavailable",
             summary="No supported LLM adapter was discovered in automatic order.",
+            human_action=(
+                "Add testflying-package-agent.json with a safe buildCommand and artifact "
+                "globs, or configure a supported LLM adapter."
+            ),
             package_paths=package_paths,
             symbols_paths=symbols_paths,
             log_paths=log_paths,
+            commit_sha=build_input.commit_sha,
             adapter=None,
             max_attempts=build_input.max_attempts,
         )
@@ -116,9 +137,13 @@ def classify_build(build_input: BuildInput, adapter_name: str | None) -> AgentRe
         status="needs_human",
         classification="missing_artifacts",
         summary="Automatic success requires package, symbols, and logs.",
+        human_action=(
+            "Update testflying-package-agent.json artifact globs or inspect the build output."
+        ),
         package_paths=package_paths,
         symbols_paths=symbols_paths,
         log_paths=log_paths,
+        commit_sha=build_input.commit_sha,
         adapter=adapter_name,
         max_attempts=build_input.max_attempts,
     )

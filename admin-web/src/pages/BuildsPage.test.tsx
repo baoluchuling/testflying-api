@@ -87,6 +87,10 @@ const buildsState = {
       expiresAt: null,
       expiresAtLabel: '-',
       artifact: null,
+      failureClassification: '',
+      failureSummary: '',
+      humanAction: '',
+      recentEvents: [],
       artifacts: [
         {
           artifactType: 'ipa',

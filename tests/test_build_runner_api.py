@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from base64 import b64encode
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -463,7 +463,10 @@ def test_runner_poll_requires_explicit_platform_capability(
     assert build_matching.lifecycle_status == "queued"
 
 
-def test_runner_poll_skips_builds_at_retry_cap(client: TestClient, db_session: Session) -> None:
+def test_runner_poll_terminalizes_queued_builds_at_retry_cap(
+    client: TestClient,
+    db_session: Session,
+) -> None:
     app = _create_app(db_session)
     capped_build = _create_agent_build(db_session, build_id="build-agent-capped", app=app)
     capped_build.attempt_count = 5
@@ -495,10 +498,147 @@ def test_runner_poll_skips_builds_at_retry_cap(client: TestClient, db_session: S
     assert response.json()["build"]["id"] == "build-agent-eligible"
     db_session.refresh(capped_build)
     db_session.refresh(eligible_build)
-    assert capped_build.lifecycle_status == "queued"
+    assert capped_build.lifecycle_status == "needs_human"
+    assert capped_build.failure_classification == "retry_cap_reached"
     assert capped_build.attempt_count == 5
     assert eligible_build.lifecycle_status == "assigned"
     assert eligible_build.attempt_count == 1
+
+
+def test_runner_poll_returns_same_assignment_with_valid_lease(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    app = _create_app(db_session)
+    build = _create_agent_build(db_session, app=app)
+    _provision_runner_record(db_session)
+    client.post(
+        "/admin/api/build-runners/register",
+        headers=_runner_headers(),
+        json={
+            "runnerId": "runner-mac-1",
+            "name": "Mac mini 1",
+            "labels": ["ios-release"],
+            "version": "0.1.0",
+            "packageAgentVersion": "0.1.0",
+            "capabilities": {"platforms": ["ios"], "llmAdapters": ["codex"], "capacity": 1},
+        },
+    )
+
+    first_response = client.post(
+        "/admin/api/build-runners/poll",
+        headers=_runner_headers(),
+        json={"runnerId": "runner-mac-1", "timeoutSeconds": 0},
+    )
+
+    assert first_response.status_code == 200
+    assert first_response.json()["build"]["id"] == build.id
+    db_session.refresh(build)
+    first_lease = build.assignment_lease_expires_at
+    assert build.attempt_count == 1
+    assert first_lease is not None
+
+    second_response = client.post(
+        "/admin/api/build-runners/poll",
+        headers=_runner_headers(),
+        json={"runnerId": "runner-mac-1", "timeoutSeconds": 0},
+    )
+
+    assert second_response.status_code == 200
+    assert second_response.json()["build"]["id"] == build.id
+    db_session.refresh(build)
+    assert build.runner_id == "runner-mac-1"
+    assert build.attempt_count == 1
+    assert build.assignment_lease_expires_at is not None
+    assert build.assignment_lease_expires_at >= first_lease
+
+
+def test_runner_poll_reassigns_stale_assignment_to_different_runner(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    app = _create_app(db_session)
+    build = _create_agent_build(db_session, app=app)
+    first_runner = _provision_runner_record(db_session, runner_id="runner-mac-1")
+    _provision_runner_record(db_session, runner_id="runner-mac-2")
+    for runner_id in ("runner-mac-1", "runner-mac-2"):
+        client.post(
+            "/admin/api/build-runners/register",
+            headers=_runner_headers(),
+            json={
+                "runnerId": runner_id,
+                "name": runner_id,
+                "labels": ["ios-release"],
+                "version": "0.1.0",
+                "packageAgentVersion": "0.1.0",
+                "capabilities": {"platforms": ["ios"], "llmAdapters": ["codex"], "capacity": 1},
+            },
+        )
+    client.post(
+        "/admin/api/build-runners/poll",
+        headers=_runner_headers(),
+        json={"runnerId": "runner-mac-1", "timeoutSeconds": 0},
+    )
+    db_session.refresh(build)
+    build.assignment_lease_expires_at = datetime.now(UTC) - timedelta(seconds=1)
+    db_session.add(build)
+    db_session.commit()
+
+    response = client.post(
+        "/admin/api/build-runners/poll",
+        headers=_runner_headers(),
+        json={"runnerId": "runner-mac-2", "timeoutSeconds": 0},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["build"]["id"] == build.id
+    db_session.refresh(build)
+    db_session.refresh(first_runner)
+    assert build.lifecycle_status == "assigned"
+    assert build.runner_id == "runner-mac-2"
+    assert build.attempt_count == 2
+    assert first_runner.current_build_id is None
+
+
+def test_runner_poll_terminalizes_stale_assignment_at_retry_cap(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    app = _create_app(db_session)
+    build = _create_agent_build(db_session, app=app)
+    _provision_runner_record(db_session, runner_id="runner-mac-1", current_build_id=build.id)
+    _provision_runner_record(db_session, runner_id="runner-mac-2")
+    build.lifecycle_status = "assigned"
+    build.runner_id = "runner-mac-1"
+    build.attempt_count = 5
+    build.assignment_lease_expires_at = datetime.now(UTC) - timedelta(seconds=1)
+    db_session.add(build)
+    db_session.commit()
+
+    client.post(
+        "/admin/api/build-runners/register",
+        headers=_runner_headers(),
+        json={
+            "runnerId": "runner-mac-2",
+            "name": "runner-mac-2",
+            "labels": ["ios-release"],
+            "version": "0.1.0",
+            "packageAgentVersion": "0.1.0",
+            "capabilities": {"platforms": ["ios"], "llmAdapters": ["codex"], "capacity": 1},
+        },
+    )
+    response = client.post(
+        "/admin/api/build-runners/poll",
+        headers=_runner_headers(),
+        json={"runnerId": "runner-mac-2", "timeoutSeconds": 0},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"build": None}
+    db_session.refresh(build)
+    assert build.lifecycle_status == "needs_human"
+    assert build.failure_classification == "retry_cap_reached"
+    assert build.runner_id is None
 
 
 def test_runner_artifact_event_and_complete_flow_marks_build_succeeded(
@@ -736,6 +876,101 @@ def test_runner_event_rejects_terminal_lifecycle_status(
     db_session.refresh(build)
     assert build.lifecycle_status == "assigned"
     assert db_session.query(BuildEvent).filter_by(build_id=build.id).count() == 0
+
+
+def test_runner_event_redacts_message_and_payload_before_persisting(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    app = _create_app(db_session)
+    build = _create_agent_build(db_session, app=app)
+    _provision_runner_record(db_session)
+    client.post(
+        "/admin/api/build-runners/register",
+        headers=_runner_headers(),
+        json={
+            "runnerId": "runner-mac-1",
+            "name": "Mac mini 1",
+            "labels": ["ios-release"],
+            "version": "0.1.0",
+            "packageAgentVersion": "0.1.0",
+            "capabilities": {"platforms": ["ios"], "llmAdapters": ["codex"], "capacity": 1},
+        },
+    )
+    client.post(
+        "/admin/api/build-runners/poll",
+        headers=_runner_headers(),
+        json={"runnerId": "runner-mac-1", "timeoutSeconds": 0},
+    )
+
+    response = client.post(
+        f"/admin/api/build-runners/builds/{build.id}/events",
+        headers=_runner_headers(),
+        json={
+            "runnerId": "runner-mac-1",
+            "type": "building",
+            "message": "token=super-secret",
+            "payload": {
+                "nested": "password=hunter2",
+                "key": "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    event = db_session.query(BuildEvent).filter_by(build_id=build.id).one()
+    persisted = f"{event.message} {event.payload_json}"
+    assert "super-secret" not in persisted
+    assert "hunter2" not in persisted
+    assert "PRIVATE KEY" not in persisted
+    assert "[REDACTED]" in persisted
+
+
+def test_runner_complete_redacts_runner_supplied_fields_before_persisting(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    app = _create_app(db_session)
+    build = _create_agent_build(db_session, app=app)
+    _provision_runner_record(db_session)
+    client.post(
+        "/admin/api/build-runners/register",
+        headers=_runner_headers(),
+        json={
+            "runnerId": "runner-mac-1",
+            "name": "Mac mini 1",
+            "labels": ["ios-release"],
+            "version": "0.1.0",
+            "packageAgentVersion": "0.1.0",
+            "capabilities": {"platforms": ["ios"], "llmAdapters": ["codex"], "capacity": 1},
+        },
+    )
+    client.post(
+        "/admin/api/build-runners/poll",
+        headers=_runner_headers(),
+        json={"runnerId": "runner-mac-1", "timeoutSeconds": 0},
+    )
+
+    response = client.post(
+        f"/admin/api/build-runners/builds/{build.id}/complete",
+        headers=_runner_headers(),
+        json={
+            "runnerId": "runner-mac-1",
+            "status": "needs_human",
+            "note": "token=note-secret",
+            "failureClassification": "missing_artifacts",
+            "failureSummary": "password=summary-secret",
+            "humanAction": "private_key=action-secret",
+        },
+    )
+
+    assert response.status_code == 200
+    db_session.refresh(build)
+    persisted = f"{build.note} {build.failure_summary} {build.human_action}"
+    assert "note-secret" not in persisted
+    assert "summary-secret" not in persisted
+    assert "action-secret" not in persisted
+    assert persisted.count("[REDACTED]") == 3
 
 
 def test_runner_complete_rejects_success_without_required_artifacts(

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from package_agent.llm_discovery import discover_llm_adapter
+from package_agent.llm_planner import LlmPlan, PlanAction, request_llm_plan
 from package_agent.models import AgentReport, BuildInput, classify_build
 from package_agent.policy import Action, evaluate_action
 from package_agent.redaction import redact_text
@@ -78,20 +79,10 @@ def _build_report(input_path: Path, *, output_dir: Path) -> AgentReport:
             output_dir=output_dir,
         )
 
-    if not any((build_input.package_paths, build_input.symbols_paths, build_input.log_paths)):
-        return AgentReport(
-            status="needs_human",
-            classification="missing_build_plan",
-            summary=f"{CONFIG_FILE} was not found in the project root.",
-            human_action=(
-                f"Add {CONFIG_FILE} with buildCommand, packagePaths, symbolsPaths, "
-                "and logPaths."
-            ),
-            commit_sha=build_input.commit_sha,
-            max_attempts=build_input.max_attempts,
-        )
-
     adapter = discover_llm_adapter()
+    if not any((build_input.package_paths, build_input.symbols_paths, build_input.log_paths)):
+        return _build_from_llm_plan(build_input, output_dir=output_dir, adapter=adapter)
+
     return classify_build(build_input=build_input, adapter_name=adapter.name if adapter else None)
 
 
@@ -219,6 +210,158 @@ def _build_from_project_config(
         commit_sha=build_input.commit_sha,
         adapter=report.adapter,
         max_attempts=report.max_attempts,
+    )
+
+
+def _build_from_llm_plan(
+    build_input: BuildInput,
+    *,
+    output_dir: Path,
+    adapter: object,
+) -> AgentReport:
+    if adapter is None:
+        return AgentReport(
+            status="needs_human",
+            classification="llm_unavailable",
+            summary="No supported LLM adapter was discovered in automatic order.",
+            human_action=(
+                f"Add {CONFIG_FILE} with safe buildCommand and artifact globs, "
+                "or configure Codex CLI, Claude CLI, or llm-runtime."
+            ),
+            commit_sha=build_input.commit_sha,
+            max_attempts=build_input.max_attempts,
+        )
+
+    try:
+        plan = request_llm_plan(adapter, build_input)
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
+        return AgentReport(
+            status="needs_human",
+            classification="invalid_llm_plan",
+            summary=redact_text(f"LLM planner could not produce a valid plan: {exc}."),
+            human_action=f"Add {CONFIG_FILE} or adjust the LLM planner to return valid JSON.",
+            commit_sha=build_input.commit_sha,
+            adapter=getattr(adapter, "name", None),
+            max_attempts=build_input.max_attempts,
+        )
+
+    blocked = _first_blocked_plan_action(plan)
+    if blocked is not None:
+        action, reason = blocked
+        return AgentReport(
+            status="needs_human",
+            classification=reason,
+            summary=f"LLM plan action '{action.kind}' is blocked by policy: {reason}.",
+            human_action="Revise the build plan so every action stays within package-agent policy.",
+            commit_sha=build_input.commit_sha,
+            adapter=getattr(adapter, "name", None),
+            max_attempts=build_input.max_attempts,
+        )
+
+    project_dir = Path(build_input.project_dir)
+    collected = {"package": [], "symbols": [], "log": []}
+    last_failure = ""
+    for attempt in range(1, build_input.max_attempts + 1):
+        attempt_log = output_dir / f"llm-plan-attempt-{attempt}.log"
+        action_failed = False
+        log_parts: list[str] = []
+        for action in plan.actions:
+            if not action.command:
+                _collect_plan_artifacts(project_dir, output_dir, action, collected)
+                continue
+            result = subprocess.run(
+                action.command,
+                cwd=project_dir,
+                capture_output=True,
+                text=True,
+                timeout=1800,
+                check=False,
+            )
+            log_parts.append(
+                "\n".join(
+                    [
+                        f"$ {shlex.join(action.command)}",
+                        f"[exit] {result.returncode}",
+                        "[stdout]",
+                        result.stdout,
+                        "[stderr]",
+                        result.stderr,
+                    ]
+                )
+            )
+            _collect_plan_artifacts(project_dir, output_dir, action, collected)
+            if result.returncode != 0:
+                last_failure = (
+                    f"LLM plan action '{action.kind}' exited with code {result.returncode}."
+                )
+                action_failed = True
+                break
+        attempt_log.write_text(redact_text("\n\n".join(log_parts)), encoding="utf-8")
+        collected["log"].append(str(attempt_log))
+
+        report = classify_build(
+            build_input=BuildInput(
+                project_dir=str(output_dir),
+                platform=build_input.platform,
+                environment=build_input.environment,
+                artifact_type=build_input.artifact_type,
+                build_id=build_input.build_id,
+                git_url=build_input.git_url,
+                git_ref=build_input.git_ref,
+                repo_subpath=build_input.repo_subpath,
+                commit_sha=build_input.commit_sha,
+                max_attempts=build_input.max_attempts,
+                package_paths=collected["package"],
+                symbols_paths=collected["symbols"],
+                log_paths=collected["log"],
+            ),
+            adapter_name=getattr(adapter, "name", None),
+        )
+        if report.status == "success":
+            return report
+        if action_failed:
+            continue
+
+    summary = (
+        last_failure
+        or "LLM plan finished without required package, symbols, and log artifacts."
+    )
+    return AgentReport(
+        status="needs_human",
+        classification="missing_artifacts",
+        summary=redact_text(summary),
+        human_action=f"Add {CONFIG_FILE} or update the planner artifact globs and rerun.",
+        package_paths=collected["package"],
+        symbols_paths=collected["symbols"],
+        log_paths=collected["log"],
+        commit_sha=build_input.commit_sha,
+        adapter=getattr(adapter, "name", None),
+        max_attempts=build_input.max_attempts,
+    )
+
+
+def _first_blocked_plan_action(plan: LlmPlan) -> tuple[PlanAction, str] | None:
+    for action in plan.actions:
+        decision = evaluate_action(Action(kind=action.kind, command=action.command))
+        if not decision.allowed:
+            return action, decision.reason
+    return None
+
+
+def _collect_plan_artifacts(
+    project_dir: Path,
+    output_dir: Path,
+    action: PlanAction,
+    collected: dict[str, list[str]],
+) -> None:
+    collected["package"].extend(
+        _copy_artifact_matches(project_dir, output_dir, "package", action.package_paths)
+    )
+    collected["symbols"].extend(
+        _copy_artifact_matches(project_dir, output_dir, "symbols", action.symbols_paths)
+    )
+    collected["log"].extend(
+        _copy_artifact_matches(project_dir, output_dir, "log", action.log_paths)
     )
 
 

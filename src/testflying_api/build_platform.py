@@ -3,7 +3,7 @@ from __future__ import annotations
 import hmac
 import re
 import secrets
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from pathlib import PurePosixPath
 from uuid import uuid4
@@ -33,6 +33,7 @@ from testflying_api.domain import (
     normalize_environment,
 )
 from testflying_api.errors import ApiError
+from testflying_api.redaction import redact_json, redact_text
 from testflying_api.schema import App, AppBuildSetting, Artifact, Build, BuildEvent, BuildRunner
 from testflying_api.storage import ArtifactStorage
 
@@ -55,6 +56,7 @@ _RUNNER_REQUIRED_ARTIFACTS = {
 }
 _RUNNER_ALLOWED_ARTIFACTS = _RUNNER_REQUIRED_ARTIFACTS
 _RUNNER_TOKEN_DIGEST_PREFIX = "hmac-sha256:"
+_RUNNER_ASSIGNMENT_LEASE_SECONDS = 15 * 60
 _TERMINAL_BUILD_LIFECYCLE_STATUSES = {
     BuildLifecycleStatus.SUCCEEDED.value,
     BuildLifecycleStatus.FAILED.value,
@@ -270,7 +272,9 @@ def register_runner(
     runner.status = "busy" if runner.current_build_id else "online"
     runner.version = version.strip()
     runner.package_agent_version = package_agent_version.strip()
-    runner.last_seen_at = datetime.now(UTC)
+    now = datetime.now(UTC)
+    runner.last_seen_at = now
+    _refresh_runner_assignment_lease(session, runner=runner, now=now)
     session.add(runner)
     session.commit()
     return runner
@@ -309,13 +313,20 @@ def poll_runner_build(
     token_pepper: str,
 ) -> Build | None:
     runner = _runner_or_401(session, runner_id=runner_id, token=token, token_pepper=token_pepper)
-    runner.last_seen_at = datetime.now(UTC)
+    now = datetime.now(UTC)
+    runner.last_seen_at = now
+    _recover_expired_assignments(session, now=now)
+    _terminalize_retry_cap_builds(session)
+    session.flush()
     if runner.current_build_id:
-        runner.status = "busy"
-        session.add(runner)
-        session.commit()
         build = session.get(Build, runner.current_build_id)
-        return _build_with_relations(session, build.id) if build is not None else None
+        if build is not None and _is_active_assignment(build, runner=runner, now=now):
+            _refresh_build_assignment_lease(build, now=now)
+            runner.status = "busy"
+            session.add_all([build, runner])
+            session.commit()
+            return _build_with_relations(session, build.id)
+        runner.current_build_id = None
 
     runner_platforms = {
         str(item).strip()
@@ -341,7 +352,8 @@ def poll_runner_build(
         build.lifecycle_status = BuildLifecycleStatus.ASSIGNED.value
         build.runner_id = runner.id
         build.attempt_count += 1
-        build.started_at = build.started_at or datetime.now(UTC)
+        build.started_at = build.started_at or now
+        _refresh_build_assignment_lease(build, now=now)
         runner.current_build_id = build.id
         runner.status = "busy"
         session.add_all([build, runner])
@@ -374,20 +386,22 @@ def append_build_event(
         token_pepper=token_pepper,
     )
     normalized_type = _require_non_blank(event_type, field="type", label="type")
-    normalized_message = _require_non_blank(message, field="message", label="message")
+    normalized_message = redact_text(_require_non_blank(message, field="message", label="message"))
     normalized_lifecycle_status = _normalize_runner_event_lifecycle_status(lifecycle_status)
+    now = datetime.now(UTC)
     event = BuildEvent(
         id=f"build-event-{uuid4().hex[:12]}",
         build_id=build.id,
         runner_id=runner.id,
         type=normalized_type,
         message=normalized_message,
-        payload_json=dict(payload or {}),
+        payload_json=redact_json(dict(payload or {})),
     )
     if normalized_lifecycle_status is not None:
         build.lifecycle_status = normalized_lifecycle_status
-    build.started_at = build.started_at or datetime.now(UTC)
-    runner.last_seen_at = datetime.now(UTC)
+    build.started_at = build.started_at or now
+    _refresh_build_assignment_lease(build, now=now)
+    runner.last_seen_at = now
     session.add_all([event, build, runner])
     session.commit()
     return event
@@ -445,8 +459,10 @@ def upload_build_artifact(
         size_bytes=len(content),
         metadata_json={"source": "runner", "runnerId": runner.id},
     )
+    now = datetime.now(UTC)
     build.lifecycle_status = BuildLifecycleStatus.UPLOADING_ARTIFACTS.value
-    runner.last_seen_at = datetime.now(UTC)
+    _refresh_build_assignment_lease(build, now=now)
+    runner.last_seen_at = now
     event = BuildEvent(
         id=f"build-event-{uuid4().hex[:12]}",
         build_id=build.id,
@@ -506,16 +522,17 @@ def complete_runner_build(
     if commit_sha is not None and commit_sha.strip():
         build.commit_sha = commit_sha.strip()
     if note is not None and note.strip():
-        build.note = note.strip()
+        build.note = redact_text(note.strip())
     build.lifecycle_status = normalized_status
     build.failure_classification = (
         failure_classification.strip() if failure_classification else None
     )
-    build.failure_summary = failure_summary.strip() if failure_summary else None
-    build.human_action = human_action.strip() if human_action else None
+    build.failure_summary = redact_text(failure_summary.strip()) if failure_summary else None
+    build.human_action = redact_text(human_action.strip()) if human_action else None
     build.started_at = _ensure_utc_datetime(build.started_at) or datetime.now(UTC)
     build.finished_at = datetime.now(UTC)
     build.duration_seconds = int((build.finished_at - build.started_at).total_seconds())
+    build.assignment_lease_expires_at = None
     runner.current_build_id = None
     runner.status = "online"
     runner.last_seen_at = datetime.now(UTC)
@@ -714,6 +731,90 @@ def _build_with_relations(session: Session, build_id: str) -> Build:
         .where(Build.id == build_id)
         .options(joinedload(Build.app), selectinload(Build.artifacts))
     ).one()
+
+
+def _recover_expired_assignments(session: Session, *, now: datetime) -> None:
+    expired_builds = session.scalars(
+        select(Build).where(
+            Build.source == "agent",
+            Build.lifecycle_status.not_in(_TERMINAL_BUILD_LIFECYCLE_STATUSES),
+            Build.lifecycle_status != BuildLifecycleStatus.QUEUED.value,
+            (
+                (Build.assignment_lease_expires_at.is_(None))
+                | (Build.assignment_lease_expires_at <= now)
+            ),
+        )
+    ).all()
+    for build in expired_builds:
+        owning_runner = (
+            session.get(BuildRunner, build.runner_id)
+            if build.runner_id
+            else None
+        )
+        if owning_runner is not None and owning_runner.current_build_id == build.id:
+            owning_runner.current_build_id = None
+            owning_runner.status = "online"
+            session.add(owning_runner)
+        build.runner_id = None
+        build.assignment_lease_expires_at = None
+        if build.attempt_count >= 5:
+            _mark_retry_cap_needs_human(build)
+        else:
+            build.lifecycle_status = BuildLifecycleStatus.QUEUED.value
+            build.status = "pending"
+        session.add(build)
+
+
+def _terminalize_retry_cap_builds(session: Session) -> None:
+    capped_builds = session.scalars(
+        select(Build).where(
+            Build.source == "agent",
+            Build.lifecycle_status == BuildLifecycleStatus.QUEUED.value,
+            Build.attempt_count >= 5,
+        )
+    ).all()
+    for build in capped_builds:
+        _mark_retry_cap_needs_human(build)
+        session.add(build)
+
+
+def _mark_retry_cap_needs_human(build: Build) -> None:
+    build.lifecycle_status = BuildLifecycleStatus.NEEDS_HUMAN.value
+    build.status = "pending"
+    build.failure_classification = "retry_cap_reached"
+    build.failure_summary = "Automatic build assignment reached the retry cap."
+    build.human_action = "Inspect runner availability and build logs before manually retrying."
+    build.finished_at = build.finished_at or datetime.now(UTC)
+
+
+def _is_active_assignment(build: Build, *, runner: BuildRunner, now: datetime) -> bool:
+    if build.runner_id != runner.id:
+        return False
+    if build.lifecycle_status in _TERMINAL_BUILD_LIFECYCLE_STATUSES:
+        return False
+    lease_expires_at = _ensure_utc_datetime(build.assignment_lease_expires_at)
+    return lease_expires_at is not None and lease_expires_at > now
+
+
+def _refresh_runner_assignment_lease(
+    session: Session,
+    *,
+    runner: BuildRunner,
+    now: datetime,
+) -> None:
+    if not runner.current_build_id:
+        return
+    build = session.get(Build, runner.current_build_id)
+    if build is None or build.runner_id != runner.id:
+        return
+    if build.lifecycle_status in _TERMINAL_BUILD_LIFECYCLE_STATUSES:
+        return
+    _refresh_build_assignment_lease(build, now=now)
+    session.add(build)
+
+
+def _refresh_build_assignment_lease(build: Build, *, now: datetime) -> None:
+    build.assignment_lease_expires_at = now + timedelta(seconds=_RUNNER_ASSIGNMENT_LEASE_SECONDS)
 
 
 def _artifact_item(artifact: Artifact) -> BuildArtifactItem:

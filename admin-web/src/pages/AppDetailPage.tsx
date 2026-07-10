@@ -351,6 +351,12 @@ function BuildHistoryRow({ build }: { build: BuildItem }) {
         <span>{build.gitRef || '-'}</span>
         <small>{artifacts.length ? `${artifacts.length} 个产物` : '无产物'}</small>
       </div>
+      <div className="build-history-artifacts">
+        {artifacts.length === 0 ? <small>无可用链接</small> : null}
+        {artifacts.map((artifact, index) => (
+          <ArtifactLinks key={`${artifact.fileName}-${index}`} artifact={artifact} />
+        ))}
+      </div>
       {diagnostic ? (
         <div className="build-diagnostic">
           <span>{build.failureClassification || 'diagnostic'}</span>
@@ -359,6 +365,38 @@ function BuildHistoryRow({ build }: { build: BuildItem }) {
       ) : null}
     </div>
   );
+}
+
+function ArtifactLinks({ artifact }: { artifact: BuildArtifact }) {
+  const actions = artifactActions(artifact);
+  return (
+    <div className="artifact-action-group compact">
+      <small>
+        {artifact.artifactTypeLabel || artifact.artifactType || 'Artifact'} · {artifact.fileName}
+      </small>
+      <span className="inline-actions">
+        {actions.map((action) => (
+          <a key={action.label} className="button" href={action.href}>
+            {action.label}
+          </a>
+        ))}
+      </span>
+    </div>
+  );
+}
+
+function artifactActions(artifact: BuildArtifact): { label: string; href: string }[] {
+  const actions: { label: string; href: string }[] = [];
+  const normalizedType = artifact.artifactType || '';
+  if (artifact.installUrl) actions.push({ label: '安装', href: artifact.installUrl });
+  if (artifact.downloadUrl) {
+    actions.push({
+      label: normalizedType === 'report' ? '报告' : normalizedType === 'log' ? '日志' : '下载',
+      href: artifact.downloadUrl
+    });
+  }
+  if (artifact.manifestUrl) actions.push({ label: 'Manifest', href: artifact.manifestUrl });
+  return actions;
 }
 
 function buildArtifacts(build: BuildItem): BuildArtifact[] {

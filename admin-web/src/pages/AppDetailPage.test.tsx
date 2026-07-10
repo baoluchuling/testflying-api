@@ -64,6 +64,16 @@ describe('AppDetailPage', () => {
     expect(screen.getByRole('button', { name: '立即构建' })).toBeTruthy();
     expect(screen.getByText('构建历史')).toBeTruthy();
     expect(screen.getByText('build 45')).toBeTruthy();
+    expect(screen.getByText('Package · AnyStories.ipa')).toBeTruthy();
+    expect(screen.getByRole('link', { name: '安装' }).getAttribute('href')).toBe(
+      'itms-services://?action=download-manifest&url=https://dist.example.test/manifest.plist'
+    );
+    expect(screen.getByRole('link', { name: '报告' }).getAttribute('href')).toBe(
+      'https://dist.example.test/report.json'
+    );
+    expect(screen.getByRole('link', { name: '日志' }).getAttribute('href')).toBe(
+      'https://dist.example.test/build.log'
+    );
     expect(screen.getByText('missing_artifacts')).toBeTruthy();
     expect(screen.getByText('Automatic success requires package, symbols, and logs.')).toBeTruthy();
   });
@@ -190,7 +200,45 @@ const appDetailState = {
       expiresAt: null,
       expiresAtLabel: '-',
       artifact: null,
-      artifacts: [],
+      artifacts: [
+        {
+          artifactType: 'package',
+          artifactTypeLabel: 'Package',
+          fileName: 'AnyStories.ipa',
+          sizeLabel: '12 MB',
+          installUrl:
+            'itms-services://?action=download-manifest&url=https://dist.example.test/manifest.plist',
+          downloadUrl: 'https://dist.example.test/AnyStories.ipa',
+          manifestUrl: 'https://dist.example.test/manifest.plist'
+        },
+        {
+          artifactType: 'symbols',
+          artifactTypeLabel: 'Symbols',
+          fileName: 'AnyStories.dSYM.zip',
+          sizeLabel: '3 MB',
+          installUrl: '',
+          downloadUrl: 'https://dist.example.test/AnyStories.dSYM.zip',
+          manifestUrl: null
+        },
+        {
+          artifactType: 'report',
+          artifactTypeLabel: 'Report',
+          fileName: 'report.json',
+          sizeLabel: '2 KB',
+          installUrl: '',
+          downloadUrl: 'https://dist.example.test/report.json',
+          manifestUrl: null
+        },
+        {
+          artifactType: 'log',
+          artifactTypeLabel: 'Log',
+          fileName: 'build.log',
+          sizeLabel: '4 KB',
+          installUrl: '',
+          downloadUrl: 'https://dist.example.test/build.log',
+          manifestUrl: null
+        }
+      ],
       failureClassification: 'missing_artifacts',
       failureSummary: 'Automatic success requires package, symbols, and logs.',
       humanAction: 'Upload missing artifacts.',

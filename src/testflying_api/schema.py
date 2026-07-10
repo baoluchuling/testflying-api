@@ -91,6 +91,7 @@ class Build(Base):
     runner_id: Mapped[str | None] = mapped_column(String(80))
     runner_labels_json: Mapped[dict | None] = mapped_column(JSON)
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    assignment_lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     failure_classification: Mapped[str | None] = mapped_column(String(80))
     failure_summary: Mapped[str | None] = mapped_column(Text)
     human_action: Mapped[str | None] = mapped_column(Text)

@@ -6,6 +6,13 @@ from testflying_api.database import create_engine_for_url
 from testflying_api.schema import Base
 
 
+def test_schema_contains_system_settings() -> None:
+    engine = create_engine_for_url("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+
+    assert "system_settings" in inspect(engine).get_table_names()
+
+
 def test_catalog_schema_contains_no_user_state_tables() -> None:
     engine = create_engine_for_url("sqlite:///:memory:")
     Base.metadata.create_all(engine)

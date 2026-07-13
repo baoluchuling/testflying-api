@@ -14,6 +14,16 @@ describe('BuildAppsPage', () => {
       if (url === '/admin/api/apps/app-lookrva/builds' && init?.method === 'POST') {
         return jsonResponse(buildCreatedResponse);
       }
+      if (url === '/admin/api/apps/app-lookrva') {
+        return jsonResponse({
+          app: appSummary,
+          builds: [],
+          settings: {
+            development: buildAppsState.apps[0].environments[0].setting,
+            production: buildAppsState.apps[0].environments[1].setting
+          }
+        });
+      }
       return Promise.reject(new Error(`unexpected fetch ${url}`));
     });
   });
@@ -53,7 +63,7 @@ describe('BuildAppsPage', () => {
     expect(location.pathname).toBe('/admin/builds/history');
   });
 
-  it('shows build readiness and opens the selected app build settings', async () => {
+  it('shows build readiness and edits settings without leaving the build workspace', async () => {
     const user = userEvent.setup();
     render(<BuildAppsPage />);
 
@@ -67,7 +77,125 @@ describe('BuildAppsPage', () => {
     expect(screen.getByText('成功 · 2026-07-12 09:30')).toBeTruthy();
 
     await user.click(screen.getByRole('button', { name: '编辑构建配置' }));
-    expect(location.pathname).toBe('/admin/apps/app-lookrva');
+    expect(await screen.findByRole('dialog', { name: 'lookrva 构建配置' })).toBeTruthy();
+    expect(screen.getByText('com.example.lookrva · IOS')).toBeTruthy();
+    expect(location.pathname).toBe('/admin/builds/apps');
+  });
+
+  it('connects an existing app and saves its first build setting in place', async () => {
+    vi.restoreAllMocks();
+    let connected = false;
+    let savedBody: Record<string, unknown> | null = null;
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+      const url = String(input);
+      if (url === '/admin/api/builds/apps') {
+        return jsonResponse(connected ? connectedNovelGoState : emptyBuildAppsState);
+      }
+      if (url === '/admin/api/apps/app-novelgo') {
+        return jsonResponse({
+          app: novelGoSummary,
+          builds: [],
+          settings: { development: null, production: null }
+        });
+      }
+      if (
+        url === '/admin/api/apps/app-novelgo/build-settings/development' &&
+        init?.method === 'PUT'
+      ) {
+        connected = true;
+        savedBody = JSON.parse(String(init.body)) as Record<string, unknown>;
+        return jsonResponse({
+          message: '构建配置已保存',
+          build: null,
+          state: {
+            app: novelGoSummary,
+            builds: [],
+            settings: {
+              development: connectedNovelGoState.apps[0].environments[0].setting,
+              production: null
+            }
+          }
+        });
+      }
+      return Promise.reject(new Error(`unexpected fetch ${url}`));
+    });
+
+    const user = userEvent.setup();
+    render(<BuildAppsPage />);
+
+    await user.click(await screen.findByRole('button', { name: '接入已有应用' }));
+    await user.click(screen.getByRole('button', { name: /NovelGo/ }));
+    expect(await screen.findByRole('dialog', { name: 'NovelGo 构建配置' })).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: '线上环境' }));
+    await user.type(screen.getByLabelText('Git 仓库'), 'git@example.com:novelgo/production.git');
+    await user.click(screen.getByRole('button', { name: '开发环境' }));
+    await user.type(screen.getByLabelText('Git 仓库'), 'git@example.com:novelgo/app.git');
+    await user.type(screen.getByLabelText('节点标签'), 'mobile, release');
+    await user.click(screen.getByRole('button', { name: '保存开发环境' }));
+
+    expect(await screen.findByText('开发环境构建配置已保存')).toBeTruthy();
+    expect(savedBody).toMatchObject({
+      gitUrl: 'git@example.com:novelgo/app.git',
+      artifactType: 'apk',
+      runnerLabels: ['mobile', 'release']
+    });
+    expect(screen.getByText('NovelGo 的构建配置已保存')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: '线上环境' }));
+    expect((screen.getByLabelText('Git 仓库') as HTMLInputElement).value).toBe(
+      'git@example.com:novelgo/production.git'
+    );
+    expect(location.pathname).toBe('/admin/builds/apps');
+  });
+
+  it('reports a refresh failure without treating a saved setting as failed', async () => {
+    vi.restoreAllMocks();
+    let loadCount = 0;
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+      const url = String(input);
+      if (url === '/admin/api/builds/apps') {
+        loadCount += 1;
+        return loadCount === 1
+          ? jsonResponse(emptyBuildAppsState)
+          : Promise.reject(new Error('refresh unavailable'));
+      }
+      if (url === '/admin/api/apps/app-novelgo') {
+        return jsonResponse({
+          app: novelGoSummary,
+          builds: [],
+          settings: { development: null, production: null }
+        });
+      }
+      if (
+        url === '/admin/api/apps/app-novelgo/build-settings/development' &&
+        init?.method === 'PUT'
+      ) {
+        return jsonResponse({
+          message: '构建配置已保存',
+          build: null,
+          state: {
+            app: novelGoSummary,
+            builds: [],
+            settings: {
+              development: connectedNovelGoState.apps[0].environments[0].setting,
+              production: null
+            }
+          }
+        });
+      }
+      return Promise.reject(new Error(`unexpected fetch ${url}`));
+    });
+
+    const user = userEvent.setup();
+    render(<BuildAppsPage />);
+
+    await user.click(await screen.findByRole('button', { name: '接入已有应用' }));
+    await user.click(screen.getByRole('button', { name: /NovelGo/ }));
+    await user.type(await screen.findByLabelText('Git 仓库'), 'git@example.com:novelgo/app.git');
+    await user.click(screen.getByRole('button', { name: '保存开发环境' }));
+
+    expect(await screen.findByText('开发环境构建配置已保存')).toBeTruthy();
+    expect(screen.getByText(/配置已保存，但应用列表刷新失败/)).toBeTruthy();
   });
 });
 
@@ -80,8 +208,55 @@ const appSummary = {
   iconText: 'LO'
 };
 
+const novelGoSummary = {
+  id: 'app-novelgo',
+  name: 'NovelGo',
+  bundleIdentifier: 'com.example.novelgo',
+  platform: 'android',
+  iconColor: '#171717',
+  iconText: 'NO'
+};
+
+const emptyBuildAppsState = {
+  total: 0,
+  apps: [],
+  availableApps: [novelGoSummary]
+};
+
+const connectedNovelGoState = {
+  total: 1,
+  availableApps: [],
+  apps: [
+    {
+      app: novelGoSummary,
+      latestBuild: null,
+      environments: [
+        {
+          environment: 'development',
+          environmentLabel: '开发环境',
+          matchingRunnerCount: 0,
+          hasOnlineRunner: false,
+          setting: {
+            environment: 'development',
+            gitUrl: 'git@example.com:novelgo/app.git',
+            repoSubpath: '',
+            runnerLabels: ['mobile', 'release'],
+            credentialRefs: {},
+            artifactType: 'apk',
+            optionalDefaults: {},
+            updatedAtLabel: '2026-07-13 21:30'
+          }
+        }
+      ]
+    }
+  ]
+};
+
 const buildAppsState = {
   total: 1,
+  availableApps: [
+    novelGoSummary
+  ],
   apps: [
     {
       app: appSummary,

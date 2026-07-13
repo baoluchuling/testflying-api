@@ -2852,6 +2852,106 @@ select {
   box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
 }
 
+.build-app-picker-dialog,
+.build-settings-dialog {
+  display: grid;
+  gap: 18px;
+  width: min(760px, 100%);
+  max-height: min(820px, calc(100vh - 48px));
+  overflow: auto;
+  border: 1px solid #d9dde5;
+  border-radius: 14px;
+  padding: 20px;
+  color: var(--text);
+  background: var(--surface);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
+}
+
+.build-app-picker-dialog {
+  width: min(620px, 100%);
+}
+
+.build-app-picker-dialog header,
+.build-settings-dialog header,
+.build-settings-dialog footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.build-app-picker-dialog h3,
+.build-settings-dialog h3 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.build-app-picker-dialog p,
+.build-settings-dialog p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.build-app-picker-list {
+  display: grid;
+  gap: 8px;
+}
+
+.build-app-picker-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  color: var(--text);
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+}
+
+.build-app-picker-item:hover {
+  border-color: #a3a3a3;
+  background: var(--surface-soft);
+}
+
+.build-app-picker-item > span:nth-child(2) {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.build-app-picker-item small {
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.build-settings-app-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.build-settings-app-summary > span:last-child {
+  display: grid;
+  gap: 2px;
+}
+
+.build-settings-form .form-wide {
+  grid-column: 1 / -1;
+}
+
+.build-settings-dialog footer {
+  border-top: 1px solid var(--line-soft);
+  padding-top: 16px;
+}
+
 .runner-provision-dialog header,
 .runner-provision-dialog header > div {
   display: flex;

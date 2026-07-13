@@ -133,6 +133,10 @@ def build_apps_state(session: Session) -> BuildAppsState:
         ).unique()
     )
     apps.sort(key=lambda app: (app.name.casefold(), app.id))
+    unconfigured_apps = list(
+        session.scalars(select(App).where(~App.build_settings.any()))
+    )
+    unconfigured_apps.sort(key=lambda app: (app.name.casefold(), app.id))
     runners = list(session.scalars(select(BuildRunner)))
     items: list[BuildAppItem] = []
     for app in apps:
@@ -163,7 +167,11 @@ def build_apps_state(session: Session) -> BuildAppsState:
                 latest_build=build_item(latest_build) if latest_build is not None else None,
             )
         )
-    return BuildAppsState(apps=items, total=len(items))
+    return BuildAppsState(
+        apps=items,
+        available_apps=[_build_app_summary(app) for app in unconfigured_apps],
+        total=len(items),
+    )
 
 
 def _runner_matches_setting(

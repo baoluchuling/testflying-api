@@ -2,12 +2,26 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   AdminApiError,
   createAgentBuild,
+  loadAppDetailState,
   loadBuildAppsState,
+  saveAppBuildSettings,
+  type AppDetailState,
+  type BuildAppSummary,
   type BuildAppItem,
   type BuildAppsState,
   type BuildEnvironmentOption,
-  type BuildItem
+  type BuildItem,
+  type BuildSettingItem
 } from '../app/apiClient';
+
+type BuildEnvironment = 'development' | 'production';
+type SettingDraft = {
+  gitUrl: string;
+  repoSubpath: string;
+  runnerLabels: string;
+  credentialRefs: string;
+  artifactType: string;
+};
 
 export function BuildAppsPage() {
   const [state, setState] = useState<BuildAppsState | null>(null);
@@ -16,6 +30,8 @@ export function BuildAppsPage() {
   const [gitRef, setGitRef] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [createdBuild, setCreatedBuild] = useState<BuildItem | null>(null);
+  const [showAppPicker, setShowAppPicker] = useState(false);
+  const [settingsApp, setSettingsApp] = useState<BuildAppSummary | null>(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
@@ -32,6 +48,23 @@ export function BuildAppsPage() {
       cancelled = true;
     };
   }, []);
+
+  async function refreshApps(preferredAppId?: string) {
+    const payload = await loadBuildAppsState();
+    setState(payload);
+    const preferredApp = payload.apps.find((item) => item.app.id === preferredAppId);
+    if (preferredApp) {
+      const nextEnvironment =
+        preferredApp.environments.find((item) => item.environment === environment) ??
+        preferredApp.environments[0];
+      const keepGitRef =
+        selectedAppId === preferredApp.app.id && nextEnvironment?.environment === environment;
+      setSelectedAppId(preferredApp.app.id);
+      setEnvironment(nextEnvironment?.environment ?? '');
+      setGitRef(keepGitRef && gitRef.trim() ? gitRef : defaultGitRef(nextEnvironment));
+      setCreatedBuild(null);
+    }
+  }
 
   const selectedApp = useMemo(
     () => state?.apps.find((item) => item.app.id === selectedAppId) ?? null,
@@ -86,8 +119,10 @@ export function BuildAppsPage() {
     }
   }
 
-  function openApps() {
-    history.pushState({ adminRoute: 'apps' }, '', '/admin/apps');
+  function openAppPicker() {
+    setShowAppPicker(true);
+    setMessage('');
+    setError('');
   }
 
   function openBuildHistory() {
@@ -96,27 +131,11 @@ export function BuildAppsPage() {
 
   function openBuildSettings() {
     if (!selectedApp) return;
-    history.pushState(
-      { adminRoute: 'apps' },
-      '',
-      `/admin/apps/${encodeURIComponent(selectedApp.app.id)}`
-    );
+    setSettingsApp(selectedApp.app);
   }
 
   if (!state && !error) {
-    return <div className="empty-state">正在加载构建应用...</div>;
-  }
-
-  if (state && state.apps.length === 0) {
-    return (
-      <section className="panel workspace-empty-state">
-        <h2>还没有接入构建的应用</h2>
-        <p>先在应用详情中配置开发环境或线上环境的构建设置。</p>
-        <button className="button primary" type="button" onClick={openApps}>
-          前往应用
-        </button>
-      </section>
-    );
+    return <div className="empty-state">正在加载应用构建...</div>;
   }
 
   return (
@@ -127,6 +146,14 @@ export function BuildAppsPage() {
             <strong>已接入应用</strong>
             <span>{state?.total ?? 0} 个应用</span>
           </div>
+          <button
+            className="button slim"
+            type="button"
+            disabled={(state?.availableApps.length ?? 0) === 0}
+            onClick={openAppPicker}
+          >
+            接入应用
+          </button>
         </div>
         <div className="build-app-list">
           {(state?.apps ?? []).map((item) => (
@@ -162,8 +189,25 @@ export function BuildAppsPage() {
         {error ? <div className="notice error">{error}</div> : null}
         {!selectedApp ? (
           <div className="workspace-selection-empty">
-            <h2>选择应用开始构建</h2>
-            <p>只展示已经完成构建配置的应用。</p>
+            <h2>{state?.apps.length ? '选择应用开始构建' : '还没有接入构建的应用'}</h2>
+            <p>
+              {state?.apps.length
+                ? '只展示已经完成构建配置的应用。'
+                : '从已有应用中选择一个，并配置开发环境或线上环境的源码构建设置。'}
+            </p>
+            {!state?.apps.length ? (
+              <button
+                className="button primary"
+                type="button"
+                disabled={(state?.availableApps.length ?? 0) === 0}
+                onClick={openAppPicker}
+              >
+                接入已有应用
+              </button>
+            ) : null}
+            {!state?.apps.length && state?.availableApps.length === 0 ? (
+              <small>当前没有可接入的应用。</small>
+            ) : null}
           </div>
         ) : (
           <>
@@ -258,6 +302,255 @@ export function BuildAppsPage() {
           </>
         )}
       </section>
+      {showAppPicker && state ? (
+        <BuildAppPickerDialog
+          apps={state.availableApps}
+          onClose={() => setShowAppPicker(false)}
+          onSelect={(app) => {
+            setShowAppPicker(false);
+            setSettingsApp(app);
+          }}
+        />
+      ) : null}
+      {settingsApp ? (
+        <BuildSettingsDialog
+          app={settingsApp}
+          onClose={() => setSettingsApp(null)}
+          onSaved={async (app) => {
+            await refreshApps(app.id);
+            setMessage(`${app.name} 的构建配置已保存`);
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function BuildAppPickerDialog({
+  apps,
+  onClose,
+  onSelect
+}: {
+  apps: BuildAppSummary[];
+  onClose: () => void;
+  onSelect: (app: BuildAppSummary) => void;
+}) {
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section
+        aria-label="接入已有应用"
+        aria-modal="true"
+        className="build-app-picker-dialog"
+        role="dialog"
+      >
+        <header>
+          <div>
+            <h3>接入已有应用</h3>
+            <p>选择应用后，在当前页面配置源码构建。</p>
+          </div>
+          <button className="button text" type="button" onClick={onClose}>
+            关闭
+          </button>
+        </header>
+        <div className="build-app-picker-list">
+          {apps.map((app) => (
+            <button key={app.id} className="build-app-picker-item" type="button" onClick={() => onSelect(app)}>
+              <span className="app-avatar" style={{ backgroundColor: app.iconColor }}>
+                {app.iconText}
+              </span>
+              <span>
+                <strong>{app.name}</strong>
+                <small>{app.bundleIdentifier}</small>
+              </span>
+              <span className="tag">{app.platform.toUpperCase()}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function BuildSettingsDialog({
+  app,
+  onClose,
+  onSaved
+}: {
+  app: BuildAppSummary;
+  onClose: () => void;
+  onSaved: (app: BuildAppSummary) => Promise<void>;
+}) {
+  const [state, setState] = useState<AppDetailState | null>(null);
+  const [environment, setEnvironment] = useState<BuildEnvironment>('development');
+  const [drafts, setDrafts] = useState<Record<BuildEnvironment, SettingDraft>>(() =>
+    emptySettingDrafts(app.platform)
+  );
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    loadAppDetailState(app.id)
+      .then((payload) => {
+        if (cancelled) return;
+        setState(payload);
+        setDrafts({
+          development: settingDraft(payload.settings.development, app.platform),
+          production: settingDraft(payload.settings.production, app.platform)
+        });
+      })
+      .catch((requestError) => {
+        if (!cancelled) setError(errorMessage(requestError));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [app.id, app.platform]);
+
+  const draft = drafts[environment];
+  const existingSetting = state?.settings[environment] ?? null;
+
+  function updateDraft(patch: Partial<SettingDraft>) {
+    setDrafts((current) => ({
+      ...current,
+      [environment]: { ...current[environment], ...patch }
+    }));
+  }
+
+  async function save() {
+    if (!draft.gitUrl.trim() || !draft.artifactType.trim()) return;
+    setSaving(true);
+    setMessage('');
+    setError('');
+    try {
+      const response = await saveAppBuildSettings(app.id, environment, {
+        gitUrl: draft.gitUrl.trim(),
+        repoSubpath: draft.repoSubpath.trim(),
+        runnerLabels: splitList(draft.runnerLabels),
+        credentialRefs: parseCredentialRefs(draft.credentialRefs),
+        artifactType: draft.artifactType.trim(),
+        optionalDefaults: existingSetting?.optionalDefaults ?? {}
+      });
+      setState(response.state);
+      setDrafts((current) => ({
+        ...current,
+        [environment]: settingDraft(response.state.settings[environment], app.platform)
+      }));
+      setMessage(`${environmentLabel(environment)}构建配置已保存`);
+      try {
+        await onSaved(response.state.app);
+      } catch (refreshError) {
+        setError(`配置已保存，但应用列表刷新失败：${errorMessage(refreshError)}`);
+      }
+    } catch (requestError) {
+      setError(errorMessage(requestError));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section
+        aria-label={`${app.name} 构建配置`}
+        aria-modal="true"
+        className="build-settings-dialog"
+        role="dialog"
+      >
+        <header>
+          <div className="build-settings-app-summary">
+            <span className="app-avatar" style={{ backgroundColor: app.iconColor }}>
+              {app.iconText}
+            </span>
+            <span>
+              <h3>{app.name}</h3>
+              <p>{app.bundleIdentifier} · {app.platform.toUpperCase()}</p>
+            </span>
+          </div>
+          <button className="button text" type="button" disabled={saving} onClick={onClose}>
+            关闭
+          </button>
+        </header>
+        <nav className="segmented" aria-label="构建环境">
+          {(['development', 'production'] as const).map((item) => (
+            <button
+              key={item}
+              className={environment === item ? 'active' : ''}
+              type="button"
+              onClick={() => {
+                setEnvironment(item);
+                setMessage('');
+                setError('');
+              }}
+            >
+              {environmentLabel(item)}
+            </button>
+          ))}
+        </nav>
+        {!state && !error ? <div className="empty-state inline">正在加载构建配置...</div> : null}
+        {error ? <div className="notice error compact">{error}</div> : null}
+        {message ? <div className="notice success compact">{message}</div> : null}
+        {state ? (
+          <div className="form-grid two build-settings-form">
+            <label className="form-wide">
+              Git 仓库
+              <input
+                required
+                value={draft.gitUrl}
+                onChange={(event) => updateDraft({ gitUrl: event.target.value })}
+                placeholder="git@github.com:organization/project.git"
+              />
+            </label>
+            <label>
+              仓库子目录
+              <input
+                value={draft.repoSubpath}
+                onChange={(event) => updateDraft({ repoSubpath: event.target.value })}
+                placeholder="仓库根目录"
+              />
+            </label>
+            <label>
+              产物类型
+              <select
+                value={draft.artifactType}
+                onChange={(event) => updateDraft({ artifactType: event.target.value })}
+              >
+                {artifactOptions(app.platform).map((item) => (
+                  <option key={item} value={item}>{item.toUpperCase()}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              节点标签
+              <input
+                value={draft.runnerLabels}
+                onChange={(event) => updateDraft({ runnerLabels: event.target.value })}
+                placeholder="可选，多个标签用逗号分隔"
+              />
+            </label>
+            <label>
+              凭据引用
+              <input
+                value={draft.credentialRefs}
+                onChange={(event) => updateDraft({ credentialRefs: event.target.value })}
+                placeholder="git: git-main, signing: ios-release"
+              />
+            </label>
+          </div>
+        ) : null}
+        <footer>
+          <span className="muted">保存任一环境后，应用即完成构建接入。</span>
+          <button
+            className="button primary"
+            type="button"
+            disabled={!state || saving || !draft.gitUrl.trim() || !draft.artifactType.trim()}
+            onClick={() => void save()}
+          >
+            {saving ? '保存中...' : `保存${environmentLabel(environment)}`}
+          </button>
+        </footer>
+      </section>
     </div>
   );
 }
@@ -293,6 +586,61 @@ function credentialSummary(credentials: Record<string, unknown>): string {
     .filter(([, value]) => String(value).trim())
     .map(([key, value]) => `${key}: ${String(value)}`);
   return values.join(', ') || '无';
+}
+
+function emptySettingDrafts(platform: string): Record<BuildEnvironment, SettingDraft> {
+  return {
+    development: settingDraft(null, platform),
+    production: settingDraft(null, platform)
+  };
+}
+
+function settingDraft(setting: BuildSettingItem | null, platform: string): SettingDraft {
+  return {
+    gitUrl: setting?.gitUrl ?? '',
+    repoSubpath: setting?.repoSubpath ?? '',
+    runnerLabels: setting?.runnerLabels.join(', ') ?? '',
+    credentialRefs: setting ? credentialRefsInput(setting.credentialRefs) : '',
+    artifactType: setting?.artifactType ?? artifactOptions(platform)[0]
+  };
+}
+
+function artifactOptions(platform: string): string[] {
+  return platform.toLowerCase() === 'android' ? ['apk', 'aab'] : ['ipa'];
+}
+
+function environmentLabel(environment: BuildEnvironment): string {
+  return environment === 'development' ? '开发环境' : '线上环境';
+}
+
+function credentialRefsInput(credentials: Record<string, string>): string {
+  return Object.entries(credentials)
+    .map(([key, value]) => `${key}: ${value}`)
+    .join(', ');
+}
+
+function splitList(value: string): string[] {
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseCredentialRefs(value: string): Record<string, string> {
+  const refs: Record<string, string> = {};
+  for (const item of value.split(',')) {
+    const normalized = item.trim();
+    if (!normalized) continue;
+    const separatorIndex = normalized.indexOf(':');
+    if (separatorIndex < 0) {
+      refs[normalized] = normalized;
+      continue;
+    }
+    const key = normalized.slice(0, separatorIndex).trim();
+    const refValue = normalized.slice(separatorIndex + 1).trim();
+    if (key && refValue) refs[key] = refValue;
+  }
+  return refs;
 }
 
 function errorMessage(error: unknown): string {

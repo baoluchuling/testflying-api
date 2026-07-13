@@ -4,7 +4,7 @@ import { BuildHistoryPage } from './BuildHistoryPage';
 import type { BuildView } from '../app/routes';
 
 const views: Array<{ key: BuildView; label: string; path: string }> = [
-  { key: 'apps', label: '构建应用', path: '/admin/builds/apps' },
+  { key: 'apps', label: '应用构建', path: '/admin/builds/apps' },
   { key: 'history', label: '构建历史', path: '/admin/builds/history' },
   { key: 'runners', label: '构建节点', path: '/admin/builds/runners' }
 ];

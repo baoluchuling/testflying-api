@@ -76,7 +76,7 @@ def test_build_apps_returns_only_configured_apps_with_runner_match(
     db_session: Session,
 ) -> None:
     configured = _app(db_session, "app-configured", "android", name="Lookrva")
-    _app(db_session, "app-unconfigured", "android", name="NovelGo")
+    unconfigured = _app(db_session, "app-unconfigured", "android", name="NovelGo")
     _setting(db_session, configured.id, "development", ["ios-release"])
     _runner(db_session, "runner-online", "online", ["ios-release"], ["ios"])
     _runner(db_session, "runner-offline", "offline", ["ios-release"], ["ios"])
@@ -85,6 +85,16 @@ def test_build_apps_returns_only_configured_apps_with_runner_match(
 
     assert response.status_code == 200
     assert response.json()["total"] == 1
+    assert response.json()["availableApps"] == [
+        {
+            "id": unconfigured.id,
+            "name": "NovelGo",
+            "bundleIdentifier": "com.example.app-unconfigured",
+            "platform": "android",
+            "iconColor": "#53606E",
+            "iconText": "NO",
+        }
+    ]
     item = response.json()["apps"][0]
     assert item["app"]["id"] == "app-configured"
     assert item["environments"][0]["environment"] == "development"

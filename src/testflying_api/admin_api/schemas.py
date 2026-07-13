@@ -693,6 +693,7 @@ class BuildAppItem(AdminApiModel):
 
 class BuildAppsState(AdminApiModel):
     apps: list[BuildAppItem]
+    available_apps: list[BuildAppSummary]
     total: int
 
 

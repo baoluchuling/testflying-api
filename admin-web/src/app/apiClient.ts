@@ -683,6 +683,7 @@ export type BuildAppItem = {
 
 export type BuildAppsState = {
   apps: BuildAppItem[];
+  availableApps: BuildAppSummary[];
   total: number;
 };
 

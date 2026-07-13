@@ -45,7 +45,7 @@ describe('AdminApp', () => {
         return jsonResponse(buildsState);
       }
       if (url === '/admin/api/builds/apps') {
-        return jsonResponse({ apps: [], total: 0 });
+        return jsonResponse({ apps: [], availableApps: [], total: 0 });
       }
       if (url === '/admin/api/build-runners') {
         return jsonResponse(buildRunnersState);

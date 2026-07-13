@@ -40,19 +40,15 @@ describe('ordinary admin pages', () => {
     expect(screen.queryByText('构建完成')).toBeNull();
   });
 
-  it('shows the dingtalk robot environment setup guide', async () => {
+  it('links notification channel management to settings without duplicating the form', async () => {
+    const user = userEvent.setup();
     render(<NotificationsPage />);
 
-    expect(await screen.findByText('钉钉机器人配置')).toBeTruthy();
-    expect(screen.getByText('已配置')).toBeTruthy();
-    expect(screen.getByText(/TESTFLYING_DINGTALK_WEBHOOK_URL/)).toBeTruthy();
-    expect(screen.getByText(/TESTFLYING_DINGTALK_SECRET/)).toBeTruthy();
-    expect(screen.getByText(/安全设置选择“加签”/)).toBeTruthy();
-    expect(screen.getByText(/failed/)).toBeTruthy();
-    expect(screen.getByText(/needs_human/)).toBeTruthy();
-    expect(screen.getByText(/待发送 2/)).toBeTruthy();
-    expect(screen.getByText(/失败 1/)).toBeTruthy();
+    const link = await screen.findByRole('button', { name: '管理通知渠道' });
+    expect(screen.queryByText('钉钉机器人配置')).toBeNull();
     expect(screen.queryByRole('textbox')).toBeNull();
+    await user.click(link);
+    expect(location.pathname).toBe('/admin/settings/notifications');
   });
 
   it('jumps to API docs sections from the index', async () => {

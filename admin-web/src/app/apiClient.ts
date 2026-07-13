@@ -764,6 +764,57 @@ export type NotificationsState = {
   dingtalk: DingTalkConfigState;
 };
 
+export type GeneralSettingsState = {
+  connectorBaseUrlTemplate: string;
+  source: string;
+};
+
+export type NotificationSettingsState = {
+  enabled: boolean;
+  configured: boolean;
+  webhookConfigured: boolean;
+  secretConfigured: boolean;
+  timeoutSeconds: number;
+  dispatchIntervalSeconds: number;
+  pendingDeliveryCount: number;
+  deadDeliveryCount: number;
+  source: string;
+};
+
+export type RuntimeEnvironmentItem = {
+  key: string;
+  label: string;
+  group: string;
+  source: string;
+  valueLabel: string;
+  configured: boolean;
+  sensitive: boolean;
+  restartRequired: boolean;
+};
+
+export type SettingsState = {
+  general: GeneralSettingsState;
+  notifications: NotificationSettingsState;
+  runtime: RuntimeEnvironmentItem[];
+};
+
+export type GeneralSettingsPayload = {
+  connectorBaseUrlTemplate: string | null;
+};
+
+export type NotificationSettingsPayload = {
+  enabled: boolean;
+  webhookUrl: string | null;
+  secret: string | null;
+  timeoutSeconds: number;
+  dispatchIntervalSeconds: number;
+};
+
+export type SettingsActionResponse = {
+  message: string;
+  state: SettingsState;
+};
+
 export type ApiDocParam = {
   name: string;
   location: string;
@@ -1234,6 +1285,26 @@ export function loadBuildAppsState(): Promise<BuildAppsState> {
 
 export function loadBuildRunnersState(): Promise<BuildRunnersState> {
   return getJson<BuildRunnersState>('/admin/api/build-runners');
+}
+
+export function loadSettingsState(): Promise<SettingsState> {
+  return getJson<SettingsState>('/admin/api/settings');
+}
+
+export function saveGeneralSettings(
+  payload: GeneralSettingsPayload
+): Promise<SettingsActionResponse> {
+  return putJson<SettingsActionResponse>('/admin/api/settings/general', payload);
+}
+
+export function saveNotificationSettings(
+  payload: NotificationSettingsPayload
+): Promise<SettingsActionResponse> {
+  return putJson<SettingsActionResponse>('/admin/api/settings/notifications', payload);
+}
+
+export function checkNotificationSettings(): Promise<SettingsActionResponse> {
+  return postJson<SettingsActionResponse>('/admin/api/settings/notifications/check', {});
 }
 
 export function provisionBuildRunner(

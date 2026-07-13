@@ -214,6 +214,221 @@ select {
   min-height: 220px;
 }
 
+.settings-workspace {
+  max-width: 1180px;
+}
+
+.settings-panel {
+  display: grid;
+  gap: 22px;
+}
+
+.settings-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 18px;
+}
+
+.settings-section-head h2,
+.runtime-group h3 {
+  margin: 0;
+  color: var(--text);
+}
+
+.settings-section-head h2 {
+  font-size: 24px;
+}
+
+.settings-section-head p:not(.eyebrow) {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.settings-form {
+  display: grid;
+  gap: 16px;
+}
+
+.settings-form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.settings-form label:not(.toggle-field) {
+  display: grid;
+  gap: 7px;
+  color: var(--sub);
+  font-weight: 750;
+}
+
+.settings-form label > small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.settings-form label:not(.toggle-field) > input,
+.input-with-unit {
+  min-height: 42px;
+  width: 100%;
+  border: 1px solid #d1d5db;
+  border-radius: 9px;
+  color: var(--text);
+  background: var(--surface);
+  font-weight: 700;
+}
+
+.settings-form label:not(.toggle-field) > input {
+  padding: 0 12px;
+}
+
+.settings-form .form-wide,
+.toggle-field {
+  grid-column: 1 / -1;
+}
+
+.toggle-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 12px 14px;
+  cursor: pointer;
+}
+
+.toggle-field input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--text);
+}
+
+.toggle-field span {
+  display: grid;
+  gap: 3px;
+}
+
+.toggle-field small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.input-with-unit {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  overflow: hidden;
+}
+
+.input-with-unit input {
+  min-width: 0;
+  height: 40px;
+  border: 0;
+  padding: 0 12px;
+  color: var(--text);
+  background: transparent;
+  font: inherit;
+  font-weight: 700;
+  outline: 0;
+}
+
+.input-with-unit > span {
+  padding-right: 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.settings-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+
+.settings-metrics > div {
+  display: grid;
+  gap: 5px;
+  border-right: 1px solid var(--line);
+  padding: 12px 14px;
+}
+
+.settings-metrics > div:last-child {
+  border-right: 0;
+}
+
+.settings-metrics span,
+.runtime-row span,
+.runtime-row small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.runtime-groups,
+.runtime-group,
+.runtime-list {
+  display: grid;
+  gap: 12px;
+}
+
+.runtime-groups {
+  gap: 22px;
+}
+
+.runtime-group h3 {
+  font-size: 15px;
+}
+
+.runtime-list {
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+
+.runtime-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  padding: 12px 14px;
+}
+
+.runtime-row:last-child {
+  border-bottom: 0;
+}
+
+.runtime-row > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.runtime-row > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+@media (max-width: 900px) {
+  .settings-form-grid,
+  .settings-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-metrics > div {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .settings-metrics > div:last-child {
+    border-bottom: 0;
+  }
+}
+
 .workspace-placeholder h2,
 .not-found-page h2 {
   margin: 0 0 10px;

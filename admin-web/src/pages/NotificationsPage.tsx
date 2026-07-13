@@ -42,10 +42,24 @@ export function NotificationsPage() {
     <div className="notifications-page" data-notifications-page>
       <section className="panel">
         <div className="panel-head">
-          <strong>通知</strong>
-          <span>{state?.total ?? 0} 条</span>
+          <div>
+            <strong>通知</strong>
+            <p className="muted">{state?.total ?? 0} 条记录</p>
+          </div>
+          <button
+            className="button subtle"
+            type="button"
+            onClick={() =>
+              history.pushState(
+                { adminRoute: 'settings' },
+                '',
+                '/admin/settings/notifications'
+              )
+            }
+          >
+            管理通知渠道
+          </button>
         </div>
-        {state ? <DingTalkSetup state={state.dingtalk} /> : null}
         <div className="filter-tabs notification-filter-tabs" aria-label="通知类型筛选">
           {(state?.typeCounts ?? [{ type: 'all', label: '全部', count: 0 }]).map((item) => (
             <button
@@ -71,38 +85,6 @@ export function NotificationsPage() {
         ) : null}
       </section>
     </div>
-  );
-}
-
-function DingTalkSetup({ state }: { state: NotificationsState['dingtalk'] }) {
-  return (
-    <section className="dingtalk-setup" aria-labelledby="dingtalk-setup-title">
-      <div className="dingtalk-setup-head">
-        <div>
-          <strong id="dingtalk-setup-title">钉钉机器人配置</strong>
-          <span>构建进入人工处理或失败状态时发送群通知</span>
-        </div>
-        <span className={`tag ${state.configured ? 'ok' : 'warn'}`}>
-          {state.configured ? '已配置' : '未配置'}
-        </span>
-      </div>
-      <div className="dingtalk-delivery-stats" aria-label="钉钉投递状态">
-        <span>待发送 {state.pendingDeliveryCount}</span>
-        <span>失败 {state.deadDeliveryCount}</span>
-      </div>
-      <ol className="dingtalk-setup-steps">
-        <li>在目标钉钉群的机器人管理中创建自定义机器人。</li>
-        <li>安全设置选择“加签”，取得 Webhook URL 和加签密钥。</li>
-        <li>在 TestFlying 服务端配置以下环境变量。</li>
-        <li>重启 TestFlying API 服务。</li>
-        <li>返回本页面确认状态显示为“已配置”。</li>
-      </ol>
-      <pre className="dingtalk-env-example"><code>{`TESTFLYING_DINGTALK_WEBHOOK_URL: \${TESTFLYING_DINGTALK_WEBHOOK_URL}
-TESTFLYING_DINGTALK_SECRET: \${TESTFLYING_DINGTALK_SECRET}`}</code></pre>
-      <p className="dingtalk-trigger-note">
-        触发状态：<code>{state.triggers.join(', ') || 'failed, needs_human'}</code>
-      </p>
-    </section>
   );
 }
 

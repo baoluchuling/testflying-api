@@ -78,6 +78,26 @@ describe('AdminApp', () => {
     expect(screen.getByRole('heading', { level: 1, name: '商店评论' })).toBeTruthy();
   });
 
+  it('lets an in-flight one-time operation block push and pop navigation', async () => {
+    const user = userEvent.setup();
+    const blockNavigation = (event: Event) => event.preventDefault();
+
+    render(<AdminApp />);
+    await screen.findByText('服务健康');
+    window.addEventListener('admin:before-navigation', blockNavigation);
+
+    await user.click(screen.getByRole('button', { name: '上传' }));
+    expect(location.pathname).toBe('/admin');
+    expect(screen.getByRole('button', { name: '总览' }).className).toContain('active');
+
+    history.replaceState(null, '', '/admin/uploads');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    expect(location.pathname).toBe('/admin');
+    expect(screen.getByRole('button', { name: '总览' }).className).toContain('active');
+
+    window.removeEventListener('admin:before-navigation', blockNavigation);
+  });
+
   it('renders ordinary pages inside the React shell', async () => {
     const user = userEvent.setup();
 

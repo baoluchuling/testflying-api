@@ -94,6 +94,15 @@ export function BuildAppsPage() {
     history.pushState({ adminRoute: 'builds' }, '', '/admin/builds/history');
   }
 
+  function openBuildSettings() {
+    if (!selectedApp) return;
+    history.pushState(
+      { adminRoute: 'apps' },
+      '',
+      `/admin/apps/${encodeURIComponent(selectedApp.app.id)}`
+    );
+  }
+
   if (!state && !error) {
     return <div className="empty-state">正在加载构建应用...</div>;
   }
@@ -133,7 +142,16 @@ export function BuildAppsPage() {
               <span className="build-app-option-copy">
                 <strong>{item.app.name}</strong>
                 <small>{item.app.bundleIdentifier}</small>
-                <small>{item.environments.map((option) => option.environmentLabel).join(' · ')}</small>
+                <small>
+                  {item.app.platform.toUpperCase()} ·{' '}
+                  {item.environments.map((option) => option.environmentLabel).join(' · ')}
+                </small>
+                <small>{repositorySummary(item)}</small>
+                <span className="build-app-option-meta">
+                  <small>Runner: {runnerLabels(item).join(', ') || '无标签要求'}</small>
+                  <small>{matchingRunnerSummary(item)}</small>
+                </span>
+                <small>{latestBuildSummary(item.latestBuild, true)}</small>
               </span>
             </button>
           ))}
@@ -154,7 +172,12 @@ export function BuildAppsPage() {
                 <strong>{selectedApp.app.name}</strong>
                 <span>{selectedApp.app.bundleIdentifier}</span>
               </div>
-              <span className="tag">{selectedApp.app.platform.toUpperCase()}</span>
+              <div className="panel-actions">
+                <span className="tag">{selectedApp.app.platform.toUpperCase()}</span>
+                <button className="button slim" type="button" onClick={openBuildSettings}>
+                  编辑构建配置
+                </button>
+              </div>
             </div>
             <div className="form-grid two build-create-form">
               <label>
@@ -189,6 +212,18 @@ export function BuildAppsPage() {
                 <div>
                   <dt>匹配节点</dt>
                   <dd>{selectedEnvironment.matchingRunnerCount} 个在线节点</dd>
+                </div>
+                <div>
+                  <dt>仓库子目录</dt>
+                  <dd>{selectedEnvironment.setting.repoSubpath || '仓库根目录'}</dd>
+                </div>
+                <div>
+                  <dt>凭据引用</dt>
+                  <dd>{credentialSummary(selectedEnvironment.setting.credentialRefs)}</dd>
+                </div>
+                <div>
+                  <dt>最近构建</dt>
+                  <dd>{latestBuildSummary(selectedApp.latestBuild)}</dd>
                 </div>
               </dl>
             ) : null}
@@ -230,6 +265,34 @@ export function BuildAppsPage() {
 function defaultGitRef(option: BuildEnvironmentOption | null | undefined): string {
   const value = option?.setting.optionalDefaults.gitRef;
   return typeof value === 'string' && value.trim() ? value.trim() : 'main';
+}
+
+function repositorySummary(item: BuildAppItem): string {
+  const setting = item.environments[0]?.setting;
+  if (!setting) return '未配置仓库';
+  return `${setting.gitUrl}${setting.repoSubpath ? ` · ${setting.repoSubpath}` : ''}`;
+}
+
+function runnerLabels(item: BuildAppItem): string[] {
+  return [...new Set(item.environments.flatMap((option) => option.setting.runnerLabels))];
+}
+
+function matchingRunnerSummary(item: BuildAppItem): string {
+  const count = item.environments.reduce((total, option) => total + option.matchingRunnerCount, 0);
+  return count > 0 ? `${count} 个在线节点` : '无匹配在线节点';
+}
+
+function latestBuildSummary(build: BuildItem | null, prefix = false): string {
+  if (!build) return prefix ? '最近：暂无构建记录' : '暂无构建记录';
+  const value = `${build.lifecycleStatusLabel || build.status} · ${build.uploadedAtLabel}`;
+  return prefix ? `最近：${value}` : value;
+}
+
+function credentialSummary(credentials: Record<string, unknown>): string {
+  const values = Object.entries(credentials)
+    .filter(([, value]) => String(value).trim())
+    .map(([key, value]) => `${key}: ${String(value)}`);
+  return values.join(', ') || '无';
 }
 
 function errorMessage(error: unknown): string {

@@ -140,8 +140,13 @@ function RunnerProvisionDialog({
       event.preventDefault();
       event.returnValue = '';
     };
+    const preventNavigation = (event: Event) => event.preventDefault();
     window.addEventListener('beforeunload', preventUnload);
-    return () => window.removeEventListener('beforeunload', preventUnload);
+    window.addEventListener('admin:before-navigation', preventNavigation);
+    return () => {
+      window.removeEventListener('beforeunload', preventUnload);
+      window.removeEventListener('admin:before-navigation', preventNavigation);
+    };
   }, [saving]);
 
   function close() {
@@ -331,7 +336,7 @@ function runnerConfigJson(result: RunnerProvisionResponse): string {
       name: result.runner.name,
       token: result.token,
       serverUrl: window.location.origin,
-      rootDir: '/Library/Application Support/TestFlying/build-runner',
+      rootDir: `/Users/Shared/TestFlyingRunner/${result.runner.id}`,
       labels: result.runner.labels,
       platforms: valueList(capabilities.platforms),
       llmAdapters: valueList(capabilities.llmAdapters),

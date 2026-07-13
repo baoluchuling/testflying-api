@@ -114,6 +114,27 @@ def test_settings_api_rejects_invalid_notification_webhook(
     assert db_session.get(SystemSetting, "dingtalk_secret") is None
 
 
+def test_settings_api_rejects_non_finite_notification_interval(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    response = client.put(
+        "/admin/api/settings/notifications",
+        headers={**_admin_headers(), "Content-Type": "application/json"},
+        content=(
+            '{"enabled":true,'
+            '"webhookUrl":"https://oapi.test/robot/send?access_token=valid",'
+            '"secret":"SEC-never-store",'
+            '"timeoutSeconds":5,'
+            '"dispatchIntervalSeconds":Infinity}'
+        ),
+    )
+
+    assert response.status_code == 422
+    assert db_session.get(SystemSetting, "dingtalk_webhook_url") is None
+    assert db_session.get(SystemSetting, "dingtalk_secret") is None
+
+
 def test_notification_check_uses_effective_database_credentials(
     client: TestClient,
     db_session: Session,

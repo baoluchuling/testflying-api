@@ -192,7 +192,7 @@ password: dev-token
   "name": "Mac Runner 1",
   "token": "replace-with-runner-token",
   "serverUrl": "https://testflying.example.com",
-  "rootDir": "/Users/build/TestFlyingRunner",
+  "rootDir": "/Users/Shared/TestFlyingRunner/runner-mac-1",
   "labels": ["ios-release", "flutter"],
   "platforms": ["ios", "android"],
   "llmAdapters": ["codex", "claude"],

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import isfinite
 from string import Formatter
 from urllib.parse import urlsplit
 from uuid import uuid4
@@ -208,12 +209,12 @@ def _positive_float_value(
         value = float(row.value)
     except ValueError:
         return default
-    return value if value > 0 else default
+    return value if isfinite(value) and value > 0 else default
 
 
 def _require_positive(value: float, field: str) -> float:
     normalized = float(value)
-    if normalized <= 0:
+    if not isfinite(normalized) or normalized <= 0:
         raise ValueError(f"{field} must be a positive number")
     return normalized
 

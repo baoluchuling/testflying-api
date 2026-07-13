@@ -45,11 +45,29 @@ describe('BuildAppsPage', () => {
       environment: 'production',
       gitRef: 'release/1.2.0',
       gitUrl: 'git@example.com:lookrva/ios.git',
+      repoSubpath: 'ios-app',
       runnerLabels: ['ios-production']
     });
 
     await user.click(screen.getByRole('button', { name: '查看构建记录' }));
     expect(location.pathname).toBe('/admin/builds/history');
+  });
+
+  it('shows build readiness and opens the selected app build settings', async () => {
+    const user = userEvent.setup();
+    render(<BuildAppsPage />);
+
+    expect(await screen.findByText('git@example.com:lookrva/ios.git · ios-app')).toBeTruthy();
+    expect(screen.getByText('Runner: ios-development, ios-production')).toBeTruthy();
+    expect(screen.getByText('1 个在线节点')).toBeTruthy();
+    expect(screen.getByText('最近：成功 · 2026-07-12 09:30')).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: /lookrva/ }));
+    expect(screen.getByText('git: git-main')).toBeTruthy();
+    expect(screen.getByText('成功 · 2026-07-12 09:30')).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: '编辑构建配置' }));
+    expect(location.pathname).toBe('/admin/apps/app-lookrva');
   });
 });
 
@@ -76,7 +94,7 @@ const buildAppsState = {
           setting: {
             environment: 'development',
             gitUrl: 'git@example.com:lookrva/ios.git',
-            repoSubpath: '',
+            repoSubpath: 'ios-app',
             runnerLabels: ['ios-development'],
             credentialRefs: { git: 'git-main' },
             artifactType: 'ipa',
@@ -92,7 +110,7 @@ const buildAppsState = {
           setting: {
             environment: 'production',
             gitUrl: 'git@example.com:lookrva/ios.git',
-            repoSubpath: '',
+            repoSubpath: 'ios-app',
             runnerLabels: ['ios-production'],
             credentialRefs: { git: 'git-main' },
             artifactType: 'ipa',
@@ -101,7 +119,31 @@ const buildAppsState = {
           }
         }
       ],
-      latestBuild: null
+      latestBuild: {
+        id: 'build-latest-1',
+        app: appSummary,
+        version: '1.1.0',
+        buildNumber: '42',
+        platform: 'ios',
+        platformLabel: 'iOS',
+        environment: 'development',
+        environmentLabel: '开发环境',
+        status: 'available',
+        lifecycleStatus: 'succeeded',
+        lifecycleStatusLabel: '成功',
+        note: '',
+        minOsVersion: 'iOS 16.0',
+        uploadedAt: '2026-07-12T09:30:00Z',
+        uploadedAtLabel: '2026-07-12 09:30',
+        expiresAt: null,
+        expiresAtLabel: '-',
+        artifact: null,
+        artifacts: [],
+        failureClassification: '',
+        failureSummary: '',
+        humanAction: '',
+        recentEvents: []
+      }
     }
   ]
 };

@@ -129,6 +129,34 @@ def test_invalid_notification_numbers_do_not_mutate_rows(db_session: Session) ->
     assert db_session.get(SystemSetting, "dingtalk_secret") is None
 
 
+@pytest.mark.parametrize(
+    ("timeout_seconds", "dispatch_interval_seconds", "field"),
+    [
+        (float("inf"), 10, "timeout_seconds"),
+        (5, float("nan"), "dispatch_interval_seconds"),
+    ],
+)
+def test_non_finite_notification_numbers_do_not_mutate_rows(
+    db_session: Session,
+    timeout_seconds: float,
+    dispatch_interval_seconds: float,
+    field: str,
+) -> None:
+    with pytest.raises(ValueError, match=field):
+        save_notification_settings(
+            db_session,
+            enabled=True,
+            webhook_url="https://oapi.example.test/robot/send",
+            secret="SEC-new",
+            timeout_seconds=timeout_seconds,
+            dispatch_interval_seconds=dispatch_interval_seconds,
+            actor="admin",
+        )
+
+    assert db_session.get(SystemSetting, "dingtalk_webhook_url") is None
+    assert db_session.get(SystemSetting, "dingtalk_secret") is None
+
+
 def test_invalid_notification_webhook_does_not_mutate_rows(db_session: Session) -> None:
     with pytest.raises(ValueError, match="webhook_url"):
         save_notification_settings(

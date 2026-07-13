@@ -479,6 +479,7 @@ select {
 
 .build-app-option-copy {
   display: grid;
+  width: 100%;
   min-width: 0;
   gap: 3px;
 }
@@ -488,6 +489,21 @@ select {
   color: var(--muted);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.build-app-option-meta {
+  display: flex;
+  min-width: 0;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.build-app-option-meta small:first-child {
+  min-width: 0;
+}
+
+.build-app-option-meta small:last-child {
+  flex: 0 0 auto;
 }
 
 .build-form-panel {

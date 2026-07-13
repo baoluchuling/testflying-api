@@ -56,10 +56,24 @@ export function AdminApp() {
 
   useEffect(() => {
     const originalPushState = history.pushState;
-    history.pushState = function pushStateWithAdminNavigation(...args) {
-      const result = originalPushState.apply(this, args);
+    let currentPath = location.pathname;
+    let currentState = history.state;
+
+    const navigationAllowed = (nextPath: string) =>
+      window.dispatchEvent(
+        new CustomEvent('admin:before-navigation', {
+          cancelable: true,
+          detail: { from: currentPath, to: nextPath }
+        })
+      );
+
+    history.pushState = function pushStateWithAdminNavigation(data, unused, url) {
+      const nextPath = url === undefined ? currentPath : new URL(String(url), location.href).pathname;
+      if (nextPath !== currentPath && !navigationAllowed(nextPath)) return;
+      originalPushState.call(this, data, unused, url);
+      currentPath = location.pathname;
+      currentState = history.state;
       window.dispatchEvent(new Event('admin:navigation'));
-      return result;
     };
 
     const syncRoute = () => {
@@ -67,12 +81,27 @@ export function AdminApp() {
       setActiveRoute(routeKeyFromPath(location.pathname));
       setActiveNavRoute(navKeyFromPath(location.pathname));
     };
-    window.addEventListener('popstate', syncRoute);
-    window.addEventListener('admin:navigation', syncRoute);
+    const handlePopState = () => {
+      const nextPath = location.pathname;
+      if (nextPath !== currentPath && !navigationAllowed(nextPath)) {
+        originalPushState.call(history, currentState, '', currentPath);
+        return;
+      }
+      currentPath = nextPath;
+      currentState = history.state;
+      syncRoute();
+    };
+    const handleAdminNavigation = () => {
+      currentPath = location.pathname;
+      currentState = history.state;
+      syncRoute();
+    };
+    window.addEventListener('popstate', handlePopState);
+    window.addEventListener('admin:navigation', handleAdminNavigation);
     return () => {
       history.pushState = originalPushState;
-      window.removeEventListener('popstate', syncRoute);
-      window.removeEventListener('admin:navigation', syncRoute);
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('admin:navigation', handleAdminNavigation);
     };
   }, []);
 
@@ -88,9 +117,6 @@ export function AdminApp() {
     if (location.pathname !== path) {
       history.pushState({ adminRoute: key }, '', path);
     }
-    setActiveRoute(routeKeyFromPath(path));
-    setActiveNavRoute(navKeyFromPath(path));
-    setActivePath(path);
   }
 
   async function checkHealth() {

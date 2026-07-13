@@ -70,6 +70,14 @@ describe('BuildRunnersPage', () => {
     expect(screen.getByText(/同一节点 ID 重新生成配置/)).toBeTruthy();
     expect(screen.getByText('runner-secret-once')).toBeTruthy();
     expect(screen.getByRole('button', { name: '复制配置 JSON' })).toBeTruthy();
+    expect(
+      screen.getByText((_, element) =>
+        Boolean(
+          element?.tagName === 'PRE' &&
+            element.textContent?.includes('"rootDir": "/Users/Shared/TestFlyingRunner/runner-mac-2"')
+        )
+      )
+    ).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: '关闭一次性配置' }));
     await waitFor(() => expect(screen.queryByText('runner-secret-once')).toBeNull());
@@ -87,10 +95,16 @@ describe('BuildRunnersPage', () => {
     expect(screen.getByRole('button', { name: '关闭一次性配置' }).hasAttribute('disabled')).toBe(true);
     expect(screen.getByRole('button', { name: '取消' }).hasAttribute('disabled')).toBe(true);
     expect(screen.getByText('正在签发一次性配置，请勿关闭或刷新页面。')).toBeTruthy();
+    expect(window.dispatchEvent(new CustomEvent('admin:before-navigation', { cancelable: true }))).toBe(
+      false
+    );
 
     pendingProvision.resolve(provisionResponse());
     expect(await screen.findByText('runner-secret-once')).toBeTruthy();
     expect(screen.getByRole('button', { name: '关闭一次性配置' }).hasAttribute('disabled')).toBe(false);
+    expect(window.dispatchEvent(new CustomEvent('admin:before-navigation', { cancelable: true }))).toBe(
+      true
+    );
   });
 });
 

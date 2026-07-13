@@ -17,13 +17,12 @@ const bootstrapPayload = {
     { key: 'uploads', label: '上传', path: '/admin/uploads' },
     { key: 'apps', label: '商店管理', path: '/admin/apps' },
     { key: 'store-reviews', label: '商店评论', path: '/admin/store-reviews' },
-    { key: 'llm-config', label: 'LLM 配置', path: '/admin/llm-config' },
     { key: 'api-docs', label: '接口文档', path: '/admin/api-docs' },
-    { key: 'builds', label: '构建', path: '/admin/builds' },
-    { key: 'build-runners', label: '构建节点', path: '/admin/build-runners' },
+    { key: 'builds', label: '构建', path: '/admin/builds/apps' },
     { key: 'devices', label: '设备', path: '/admin/devices' },
     { key: 'app-logs', label: 'App 日志', path: '/admin/app-logs' },
-    { key: 'notifications', label: '通知', path: '/admin/notifications' }
+    { key: 'notifications', label: '通知', path: '/admin/notifications' },
+    { key: 'settings', label: '设置', path: '/admin/settings/general' }
   ],
   health: { state: 'idle', label: '未检查' }
 };
@@ -83,21 +82,42 @@ describe('AdminApp', () => {
     await screen.findByText('最近构建');
     await user.click(screen.getByRole('button', { name: '构建' }));
 
-    expect(location.pathname).toBe('/admin/builds');
-    expect(await screen.findByText('构建列表')).toBeTruthy();
+    expect(location.pathname).toBe('/admin/builds/apps');
+    expect(await screen.findByRole('heading', { level: 2, name: '构建应用' })).toBeTruthy();
     expect(screen.queryByText('新后台重构中')).toBeNull();
   });
 
-  it('renders the build runners page inside the shell', async () => {
+  it('switches build subviews inside the shell', async () => {
     const user = userEvent.setup();
 
     render(<AdminApp />);
     await screen.findByText('服务健康');
+    await user.click(screen.getByRole('button', { name: '构建' }));
     await user.click(screen.getByRole('button', { name: '构建节点' }));
 
-    expect(location.pathname).toBe('/admin/build-runners');
+    expect(location.pathname).toBe('/admin/builds/runners');
     expect(await screen.findByText('Mac mini 1')).toBeTruthy();
-    expect(screen.getByRole('heading', { level: 1, name: '构建节点' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: '构建' })).toBeTruthy();
+  });
+
+  it('moves LLM configuration under settings', async () => {
+    const user = userEvent.setup();
+
+    render(<AdminApp />);
+    await screen.findByText('服务健康');
+    await user.click(screen.getByRole('button', { name: '设置' }));
+    await user.click(screen.getByRole('button', { name: 'LLM 配置' }));
+
+    expect(location.pathname).toBe('/admin/settings/llm');
+    expect(screen.getByRole('heading', { level: 1, name: '设置' })).toBeTruthy();
+  });
+
+  it('renders removed top-level routes as not found', async () => {
+    history.replaceState(null, '', '/admin/llm-config');
+
+    render(<AdminApp />);
+
+    expect(await screen.findByRole('heading', { level: 2, name: '页面不存在' })).toBeTruthy();
   });
 
   it('renders app detail inside the shell while keeping the apps nav active', async () => {

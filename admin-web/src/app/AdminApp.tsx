@@ -1,32 +1,38 @@
 import { useEffect, useMemo, useState } from 'react';
 import { bootstrapAdmin, type BootstrapResponse } from './apiClient';
-import { navKeyFromPath, routeKeyFromPath, routeTitles, type AdminRouteKey } from './routes';
+import {
+  buildViewFromPath,
+  navKeyFromPath,
+  routeKeyFromPath,
+  routeTitles,
+  settingsViewFromPath,
+  type AdminRouteKey
+} from './routes';
 import { StoreAppsPage } from '../pages/StoreAppsPage';
 import { StoreReviewsPage } from '../pages/StoreReviewsPage';
-import { LlmConfigPage } from '../pages/LlmConfigPage';
 import { UploadPage } from '../pages/UploadPage';
 import { AppLogsPage } from '../pages/AppLogsPage';
 import { DashboardPage } from '../pages/DashboardPage';
-import { BuildsPage } from '../pages/BuildsPage';
-import { BuildRunnersPage } from '../pages/BuildRunnersPage';
+import { BuildWorkspacePage } from '../pages/BuildWorkspacePage';
 import { AppDetailPage } from '../pages/AppDetailPage';
 import { DevicesPage } from '../pages/DevicesPage';
 import { NotificationsPage } from '../pages/NotificationsPage';
 import { ApiDocsPage } from '../pages/ApiDocsPage';
 import { DeveloperAccountsPage } from '../pages/DeveloperAccountsPage';
+import { NotFoundPage } from '../pages/NotFoundPage';
+import { SettingsPage } from '../pages/SettingsPage';
 
 const fallbackNav = [
   { key: 'dashboard', label: '总览', path: '/admin' },
   { key: 'uploads', label: '上传', path: '/admin/uploads' },
   { key: 'apps', label: '商店管理', path: '/admin/apps' },
   { key: 'store-reviews', label: '商店评论', path: '/admin/store-reviews' },
-  { key: 'llm-config', label: 'LLM 配置', path: '/admin/llm-config' },
   { key: 'api-docs', label: '接口文档', path: '/admin/api-docs' },
-  { key: 'builds', label: '构建', path: '/admin/builds' },
-  { key: 'build-runners', label: '构建节点', path: '/admin/build-runners' },
+  { key: 'builds', label: '构建', path: '/admin/builds/apps' },
   { key: 'devices', label: '设备', path: '/admin/devices' },
   { key: 'app-logs', label: 'App 日志', path: '/admin/app-logs' },
-  { key: 'notifications', label: '通知', path: '/admin/notifications' }
+  { key: 'notifications', label: '通知', path: '/admin/notifications' },
+  { key: 'settings', label: '设置', path: '/admin/settings/general' }
 ] as const;
 
 type HealthState = BootstrapResponse['health'] & { checking?: boolean };
@@ -34,6 +40,7 @@ type HealthState = BootstrapResponse['health'] & { checking?: boolean };
 export function AdminApp() {
   const [activeRoute, setActiveRoute] = useState<AdminRouteKey>(() => routeKeyFromPath(location.pathname));
   const [activeNavRoute, setActiveNavRoute] = useState<AdminRouteKey>(() => navKeyFromPath(location.pathname));
+  const [activePath, setActivePath] = useState(() => location.pathname);
   const [bootstrap, setBootstrap] = useState<BootstrapResponse | null>(null);
   const [health, setHealth] = useState<HealthState>({ state: 'idle', label: '未检查' });
   const [error, setError] = useState('');
@@ -56,6 +63,7 @@ export function AdminApp() {
     };
 
     const syncRoute = () => {
+      setActivePath(location.pathname);
       setActiveRoute(routeKeyFromPath(location.pathname));
       setActiveNavRoute(navKeyFromPath(location.pathname));
     };
@@ -69,7 +77,10 @@ export function AdminApp() {
   }, []);
 
   const navItems = bootstrap?.navItems ?? fallbackNav;
-  const title = useMemo(() => routeTitles[activeNavRoute], [activeNavRoute]);
+  const title = useMemo(
+    () => routeTitles[activeRoute === 'not-found' ? 'not-found' : activeNavRoute],
+    [activeNavRoute, activeRoute]
+  );
   const appDetailMatch = location.pathname.match(/^\/admin\/apps\/([^/]+)$/);
   const appDetailId = appDetailMatch ? decodeURIComponent(appDetailMatch[1]) : null;
 
@@ -79,6 +90,7 @@ export function AdminApp() {
     }
     setActiveRoute(routeKeyFromPath(path));
     setActiveNavRoute(navKeyFromPath(path));
+    setActivePath(path);
   }
 
   async function checkHealth() {
@@ -146,13 +158,13 @@ export function AdminApp() {
         {activeRoute === 'apps' && !appDetailId ? <StoreAppsPage /> : null}
         {activeRoute === 'accounts' ? <DeveloperAccountsPage /> : null}
         {activeRoute === 'store-reviews' ? <StoreReviewsPage /> : null}
-        {activeRoute === 'llm-config' ? <LlmConfigPage /> : null}
         {activeRoute === 'api-docs' ? <ApiDocsPage /> : null}
-        {activeRoute === 'builds' ? <BuildsPage /> : null}
-        {activeRoute === 'build-runners' ? <BuildRunnersPage /> : null}
+        {activeRoute === 'builds' ? <BuildWorkspacePage view={buildViewFromPath(activePath)} /> : null}
         {activeRoute === 'devices' ? <DevicesPage /> : null}
         {activeRoute === 'app-logs' ? <AppLogsPage /> : null}
         {activeRoute === 'notifications' ? <NotificationsPage /> : null}
+        {activeRoute === 'settings' ? <SettingsPage view={settingsViewFromPath(activePath)} /> : null}
+        {activeRoute === 'not-found' ? <NotFoundPage /> : null}
       </main>
     </div>
   );

@@ -172,6 +172,60 @@ select {
   font-weight: 600;
 }
 
+.section-workspace {
+  display: grid;
+  gap: 18px;
+}
+
+.secondary-nav {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.secondary-nav-item {
+  position: relative;
+  min-height: 42px;
+  padding: 0 16px;
+  border: 0;
+  color: var(--muted);
+  background: transparent;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.secondary-nav-item.active {
+  color: var(--text);
+}
+
+.secondary-nav-item.active::after {
+  position: absolute;
+  right: 12px;
+  bottom: -1px;
+  left: 12px;
+  height: 2px;
+  background: var(--text);
+  content: '';
+}
+
+.workspace-placeholder,
+.not-found-page {
+  min-height: 220px;
+}
+
+.workspace-placeholder h2,
+.not-found-page h2 {
+  margin: 0 0 10px;
+}
+
+.workspace-placeholder > p:last-child,
+.not-found-page > p:not(.eyebrow) {
+  max-width: 620px;
+  margin: 0 0 22px;
+  color: var(--muted);
+}
+
 .admin-shell[data-route="app-logs"] .page-title-row {
   display: none;
 }

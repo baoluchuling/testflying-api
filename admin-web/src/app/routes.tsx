@@ -4,13 +4,16 @@ export type AdminRouteKey =
   | 'apps'
   | 'accounts'
   | 'store-reviews'
-  | 'llm-config'
   | 'api-docs'
   | 'builds'
-  | 'build-runners'
   | 'devices'
   | 'app-logs'
-  | 'notifications';
+  | 'notifications'
+  | 'settings'
+  | 'not-found';
+
+export type BuildView = 'apps' | 'history' | 'runners';
+export type SettingsView = 'general' | 'notifications' | 'llm' | 'runtime';
 
 export const routeTitles: Record<AdminRouteKey, { eyebrow: string; title: string; summary: string }> = {
   dashboard: {
@@ -38,25 +41,15 @@ export const routeTitles: Record<AdminRouteKey, { eyebrow: string; title: string
     title: '商店评论',
     summary: '增量拉取最近评论，并通过 LLM 归纳需要关注的问题。'
   },
-  'llm-config': {
-    eyebrow: 'LLM Settings',
-    title: 'LLM 配置',
-    summary: '维护 OpenAI / Claude 兼容模型，并把功能绑定到指定模型。'
-  },
   'api-docs': {
     eyebrow: 'Developer API',
     title: '接口文档',
     summary: '查看商店管理对外接口、参数和调用示例。'
   },
   builds: {
-    eyebrow: 'Internal Distribution',
-    title: '构建',
-    summary: '查看所有上传构建和可复制的安装地址。'
-  },
-  'build-runners': {
     eyebrow: 'Build Automation',
-    title: '构建节点',
-    summary: '查看 Runner 在线状态、能力标签、版本和当前构建占用。'
+    title: '构建',
+    summary: '选择已接入应用发起构建，并查看历史与节点状态。'
   },
   devices: {
     eyebrow: 'Internal Distribution',
@@ -72,29 +65,37 @@ export const routeTitles: Record<AdminRouteKey, { eyebrow: string; title: string
     eyebrow: 'Internal Distribution',
     title: '通知',
     summary: '按类型筛选构建、账号和设备相关通知。'
+  },
+  settings: {
+    eyebrow: 'System Configuration',
+    title: '设置',
+    summary: '维护通用配置、通知渠道、LLM 和运行环境。'
+  },
+  'not-found': {
+    eyebrow: 'Not Found',
+    title: '页面不存在',
+    summary: '当前地址没有对应的后台页面。'
   }
 };
+
+const routeKeys = new Set<AdminRouteKey>([
+  'dashboard',
+  'uploads',
+  'apps',
+  'accounts',
+  'store-reviews',
+  'api-docs',
+  'builds',
+  'devices',
+  'app-logs',
+  'notifications',
+  'settings'
+]);
 
 export function routeKeyFromPath(pathname: string): AdminRouteKey {
   const relative = pathname.replace(/^\/admin\/?/, '').replace(/^\/+/, '');
   const first = relative.split('/')[0] || 'dashboard';
-  if (first === 'store-reviews') return 'store-reviews';
-  if (first === 'llm-config') return 'llm-config';
-  if (first === 'api-docs') return 'api-docs';
-  if (first === 'build-runners') return 'build-runners';
-  if (first === 'app-logs') return 'app-logs';
-  if (first === 'accounts') return 'accounts';
-  if (
-    first === 'uploads'
-    || first === 'apps'
-    || first === 'builds'
-    || first === 'build-runners'
-    || first === 'devices'
-    || first === 'notifications'
-  ) {
-    return first;
-  }
-  return 'dashboard';
+  return routeKeys.has(first as AdminRouteKey) ? (first as AdminRouteKey) : 'not-found';
 }
 
 export function navKeyFromPath(pathname: string): AdminRouteKey {
@@ -102,4 +103,16 @@ export function navKeyFromPath(pathname: string): AdminRouteKey {
     return 'apps';
   }
   return routeKeyFromPath(pathname);
+}
+
+export function buildViewFromPath(pathname: string): BuildView {
+  const view = pathname.match(/^\/admin\/builds\/([^/?#]+)/)?.[1];
+  if (view === 'history' || view === 'runners') return view;
+  return 'apps';
+}
+
+export function settingsViewFromPath(pathname: string): SettingsView {
+  const view = pathname.match(/^\/admin\/settings\/([^/?#]+)/)?.[1];
+  if (view === 'notifications' || view === 'llm' || view === 'runtime') return view;
+  return 'general';
 }

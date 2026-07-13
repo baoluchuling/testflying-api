@@ -29,11 +29,10 @@ def test_admin_api_bootstrap_returns_shell_metadata(client: TestClient) -> None:
         {"key": "uploads", "label": "上传", "path": "/admin/uploads"},
         {"key": "apps", "label": "商店管理", "path": "/admin/apps"},
         {"key": "store-reviews", "label": "商店评论", "path": "/admin/store-reviews"},
-        {"key": "llm-config", "label": "LLM 配置", "path": "/admin/llm-config"},
         {"key": "api-docs", "label": "接口文档", "path": "/admin/api-docs"},
-        {"key": "builds", "label": "构建", "path": "/admin/builds"},
-        {"key": "build-runners", "label": "构建节点", "path": "/admin/build-runners"},
+        {"key": "builds", "label": "构建", "path": "/admin/builds/apps"},
         {"key": "devices", "label": "设备", "path": "/admin/devices"},
         {"key": "app-logs", "label": "App 日志", "path": "/admin/app-logs"},
         {"key": "notifications", "label": "通知", "path": "/admin/notifications"},
+        {"key": "settings", "label": "设置", "path": "/admin/settings/general"},
     ]

@@ -1,5 +1,6 @@
 import { BuildRunnersPage } from './BuildRunnersPage';
-import { BuildsPage } from './BuildsPage';
+import { BuildAppsPage } from './BuildAppsPage';
+import { BuildHistoryPage } from './BuildHistoryPage';
 import type { BuildView } from '../app/routes';
 
 const views: Array<{ key: BuildView; label: string; path: string }> = [
@@ -27,14 +28,8 @@ export function BuildWorkspacePage({ view }: { view: BuildView }) {
           </button>
         ))}
       </nav>
-      {view === 'apps' ? (
-        <section className="panel workspace-placeholder">
-          <p className="eyebrow">Configured Applications</p>
-          <h2>构建应用</h2>
-          <p>从已配置构建环境的应用中选择目标并发起构建。</p>
-        </section>
-      ) : null}
-      {view === 'history' ? <BuildsPage /> : null}
+      {view === 'apps' ? <BuildAppsPage /> : null}
+      {view === 'history' ? <BuildHistoryPage /> : null}
       {view === 'runners' ? <BuildRunnersPage /> : null}
     </div>
   );

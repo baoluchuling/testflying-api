@@ -6,7 +6,7 @@ import {
   type BuildsState
 } from '../app/apiClient';
 
-export function BuildsPage() {
+export function BuildHistoryPage() {
   const [state, setState] = useState<BuildsState | null>(null);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState('');

@@ -667,6 +667,25 @@ export type BuildsState = {
   total: number;
 };
 
+export type BuildEnvironmentOption = {
+  environment: string;
+  environmentLabel: string;
+  setting: BuildSettingItem;
+  matchingRunnerCount: number;
+  hasOnlineRunner: boolean;
+};
+
+export type BuildAppItem = {
+  app: BuildAppSummary;
+  environments: BuildEnvironmentOption[];
+  latestBuild: BuildItem | null;
+};
+
+export type BuildAppsState = {
+  apps: BuildAppItem[];
+  total: number;
+};
+
 export type BuildRunnerItem = {
   id: string;
   name: string;
@@ -1190,6 +1209,10 @@ export function loadUploadState(): Promise<UploadState> {
 
 export function loadBuildsState(): Promise<BuildsState> {
   return getJson<BuildsState>('/admin/api/builds');
+}
+
+export function loadBuildAppsState(): Promise<BuildAppsState> {
+  return getJson<BuildAppsState>('/admin/api/builds/apps');
 }
 
 export function loadBuildRunnersState(): Promise<BuildRunnersState> {

@@ -44,6 +44,9 @@ describe('AdminApp', () => {
       if (url === '/admin/api/builds') {
         return jsonResponse(buildsState);
       }
+      if (url === '/admin/api/builds/apps') {
+        return jsonResponse({ apps: [], total: 0 });
+      }
       if (url === '/admin/api/build-runners') {
         return jsonResponse(buildRunnersState);
       }
@@ -83,7 +86,7 @@ describe('AdminApp', () => {
     await user.click(screen.getByRole('button', { name: '构建' }));
 
     expect(location.pathname).toBe('/admin/builds/apps');
-    expect(await screen.findByRole('heading', { level: 2, name: '构建应用' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 2, name: '还没有接入构建的应用' })).toBeTruthy();
     expect(screen.queryByText('新后台重构中')).toBeNull();
   });
 

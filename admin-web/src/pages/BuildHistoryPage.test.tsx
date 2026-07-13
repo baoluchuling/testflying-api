@@ -1,9 +1,9 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { BuildsPage } from './BuildsPage';
+import { BuildHistoryPage } from './BuildHistoryPage';
 
-describe('BuildsPage', () => {
+describe('BuildHistoryPage', () => {
   beforeEach(() => {
     history.replaceState(null, '', '/admin/builds');
     vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
@@ -24,7 +24,7 @@ describe('BuildsPage', () => {
     const dispatchEventSpy = vi.spyOn(window, 'dispatchEvent');
     const pushStateSpy = vi.spyOn(history, 'pushState');
 
-    render(<BuildsPage />);
+    render(<BuildHistoryPage />);
 
     expect(await screen.findByText('MultiArtifactApp')).toBeTruthy();
     expect(screen.getByText('Agent')).toBeTruthy();

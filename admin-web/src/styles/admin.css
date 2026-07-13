@@ -226,6 +226,120 @@ select {
   color: var(--muted);
 }
 
+.build-apps-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.build-app-list {
+  display: grid;
+  gap: 8px;
+}
+
+.build-app-option {
+  display: flex;
+  width: 100%;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.build-app-option:hover,
+.build-app-option.active {
+  border-color: var(--line);
+  background: #f7f7f8;
+}
+
+.build-app-option.active {
+  border-color: #a3a3a3;
+}
+
+.build-app-option-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.build-app-option-copy small {
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.build-form-panel {
+  min-height: 430px;
+}
+
+.workspace-selection-empty,
+.workspace-empty-state {
+  display: grid;
+  min-height: 240px;
+  place-content: center;
+  justify-items: start;
+}
+
+.workspace-selection-empty h2,
+.workspace-empty-state h2 {
+  margin: 0 0 8px;
+}
+
+.workspace-selection-empty p,
+.workspace-empty-state p {
+  margin: 0 0 20px;
+  color: var(--muted);
+}
+
+.build-setting-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 18px 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.build-setting-summary > div {
+  display: grid;
+  gap: 4px;
+  padding: 13px 14px;
+}
+
+.build-setting-summary dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.build-setting-summary dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.compact-notice {
+  padding: 12px 14px;
+}
+
+.build-created-notice span {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+@media (max-width: 900px) {
+  .build-apps-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
 .admin-shell[data-route="app-logs"] .page-title-row {
   display: none;
 }

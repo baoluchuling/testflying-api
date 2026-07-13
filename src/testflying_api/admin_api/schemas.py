@@ -677,6 +677,25 @@ class BuildSettingItem(AdminApiModel):
     updated_at_label: str
 
 
+class BuildEnvironmentOption(AdminApiModel):
+    environment: str
+    environment_label: str
+    setting: BuildSettingItem
+    matching_runner_count: int
+    has_online_runner: bool
+
+
+class BuildAppItem(AdminApiModel):
+    app: BuildAppSummary
+    environments: list[BuildEnvironmentOption]
+    latest_build: BuildItem | None
+
+
+class BuildAppsState(AdminApiModel):
+    apps: list[BuildAppItem]
+    total: int
+
+
 class BuildSettingSaveRequest(AdminApiModel):
     git_url: str
     repo_subpath: str = ""

@@ -55,6 +55,7 @@ from testflying_api.admin_api.schemas import (
     AppBuildActionResponse,
     AppDetailState,
     AppLogsState,
+    BuildAppsState,
     BuildItem,
     BuildRunnerItem,
     BuildRunnersState,
@@ -297,6 +298,18 @@ def builds_state(
 ) -> BuildsState:
     builds = list_builds(session)
     return BuildsState(builds=[_build_item(build) for build in builds], total=len(builds))
+
+
+@router.get(
+    "/builds/apps",
+    response_model=BuildAppsState,
+    response_model_by_alias=True,
+)
+def build_apps_state(
+    session: SessionDep,
+    _: AdminDep,
+) -> BuildAppsState:
+    return build_platform.build_apps_state(session)
 
 
 @router.get(

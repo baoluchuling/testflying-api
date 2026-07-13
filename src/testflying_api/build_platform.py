@@ -20,8 +20,11 @@ from testflying_api.admin.view_models import (
 from testflying_api.admin_api.errors import AdminApiError
 from testflying_api.admin_api.schemas import (
     AppDetailState,
+    BuildAppItem,
+    BuildAppsState,
     BuildAppSummary,
     BuildArtifactItem,
+    BuildEnvironmentOption,
     BuildEventItem,
     BuildItem,
     BuildSettingItem,
@@ -112,6 +115,77 @@ def app_detail_state(session: Session, app_id: str) -> AppDetailState:
             "production": build_setting_item(settings.get("production")),
         },
     )
+
+
+def build_apps_state(session: Session) -> BuildAppsState:
+    apps = list(
+        session.scalars(
+            select(App)
+            .join(App.build_settings)
+            .options(
+                selectinload(App.build_settings),
+                selectinload(App.builds).selectinload(Build.artifacts),
+                selectinload(App.builds).selectinload(Build.events),
+            )
+            .distinct()
+        ).unique()
+    )
+    apps.sort(key=lambda app: (app.name.casefold(), app.id))
+    runners = list(session.scalars(select(BuildRunner)))
+    items: list[BuildAppItem] = []
+    for app in apps:
+        environments: list[BuildEnvironmentOption] = []
+        for setting in sorted(app.build_settings, key=lambda item: item.environment):
+            matches = [
+                runner
+                for runner in runners
+                if _runner_matches_setting(runner, app=app, setting=setting)
+            ]
+            setting_item = build_setting_item(setting)
+            if setting_item is None:
+                continue
+            environments.append(
+                BuildEnvironmentOption(
+                    environment=setting.environment,
+                    environment_label=environment_label(setting.environment),
+                    setting=setting_item,
+                    matching_runner_count=len(matches),
+                    has_online_runner=bool(matches),
+                )
+            )
+        latest_build = max(app.builds, key=lambda build: build.uploaded_at, default=None)
+        items.append(
+            BuildAppItem(
+                app=_build_app_summary(app),
+                environments=environments,
+                latest_build=build_item(latest_build) if latest_build is not None else None,
+            )
+        )
+    return BuildAppsState(apps=items, total=len(items))
+
+
+def _runner_matches_setting(
+    runner: BuildRunner,
+    *,
+    app: App,
+    setting: AppBuildSetting,
+) -> bool:
+    if runner.status not in {"online", "busy"}:
+        return False
+    platforms = {
+        str(item).strip()
+        for item in (runner.capabilities_json or {}).get("platforms", [])
+        if str(item).strip()
+    }
+    if app.platform not in platforms:
+        return False
+    required_labels = {
+        str(item).strip() for item in setting.runner_labels_json or [] if str(item).strip()
+    }
+    runner_labels = {
+        str(item).strip() for item in runner.labels_json or [] if str(item).strip()
+    }
+    return required_labels.issubset(runner_labels)
 
 
 def _parse_environment(value: str) -> str:

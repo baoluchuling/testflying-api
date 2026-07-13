@@ -52,12 +52,8 @@ func main() {
 		PollInterval:        pollInterval,
 		UpdateInterval:      updateInterval,
 		Labels:              splitCSV(os.Getenv("TESTFLYING_BUILD_RUNNER_LABELS")),
-		Platforms:           splitCSV(os.Getenv("TESTFLYING_BUILD_RUNNER_PLATFORMS")),
 		LLMAdapters:         splitCSV(os.Getenv("TESTFLYING_BUILD_RUNNER_LLM_ADAPTERS")),
 		Capacity:            1,
-	}
-	if len(cfg.Platforms) == 0 {
-		cfg.Platforms = []string{"ios"}
 	}
 	if len(cfg.LLMAdapters) == 0 {
 		cfg.LLMAdapters = []string{"codex"}

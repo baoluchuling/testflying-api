@@ -73,7 +73,7 @@ if server_url.scheme not in {"http", "https"} or not server_url.netloc:
 if not os.path.isabs(payload["rootDir"]):
     raise SystemExit("Runner config field rootDir must be absolute")
 
-for field in ("labels", "platforms"):
+for field in ("labels",):
     values = payload.get(field)
     if not isinstance(values, list):
         raise SystemExit(f"Runner config field {field} must be a non-empty string list")

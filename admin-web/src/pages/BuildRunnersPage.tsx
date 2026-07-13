@@ -12,7 +12,6 @@ type RunnerForm = {
   runnerId: string;
   name: string;
   labels: string;
-  platform: 'ios' | 'android';
   arch: 'arm64' | 'amd64';
   llmAdapters: string;
 };
@@ -21,7 +20,6 @@ const EMPTY_FORM: RunnerForm = {
   runnerId: '',
   name: '',
   labels: '',
-  platform: 'ios',
   arch: 'arm64',
   llmAdapters: ''
 };
@@ -95,7 +93,6 @@ export function BuildRunnersPage() {
 }
 
 function BuildRunnerRow({ runner }: { runner: BuildRunnerItem }) {
-  const platforms = valueList(runner.capabilities.platforms);
   const llmAdapters = valueList(runner.capabilities.llmAdapters);
   const statusTone = runner.status === 'online' ? 'ok' : runner.status === 'busy' ? 'warn' : 'danger';
   const updateTone = runner.updateStatus === 'current' ? 'ok' : runner.updateStatus === 'outdated' ? 'warn' : '';
@@ -114,7 +111,7 @@ function BuildRunnerRow({ runner }: { runner: BuildRunnerItem }) {
         <span className={`tag ${updateTone}`}>{runner.updateStatusLabel}</span>
       </span>
       <span>
-        <strong>{platforms.join(', ') || '-'}</strong>
+        <strong>iOS / Android</strong>
         <small>LLM: {llmAdapters.join(', ') || '-'}</small>
       </span>
       <span>{runner.lastSeenAtLabel}</span>
@@ -171,7 +168,6 @@ function RunnerProvisionDialog({
         version: '',
         packageAgentVersion: '',
         capabilities: {
-          platforms: [form.platform],
           llmAdapters: commaList(form.llmAdapters),
           capacity: 1,
           hostPlatform: 'darwin',
@@ -245,19 +241,6 @@ function RunnerProvisionDialog({
                 onChange={(event) => setForm({ ...form, labels: event.target.value })}
                 placeholder="ios-release, flutter"
               />
-            </label>
-            <label>
-              <span>构建平台</span>
-              <select
-                aria-label="构建平台"
-                value={form.platform}
-                onChange={(event) =>
-                  setForm({ ...form, platform: event.target.value as RunnerForm['platform'] })
-                }
-              >
-                <option value="ios">iOS</option>
-                <option value="android">Android</option>
-              </select>
             </label>
             <label>
               <span>节点架构</span>
@@ -343,7 +326,6 @@ function runnerConfigJson(result: RunnerProvisionResponse): string {
       serverUrl: window.location.origin,
       rootDir: `/Users/Shared/TestFlyingRunner/${result.runner.id}`,
       labels: result.runner.labels,
-      platforms: valueList(capabilities.platforms),
       llmAdapters: valueList(capabilities.llmAdapters),
       capacity: 1
     },

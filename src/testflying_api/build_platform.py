@@ -62,6 +62,7 @@ _RUNNER_ALLOWED_ARTIFACTS = _RUNNER_REQUIRED_ARTIFACTS
 _RUNNER_TOKEN_DIGEST_PREFIX = "hmac-sha256:"
 _RUNNER_ASSIGNMENT_LEASE_SECONDS = 15 * 60
 _RUNNER_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+RUNNER_BUILD_PLATFORMS = ("ios", "android")
 _FAILURE_CLASSIFICATION_ALLOWED_RE = re.compile(r"[^a-z0-9_:-]+")
 _FAILURE_CLASSIFICATION_SECRET_RE = re.compile(
     r"(?i)(-----begin [a-z0-9 ]*private key-----|"
@@ -140,7 +141,7 @@ def build_apps_state(session: Session) -> BuildAppsState:
             matches = [
                 runner
                 for runner in runners
-                if _runner_matches_setting(runner, app=app, setting=setting)
+                if _runner_matches_setting(runner, setting=setting)
             ]
             setting_item = build_setting_item(setting)
             if setting_item is None:
@@ -168,17 +169,9 @@ def build_apps_state(session: Session) -> BuildAppsState:
 def _runner_matches_setting(
     runner: BuildRunner,
     *,
-    app: App,
     setting: AppBuildSetting,
 ) -> bool:
     if runner.status not in {"online", "busy"}:
-        return False
-    platforms = {
-        str(item).strip()
-        for item in (runner.capabilities_json or {}).get("platforms", [])
-        if str(item).strip()
-    }
-    if app.platform not in platforms:
         return False
     required_labels = {
         str(item).strip() for item in setting.runner_labels_json or [] if str(item).strip()
@@ -187,6 +180,12 @@ def _runner_matches_setting(
         str(item).strip() for item in runner.labels_json or [] if str(item).strip()
     }
     return required_labels.issubset(runner_labels)
+
+
+def normalize_runner_capabilities(capabilities: dict[str, object]) -> dict[str, object]:
+    normalized = dict(capabilities)
+    normalized["platforms"] = list(RUNNER_BUILD_PLATFORMS)
+    return normalized
 
 
 def _parse_environment(value: str) -> str:
@@ -318,7 +317,7 @@ def provision_runner(
     runner.name = _require_non_blank(name, field="name", label="name")
     runner.token_hash = hash_runner_token(token, token_pepper=token_pepper)
     runner.labels_json = [label.strip() for label in labels if label.strip()]
-    runner.capabilities_json = dict(capabilities)
+    runner.capabilities_json = normalize_runner_capabilities(capabilities)
     runner.status = "busy" if runner.current_build_id else "offline"
     runner.version = version.strip()
     runner.package_agent_version = package_agent_version.strip()
@@ -349,7 +348,7 @@ def register_runner(
     runner.labels_json = [label.strip() for label in labels if label.strip()]
     merged_capabilities = dict(runner.capabilities_json or {})
     merged_capabilities.update(capabilities)
-    runner.capabilities_json = merged_capabilities
+    runner.capabilities_json = normalize_runner_capabilities(merged_capabilities)
     runner.status = "busy" if runner.current_build_id else "online"
     runner.version = version.strip()
     runner.package_agent_version = package_agent_version.strip()
@@ -420,11 +419,6 @@ def poll_runner_build(
             return _build_with_relations(session, build.id)
         runner.current_build_id = None
 
-    runner_platforms = {
-        str(item).strip()
-        for item in (runner.capabilities_json or {}).get("platforms", [])
-        if str(item).strip()
-    }
     queued_builds = session.scalars(
         select(Build)
         .where(
@@ -438,8 +432,6 @@ def poll_runner_build(
     for build in queued_builds:
         required_labels = set((build.runner_labels_json or {}).get("required", []))
         if required_labels and not required_labels.issubset(runner_labels):
-            continue
-        if build.platform not in runner_platforms:
             continue
         build.lifecycle_status = BuildLifecycleStatus.ASSIGNED.value
         build.runner_id = runner.id

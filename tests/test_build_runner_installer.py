@@ -26,7 +26,6 @@ SYSTEM_INSTALL_ROOT = "/Library/Application Support/TestFlying/build-runner"
         ("serverUrl", None),
         ("rootDir", ""),
         ("labels", []),
-        ("platforms", [" "]),
     ],
 )
 def test_installer_rejects_invalid_config_before_creating_output(
@@ -140,7 +139,6 @@ def _valid_config(tmp_path: Path) -> dict[str, object]:
         "version": "dev",
         "packageAgentVersion": "dev",
         "labels": ["ios-release"],
-        "platforms": ["ios", "android"],
         "llmAdapters": ["codex", "claude"],
         "capacity": 1,
     }

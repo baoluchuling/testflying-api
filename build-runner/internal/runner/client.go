@@ -100,7 +100,7 @@ func (c *Client) Heartbeat(ctx context.Context, cfg Config) error {
 		Version:             cfg.Version,
 		PackageAgentVersion: cfg.PackageAgentVersion,
 		Capabilities: map[string]interface{}{
-			"platforms":    cfg.Platforms,
+			"platforms":    []string{"ios", "android"},
 			"llmAdapters":  cfg.LLMAdapters,
 			"capacity":     cfg.Capacity,
 			"hostPlatform": cfg.Platform,

@@ -23,7 +23,6 @@ type Config struct {
 	PollInterval        time.Duration
 	UpdateInterval      time.Duration
 	Labels              []string
-	Platforms           []string
 	LLMAdapters         []string
 	Capacity            int
 }

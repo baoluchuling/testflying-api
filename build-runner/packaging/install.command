@@ -87,7 +87,6 @@ optional = {
 }
 csv_fields = {
     "TESTFLYING_BUILD_RUNNER_LABELS": "labels",
-    "TESTFLYING_BUILD_RUNNER_PLATFORMS": "platforms",
     "TESTFLYING_BUILD_RUNNER_LLM_ADAPTERS": "llmAdapters",
 }
 

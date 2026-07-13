@@ -152,7 +152,6 @@ func TestRunOnceNoBuildOnlyHeartbeatsAndPolls(t *testing.T) {
 		Platform:            "darwin",
 		Arch:                "arm64",
 		Labels:              []string{"ios-release"},
-		Platforms:           []string{"ios"},
 		LLMAdapters:         []string{"codex"},
 		Capacity:            1,
 	}
@@ -493,7 +492,6 @@ func TestRunOnceAssignedBuildRunsPackageAgentPostsEventsAndCompletesNeedsHuman(t
 		Platform:            "darwin",
 		Arch:                "arm64",
 		Labels:              []string{"ios-release"},
-		Platforms:           []string{"ios"},
 		LLMAdapters:         []string{"codex"},
 		Capacity:            1,
 	}
@@ -514,6 +512,10 @@ func TestRunOnceAssignedBuildRunsPackageAgentPostsEventsAndCompletesNeedsHuman(t
 	}
 	if heartbeatBody.Capabilities["arch"] != cfg.Arch {
 		t.Fatalf("heartbeat arch = %q, want %q", heartbeatBody.Capabilities["arch"], cfg.Arch)
+	}
+	platforms, ok := heartbeatBody.Capabilities["platforms"].([]interface{})
+	if !ok || len(platforms) != 2 || platforms[0] != "ios" || platforms[1] != "android" {
+		t.Fatalf("heartbeat platforms = %#v, want ios and android", platforms)
 	}
 	if pollBody.RunnerID != cfg.RunnerID {
 		t.Fatalf("poll runnerId = %q, want %q", pollBody.RunnerID, cfg.RunnerID)
@@ -724,7 +726,6 @@ func TestRunOnceAssignedBuildCompletesFailedWhenPackageAgentExitsNonZero(t *test
 		Version:             "0.1.0",
 		PackageAgentVersion: "0.1.0",
 		Labels:              []string{"ios-release"},
-		Platforms:           []string{"ios"},
 		LLMAdapters:         []string{"codex"},
 		Capacity:            1,
 	}
@@ -856,7 +857,6 @@ func TestRunOnceAssignedBuildCompletesNeedsHumanWhenPackageAgentExitsTwo(t *test
 		Version:             "0.1.0",
 		PackageAgentVersion: "0.1.0",
 		Labels:              []string{"ios-release"},
-		Platforms:           []string{"ios"},
 		LLMAdapters:         []string{"codex"},
 		Capacity:            1,
 	}
@@ -962,7 +962,6 @@ func TestRunOnceAssignedBuildCompletesFailedWhenWorkspaceSetupFails(t *testing.T
 		Version:             "0.1.0",
 		PackageAgentVersion: "0.1.0",
 		Labels:              []string{"ios-release"},
-		Platforms:           []string{"ios"},
 		LLMAdapters:         []string{"codex"},
 		Capacity:            1,
 	}
@@ -1038,7 +1037,6 @@ func TestRunOnceAssignedBuildCompletesFailedWhenStartEventPostFails(t *testing.T
 		Version:             "0.1.0",
 		PackageAgentVersion: "0.1.0",
 		Labels:              []string{"ios-release"},
-		Platforms:           []string{"ios"},
 		LLMAdapters:         []string{"codex"},
 		Capacity:            1,
 	}
@@ -1143,7 +1141,6 @@ func TestRunOnceAssignedBuildCompletesNeedsHumanWhenFinishEventPostFails(t *test
 		Version:             "0.1.0",
 		PackageAgentVersion: "0.1.0",
 		Labels:              []string{"ios-release"},
-		Platforms:           []string{"ios"},
 		LLMAdapters:         []string{"codex"},
 		Capacity:            1,
 	}
@@ -1241,7 +1238,6 @@ func TestRunOnceAssignedBuildCompletesNeedsHumanWhenArtifactUploadFails(t *testi
 		Version:             "0.1.0",
 		PackageAgentVersion: "0.1.0",
 		Labels:              []string{"ios-release"},
-		Platforms:           []string{"ios"},
 		LLMAdapters:         []string{"codex"},
 		Capacity:            1,
 	}
@@ -1383,7 +1379,6 @@ func TestRunOnceAssignedBuildCompletesNeedsHumanWhenSuccessReportEscapesOutputDi
 		Version:             "0.1.0",
 		PackageAgentVersion: "0.1.0",
 		Labels:              []string{"ios-release"},
-		Platforms:           []string{"ios"},
 		LLMAdapters:         []string{"codex"},
 		Capacity:            1,
 	}

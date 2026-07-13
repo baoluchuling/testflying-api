@@ -113,7 +113,7 @@ def test_admin_provisions_runner_token_once(client: TestClient, db_session: Sess
             "labels": ["ios-release"],
             "version": "0.1.0",
             "packageAgentVersion": "0.1.0",
-            "capabilities": {"platforms": ["ios"], "llmAdapters": ["codex"], "capacity": 1},
+            "capabilities": {"llmAdapters": ["codex"], "capacity": 1},
         },
     )
 
@@ -126,6 +126,8 @@ def test_admin_provisions_runner_token_once(client: TestClient, db_session: Sess
     assert runner is not None
     assert runner.token_hash.startswith("hmac-sha256:")
     assert runner.token_hash != payload["token"]
+    assert runner.capabilities_json["platforms"] == ["ios", "android"]
+    assert payload["runner"]["capabilities"]["platforms"] == ["ios", "android"]
 
     list_response = client.get("/admin/api/build-runners", headers=_admin_headers())
     assert list_response.status_code == 200
@@ -319,7 +321,7 @@ def test_runner_heartbeat_updates_provisioned_capabilities(
     assert runner.capabilities_json == {
         "hostPlatform": "darwin",
         "arch": "arm64",
-        "platforms": ["ios"],
+        "platforms": ["ios", "android"],
         "llmAdapters": ["codex"],
         "capacity": 1,
     }
@@ -386,7 +388,7 @@ def test_build_runners_state_lists_runner_status_and_capabilities(
                 "lastSeenAtLabel": "2026-07-10 02:30",
                 "currentBuildId": "build-agent-active",
                 "capabilities": {
-                    "platforms": ["ios"],
+                    "platforms": ["ios", "android"],
                     "llmAdapters": ["codex"],
                     "capacity": 1,
                     "hostPlatform": "darwin",
@@ -504,99 +506,69 @@ def test_runner_poll_assigns_matching_queued_build_and_enforces_capacity(
     assert second_build.lifecycle_status == "queued"
 
 
-def test_runner_poll_requires_explicit_platform_capability(
+def test_runner_poll_supports_ios_and_android_without_platform_configuration(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    app = _create_app(db_session)
-    build_without_platforms = _create_agent_build(
+    ios_app = _create_app(db_session)
+    android_app = _create_app(
         db_session,
-        build_id="build-agent-no-platforms",
-        app=app,
+        app_id="app-android-demo",
+        platform="android",
     )
-    build_with_wrong_platform = _create_agent_build(
+    ios_build = _create_agent_build(
         db_session,
-        build_id="build-agent-wrong-platform",
-        app=app,
+        build_id="build-agent-ios",
+        app=ios_app,
     )
-    build_matching = _create_agent_build(
+    android_build = _create_agent_build(
         db_session,
-        build_id="build-agent-matching-platform",
-        app=app,
+        build_id="build-agent-android",
+        app=android_app,
     )
     _provision_runner_record(db_session)
+    _provision_runner_record(db_session, runner_id="runner-mac-2")
 
-    client.post(
-        "/admin/api/build-runners/register",
-        headers=_runner_headers(),
-        json={
-            "runnerId": "runner-mac-1",
-            "name": "Mac mini 1",
-            "labels": ["ios-release"],
-            "version": "0.1.0",
-            "packageAgentVersion": "0.1.0",
-            "capabilities": {"llmAdapters": ["codex"], "capacity": 1},
-        },
-    )
+    for runner_id, capabilities in (
+        ("runner-mac-1", {"llmAdapters": ["codex"], "capacity": 1}),
+        (
+            "runner-mac-2",
+            {"platforms": ["android"], "llmAdapters": ["codex"], "capacity": 1},
+        ),
+    ):
+        response = client.post(
+            "/admin/api/build-runners/register",
+            headers=_runner_headers(),
+            json={
+                "runnerId": runner_id,
+                "name": runner_id,
+                "labels": ["ios-release"],
+                "version": "0.1.0",
+                "packageAgentVersion": "0.1.0",
+                "capabilities": capabilities,
+            },
+        )
+        assert response.status_code == 200
 
-    no_platforms_response = client.post(
-        "/admin/api/build-runners/poll",
-        headers=_runner_headers(),
-        json={"runnerId": "runner-mac-1", "timeoutSeconds": 0},
-    )
+    assignments = []
+    for runner_id in ("runner-mac-1", "runner-mac-2"):
+        response = client.post(
+            "/admin/api/build-runners/poll",
+            headers=_runner_headers(),
+            json={"runnerId": runner_id, "timeoutSeconds": 0},
+        )
+        assert response.status_code == 200
+        assignments.append(response.json()["build"])
 
-    assert no_platforms_response.status_code == 200
-    assert no_platforms_response.json() == {"build": None}
-    db_session.refresh(build_without_platforms)
-    assert build_without_platforms.lifecycle_status == "queued"
-
-    client.post(
-        "/admin/api/build-runners/register",
-        headers=_runner_headers(),
-        json={
-            "runnerId": "runner-mac-1",
-            "name": "Mac mini 1",
-            "labels": ["ios-release"],
-            "version": "0.1.0",
-            "packageAgentVersion": "0.1.0",
-            "capabilities": {"platforms": ["android"], "llmAdapters": ["codex"], "capacity": 1},
-        },
-    )
-
-    wrong_platform_response = client.post(
-        "/admin/api/build-runners/poll",
-        headers=_runner_headers(),
-        json={"runnerId": "runner-mac-1", "timeoutSeconds": 0},
-    )
-
-    assert wrong_platform_response.status_code == 200
-    assert wrong_platform_response.json() == {"build": None}
-    db_session.refresh(build_with_wrong_platform)
-    assert build_with_wrong_platform.lifecycle_status == "queued"
-
-    client.post(
-        "/admin/api/build-runners/register",
-        headers=_runner_headers(),
-        json={
-            "runnerId": "runner-mac-1",
-            "name": "Mac mini 1",
-            "labels": ["ios-release"],
-            "version": "0.1.0",
-            "packageAgentVersion": "0.1.0",
-            "capabilities": {"platforms": ["ios"], "llmAdapters": ["codex"], "capacity": 1},
-        },
-    )
-
-    matching_response = client.post(
-        "/admin/api/build-runners/poll",
-        headers=_runner_headers(),
-        json={"runnerId": "runner-mac-1", "timeoutSeconds": 0},
-    )
-
-    assert matching_response.status_code == 200
-    assert matching_response.json()["build"]["id"] == "build-agent-no-platforms"
-    db_session.refresh(build_matching)
-    assert build_matching.lifecycle_status == "queued"
+    assert {assignment["id"] for assignment in assignments} == {
+        ios_build.id,
+        android_build.id,
+    }
+    assert {assignment["platform"] for assignment in assignments} == {"ios", "android"}
+    for runner_id in ("runner-mac-1", "runner-mac-2"):
+        runner = db_session.get(BuildRunner, runner_id)
+        assert runner is not None
+        assert runner.capabilities_json["platforms"] == ["ios", "android"]
 
 
 def test_runner_poll_terminalizes_queued_builds_at_retry_cap(

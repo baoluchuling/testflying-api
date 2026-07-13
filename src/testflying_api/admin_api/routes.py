@@ -3929,7 +3929,9 @@ def _runner_build_payload(build: Build) -> RunnerBuildPayload:
 
 
 def _build_runner_item(runner: BuildRunner, *, release_root: Path) -> BuildRunnerItem:
-    capabilities = dict(runner.capabilities_json or {})
+    capabilities = build_platform.normalize_runner_capabilities(
+        dict(runner.capabilities_json or {})
+    )
     latest_version, update_status, update_status_label = runner_releases.runner_release_status(
         release_root,
         platform=str(capabilities.get("hostPlatform") or "darwin"),

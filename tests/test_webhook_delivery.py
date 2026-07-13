@@ -11,7 +11,7 @@ from testflying_api import webhook_delivery
 from testflying_api.app import create_app
 from testflying_api.config import Settings
 from testflying_api.dingtalk import DingTalkDeliveryError
-from testflying_api.schema import WebhookDelivery
+from testflying_api.schema import SystemSetting, WebhookDelivery
 from testflying_api.storage import LocalArtifactStorage
 from testflying_api.webhook_delivery import dispatch_due_deliveries, run_delivery_loop
 
@@ -148,6 +148,32 @@ def test_delivery_loop_dispatches_immediately_and_stops(
     assert calls == [True]
 
 
+def test_database_setting_can_disable_environment_delivery(
+    session_factory: sessionmaker[Session],
+    test_settings: Settings,
+) -> None:
+    settings = replace(
+        test_settings,
+        dingtalk_webhook_url="https://oapi.dingtalk.test/robot/send?access_token=abc",
+        dingtalk_secret="SEC-test",
+    )
+    with session_factory() as session:
+        session.add_all(
+            [
+                SystemSetting(key="dingtalk_enabled", value="false"),
+                _delivery("disabled", next_attempt_at=datetime.now(UTC)),
+            ]
+        )
+        session.commit()
+
+    assert dispatch_due_deliveries(session_factory, settings) == 0
+
+    with session_factory() as session:
+        delivery = session.get(WebhookDelivery, "delivery-disabled")
+        assert delivery is not None
+        assert delivery.status == "pending"
+
+
 def test_app_lifespan_starts_and_stops_configured_delivery_loop(
     monkeypatch,
     session_factory: sessionmaker[Session],
@@ -176,6 +202,38 @@ def test_app_lifespan_starts_and_stops_configured_delivery_loop(
         artifact_storage=LocalArtifactStorage(
             root=settings.storage_root,
             public_base_url=settings.public_base_url,
+        ),
+    )
+
+    with TestClient(app):
+        assert calls == ["started"]
+
+    assert calls == ["started", "stopped"]
+
+
+def test_app_lifespan_starts_delivery_loop_before_notification_is_configured(
+    monkeypatch,
+    session_factory: sessionmaker[Session],
+    test_settings: Settings,
+) -> None:
+    calls: list[str] = []
+
+    async def fake_loop(
+        _session_factory: sessionmaker[Session],
+        _settings: Settings,
+        stop_event: asyncio.Event,
+    ) -> None:
+        calls.append("started")
+        await stop_event.wait()
+        calls.append("stopped")
+
+    monkeypatch.setattr(webhook_delivery, "run_delivery_loop", fake_loop)
+    app = create_app(
+        test_settings,
+        session_factory=session_factory,
+        artifact_storage=LocalArtifactStorage(
+            root=test_settings.storage_root,
+            public_base_url=test_settings.public_base_url,
         ),
     )
 

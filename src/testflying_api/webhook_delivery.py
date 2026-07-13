@@ -11,6 +11,7 @@ from testflying_api.config import Settings
 from testflying_api.dingtalk import send_dingtalk_markdown
 from testflying_api.redaction import redact_text
 from testflying_api.schema import WebhookDelivery
+from testflying_api.system_settings import effective_business_settings
 
 DeliverySender = Callable[..., None]
 DeliveryDispatcher = Callable[..., int]
@@ -30,11 +31,12 @@ def dispatch_due_deliveries(
     now: datetime | None = None,
     sender: DeliverySender = send_dingtalk_markdown,
 ) -> int:
-    if not settings.dingtalk_configured:
-        return 0
     current = now or datetime.now(UTC)
     processed = 0
     with session_factory() as session:
+        effective = effective_business_settings(session, settings)
+        if not effective.dingtalk_configured:
+            return 0
         deliveries = session.scalars(
             select(WebhookDelivery)
             .where(
@@ -48,11 +50,11 @@ def dispatch_due_deliveries(
             payload = dict(delivery.payload_json or {})
             try:
                 sender(
-                    webhook_url=settings.dingtalk_webhook_url or "",
-                    secret=settings.dingtalk_secret or "",
+                    webhook_url=effective.dingtalk_webhook_url or "",
+                    secret=effective.dingtalk_secret or "",
                     title=str(payload.get("title") or "TestFlying build notification"),
                     markdown=str(payload.get("markdown") or ""),
-                    timeout_seconds=settings.dingtalk_timeout_seconds,
+                    timeout_seconds=effective.dingtalk_timeout_seconds,
                 )
             except Exception as error:  # noqa: BLE001 - delivery failures must stay isolated
                 delivery.attempt_count += 1
@@ -83,10 +85,12 @@ async def run_delivery_loop(
         await asyncio.to_thread(dispatcher, session_factory, settings)
         if stop_event.is_set():
             break
+        with session_factory() as session:
+            effective = effective_business_settings(session, settings)
         try:
             await asyncio.wait_for(
                 stop_event.wait(),
-                timeout=settings.dingtalk_dispatch_interval_seconds,
+                timeout=effective.dingtalk_dispatch_interval_seconds,
             )
         except TimeoutError:
             continue

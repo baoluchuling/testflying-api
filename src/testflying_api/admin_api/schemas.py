@@ -879,6 +879,57 @@ class NotificationsState(AdminApiModel):
     dingtalk: DingTalkConfigState
 
 
+class GeneralSettingsState(AdminApiModel):
+    connector_base_url_template: str
+    source: str
+
+
+class NotificationSettingsState(AdminApiModel):
+    enabled: bool
+    configured: bool
+    webhook_configured: bool
+    secret_configured: bool
+    timeout_seconds: float
+    dispatch_interval_seconds: float
+    pending_delivery_count: int
+    dead_delivery_count: int
+    source: str
+
+
+class RuntimeEnvironmentItem(AdminApiModel):
+    key: str
+    label: str
+    group: str
+    source: str
+    value_label: str
+    configured: bool
+    sensitive: bool
+    restart_required: bool
+
+
+class SettingsState(AdminApiModel):
+    general: GeneralSettingsState
+    notifications: NotificationSettingsState
+    runtime: list[RuntimeEnvironmentItem]
+
+
+class GeneralSettingsSaveRequest(AdminApiModel):
+    connector_base_url_template: str | None = None
+
+
+class NotificationSettingsSaveRequest(AdminApiModel):
+    enabled: bool
+    webhook_url: str | None = None
+    secret: str | None = None
+    timeout_seconds: float
+    dispatch_interval_seconds: float
+
+
+class SettingsActionResponse(AdminApiModel):
+    message: str
+    state: SettingsState
+
+
 class ApiDocParamItem(AdminApiModel):
     name: str
     location: str

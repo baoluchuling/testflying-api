@@ -31,24 +31,21 @@ def create_app(
     @asynccontextmanager
     async def lifespan(application: FastAPI):
         stop_event = asyncio.Event()
-        delivery_task: asyncio.Task[None] | None = None
         application.state.delivery_stop_event = stop_event
-        if app_settings.dingtalk_configured:
-            delivery_task = asyncio.create_task(
-                webhook_delivery.run_delivery_loop(
-                    application.state.session_factory,
-                    app_settings,
-                    stop_event,
-                )
+        delivery_task = asyncio.create_task(
+            webhook_delivery.run_delivery_loop(
+                application.state.session_factory,
+                app_settings,
+                stop_event,
             )
-            await asyncio.sleep(0)
+        )
+        await asyncio.sleep(0)
         application.state.delivery_task = delivery_task
         try:
             yield
         finally:
             stop_event.set()
-            if delivery_task is not None:
-                await delivery_task
+            await delivery_task
 
     app = FastAPI(
         title="testflying API",
@@ -62,7 +59,7 @@ def create_app(
         app.add_middleware(
             CORSMiddleware,
             allow_origins=list(app_settings.cors_allowed_origins),
-            allow_methods=["GET", "POST", "OPTIONS"],
+            allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
             allow_headers=[
                 "Authorization",
                 "Content-Type",

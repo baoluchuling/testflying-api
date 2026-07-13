@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 from datetime import UTC, datetime, timedelta
 from importlib import resources
@@ -73,6 +74,8 @@ from testflying_api.admin_api.schemas import (
     DeviceItem,
     DevicesState,
     DingTalkConfigState,
+    GeneralSettingsSaveRequest,
+    GeneralSettingsState,
     LlmConfigState,
     LlmFeatureBindingItem,
     LlmFeatureBindingSaveRequest,
@@ -90,6 +93,8 @@ from testflying_api.admin_api.schemas import (
     MarketingPageSaveRequest,
     MarketingPageSyncRequest,
     NotificationItem,
+    NotificationSettingsSaveRequest,
+    NotificationSettingsState,
     NotificationsState,
     NotificationTypeCount,
     ReviewAnalysisIssue,
@@ -109,6 +114,9 @@ from testflying_api.admin_api.schemas import (
     RunnerProvisionResponse,
     RunnerUpdateCheckRequest,
     RunnerUpdateCheckResponse,
+    RuntimeEnvironmentItem,
+    SettingsActionResponse,
+    SettingsState,
     StoreAppBuildItem,
     StoreAppItem,
     StoreAppsAccountSummary,
@@ -134,7 +142,9 @@ from testflying_api.admin_api.schemas import (
     UploadState,
 )
 from testflying_api.app_logs import LEVELS, build_app_log_connect_context
+from testflying_api.config import Settings
 from testflying_api.database import get_db_session
+from testflying_api.dingtalk import send_dingtalk_markdown
 from testflying_api.errors import ApiError
 from testflying_api.llm_config import (
     LLM_FEATURES,
@@ -194,6 +204,12 @@ from testflying_api.store_sync import (
     sync_marketing_page,
     sync_release_notes,
 )
+from testflying_api.system_settings import (
+    database_setting_keys,
+    effective_business_settings,
+    save_general_settings,
+    save_notification_settings,
+)
 from testflying_api.translation import translate_store_metadata_text
 from testflying_api.upload_service import create_package_upload
 
@@ -203,6 +219,28 @@ SessionDep = Annotated[Session, Depends(get_db_session)]
 STORE_IMAGE_SLOT_KEYS = {"feature_graphic_url", "phone_screenshots", "tablet_screenshots"}
 PUBLIC_API_DOC_PATH = "docs/store-management-public-api.md"
 CONNECTOR_AUTO_CHECK_TTL = timedelta(minutes=5)
+
+RUNTIME_ENVIRONMENT_DESCRIPTORS = (
+    ("TESTFLYING_DATABASE_URL", "数据库连接", "服务", "database_url", True),
+    ("TESTFLYING_PUBLIC_BASE_URL", "公网服务地址", "服务", "public_base_url", False),
+    ("TESTFLYING_STORAGE_BACKEND", "存储后端", "存储", "storage_backend", False),
+    ("TESTFLYING_STORAGE_ROOT", "本地存储目录", "存储", "storage_root", False),
+    ("TESTFLYING_S3_ENDPOINT_URL", "S3 服务地址", "存储", "s3_endpoint_url", False),
+    ("TESTFLYING_S3_PUBLIC_BASE_URL", "S3 公网地址", "存储", "s3_public_base_url", False),
+    ("TESTFLYING_S3_BUCKET", "S3 Bucket", "存储", "s3_bucket", False),
+    ("TESTFLYING_S3_ACCESS_KEY_ID", "S3 Access Key", "安全", "s3_access_key_id", True),
+    (
+        "TESTFLYING_S3_SECRET_ACCESS_KEY",
+        "S3 Secret Key",
+        "安全",
+        "s3_secret_access_key",
+        True,
+    ),
+    ("TESTFLYING_STATIC_TOKEN", "静态访问 Token", "安全", "static_token", True),
+    ("TESTFLYING_CORS_ALLOWED_ORIGINS", "CORS 来源", "安全", "cors_allowed_origins", False),
+    ("TESTFLYING_ADMIN_USERNAME", "后台管理员", "安全", "admin_username", False),
+    ("TESTFLYING_RUNNER_RELEASE_ROOT", "Runner 发布目录", "Runner", "runner_release_root", False),
+)
 
 
 @router.get("/bootstrap", response_model=AdminBootstrapResponse, response_model_by_alias=True)
@@ -449,12 +487,13 @@ def runner_poll(
     session: SessionDep,
 ) -> RunnerPollResponse:
     try:
+        effective = effective_business_settings(session, request.app.state.settings)
         build = build_platform.poll_runner_build(
             session,
             runner_id=payload.runner_id,
             token=_runner_token(request),
             token_pepper=request.app.state.settings.static_token,
-            dingtalk_enabled=request.app.state.settings.dingtalk_configured,
+            dingtalk_enabled=effective.dingtalk_configured,
             public_base_url=request.app.state.settings.public_base_url,
         )
         return RunnerPollResponse(build=_runner_build_payload(build) if build else None)
@@ -616,6 +655,7 @@ def runner_build_complete(
     session: SessionDep,
 ) -> dict[str, bool]:
     try:
+        effective = effective_business_settings(session, request.app.state.settings)
         build_platform.complete_runner_build(
             session,
             build_id=build_id,
@@ -630,7 +670,7 @@ def runner_build_complete(
             failure_classification=payload.failure_classification,
             failure_summary=payload.failure_summary,
             human_action=payload.human_action,
-            dingtalk_enabled=request.app.state.settings.dingtalk_configured,
+            dingtalk_enabled=effective.dingtalk_configured,
             public_base_url=request.app.state.settings.public_base_url,
         )
         return {"ok": True}
@@ -662,6 +702,7 @@ def notifications_state(
     _: AdminDep,
     type: Annotated[str, Query()] = "all",
 ) -> NotificationsState:
+    effective = effective_business_settings(session, request.app.state.settings)
     notifications = list_notifications(session)
     normalized_type = type if type in _notification_types(notifications) else "all"
     filtered = [
@@ -675,13 +716,119 @@ def notifications_state(
         active_type=normalized_type,
         total=len(filtered),
         dingtalk=DingTalkConfigState(
-            configured=request.app.state.settings.dingtalk_configured,
-            webhook_configured=bool(request.app.state.settings.dingtalk_webhook_url),
-            secret_configured=bool(request.app.state.settings.dingtalk_secret),
+            configured=effective.dingtalk_configured,
+            webhook_configured=bool(effective.dingtalk_webhook_url),
+            secret_configured=bool(effective.dingtalk_secret),
             triggers=["failed", "needs_human"],
             pending_delivery_count=_webhook_delivery_count(session, status="pending"),
             dead_delivery_count=_webhook_delivery_count(session, status="dead"),
         ),
+    )
+
+
+@router.get(
+    "/settings",
+    response_model=SettingsState,
+    response_model_by_alias=True,
+)
+def settings_state(
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+) -> SettingsState:
+    return _settings_state(session, request.app.state.settings)
+
+
+@router.put(
+    "/settings/general",
+    response_model=SettingsActionResponse,
+    response_model_by_alias=True,
+)
+def update_general_settings(
+    payload: GeneralSettingsSaveRequest,
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+) -> SettingsActionResponse:
+    save_general_settings(
+        session,
+        connector_base_url_template=payload.connector_base_url_template,
+        actor=request.app.state.settings.admin_username,
+    )
+    return SettingsActionResponse(
+        message="通用配置已保存",
+        state=_settings_state(session, request.app.state.settings),
+    )
+
+
+@router.put(
+    "/settings/notifications",
+    response_model=SettingsActionResponse,
+    response_model_by_alias=True,
+)
+def update_notification_settings(
+    payload: NotificationSettingsSaveRequest,
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+) -> SettingsActionResponse:
+    try:
+        save_notification_settings(
+            session,
+            enabled=payload.enabled,
+            webhook_url=payload.webhook_url,
+            secret=payload.secret,
+            timeout_seconds=payload.timeout_seconds,
+            dispatch_interval_seconds=payload.dispatch_interval_seconds,
+            actor=request.app.state.settings.admin_username,
+        )
+    except ValueError as error:
+        session.rollback()
+        raise AdminApiError(
+            "invalid_settings",
+            "通知配置包含无效数值",
+            status_code=422,
+        ) from error
+    return SettingsActionResponse(
+        message="通知配置已保存",
+        state=_settings_state(session, request.app.state.settings),
+    )
+
+
+@router.post(
+    "/settings/notifications/check",
+    response_model=SettingsActionResponse,
+    response_model_by_alias=True,
+)
+def check_notification_settings(
+    request: Request,
+    session: SessionDep,
+    _: AdminDep,
+) -> SettingsActionResponse:
+    effective = effective_business_settings(session, request.app.state.settings)
+    if not effective.dingtalk_webhook_url or not effective.dingtalk_secret:
+        raise AdminApiError(
+            "notification_not_configured",
+            "请先配置钉钉 Webhook 和加签密钥",
+            status_code=422,
+        )
+    try:
+        send_dingtalk_markdown(
+            webhook_url=effective.dingtalk_webhook_url,
+            secret=effective.dingtalk_secret,
+            title="TestFlying 配置检查",
+            markdown="### TestFlying 配置检查\n\n钉钉通知连接正常。",
+            timeout_seconds=effective.dingtalk_timeout_seconds,
+        )
+    except Exception as error:  # noqa: BLE001 - provider details must stay redacted
+        raise AdminApiError(
+            "notification_check_failed",
+            "钉钉配置检查失败，请确认凭据和网络连接",
+            status_code=502,
+        ) from error
+    return SettingsActionResponse(
+        message="钉钉配置检查消息已发送",
+        state=_settings_state(session, request.app.state.settings),
     )
 
 
@@ -1685,13 +1832,14 @@ def save_account_connector(
     _: AdminDep,
 ) -> ConnectorActionResponse:
     try:
+        effective = effective_business_settings(session, request.app.state.settings)
         save_connector(
             session,
             account_id=account_id,
             name=payload.name,
             base_url=payload.base_url,
             auth_token=payload.auth_token,
-            base_url_template=request.app.state.settings.connector_base_url_template,
+            base_url_template=effective.connector_base_url_template,
         )
         session.commit()
     except ApiError as error:
@@ -3500,6 +3648,93 @@ def _preflight_label(preflight: object | None) -> str:
     if preflight is None:
         return "等待检查"
     return str(getattr(preflight, "message", "") or "已检查")
+
+
+def _settings_state(session: Session, environment: Settings) -> SettingsState:
+    effective = effective_business_settings(session, environment)
+    database_keys = database_setting_keys(session)
+    general_source = (
+        "database"
+        if "connector_base_url_template" in database_keys
+        else "environment"
+        if environment.connector_base_url_template
+        else "default"
+    )
+    notification_keys = {
+        "dingtalk_enabled",
+        "dingtalk_webhook_url",
+        "dingtalk_secret",
+        "dingtalk_timeout_seconds",
+        "dingtalk_dispatch_interval_seconds",
+    }
+    notification_source = (
+        "database"
+        if database_keys.intersection(notification_keys)
+        else "environment"
+        if environment.dingtalk_configured
+        else "default"
+    )
+    return SettingsState(
+        general=GeneralSettingsState(
+            connector_base_url_template=effective.connector_base_url_template or "",
+            source=general_source,
+        ),
+        notifications=NotificationSettingsState(
+            enabled=effective.dingtalk_enabled,
+            configured=effective.dingtalk_configured,
+            webhook_configured=bool(effective.dingtalk_webhook_url),
+            secret_configured=bool(effective.dingtalk_secret),
+            timeout_seconds=effective.dingtalk_timeout_seconds,
+            dispatch_interval_seconds=effective.dingtalk_dispatch_interval_seconds,
+            pending_delivery_count=_webhook_delivery_count(session, status="pending"),
+            dead_delivery_count=_webhook_delivery_count(session, status="dead"),
+            source=notification_source,
+        ),
+        runtime=_runtime_environment_items(environment),
+    )
+
+
+def _runtime_environment_items(environment: Settings) -> list[RuntimeEnvironmentItem]:
+    items: list[RuntimeEnvironmentItem] = []
+    for key, label, group, attribute, sensitive in RUNTIME_ENVIRONMENT_DESCRIPTORS:
+        value = getattr(environment, attribute)
+        configured = _runtime_value_configured(value)
+        items.append(
+            RuntimeEnvironmentItem(
+                key=key,
+                label=label,
+                group=group,
+                source="environment" if os.getenv(key) is not None else "default",
+                value_label=(
+                    ("已配置" if configured else "未配置")
+                    if sensitive
+                    else _runtime_value_label(value)
+                ),
+                configured=configured,
+                sensitive=sensitive,
+                restart_required=True,
+            )
+        )
+    return items
+
+
+def _runtime_value_configured(value: object) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, tuple | list):
+        return bool(value)
+    return True
+
+
+def _runtime_value_label(value: object) -> str:
+    if value is None:
+        return "未配置"
+    if isinstance(value, tuple | list):
+        return ", ".join(str(item) for item in value) or "未配置"
+    text = str(value).strip()
+    return text or "未配置"
 
 
 def _store_reviews_state(

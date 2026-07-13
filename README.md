@@ -31,9 +31,12 @@
 - `POST /v1/store-management/developer-accounts/{accountId}/apps/{appId}/metadata-content-sets`：通过接口导入默认商店页文案和截图草稿，只保存到 testflying，不同步到真实商店后台。
 - `POST /v1/store-management/developer-accounts/{accountId}/apps/{appId}/store-versions/{version}/draft`：通过接口导入某个商店版本的文案元数据和版本说明，只保存到 testflying 草稿，不同步到真实商店后台。
 - `POST /v1/store-management/developer-accounts/{accountId}/apps/{appId}/marketing-pages`：通过接口创建自定义产品页面并导入文案和截图草稿，只保存到 testflying，不同步到真实商店后台。
-- `GET /admin`：内置单页管理后台，用于上传包、商店管理、构建、构建节点、设备、App 日志、通知、LLM 配置和接口文档。
+- `GET /admin`：内置单页管理后台，用于上传包、商店管理、构建、设备、App 日志、通知、系统设置和接口文档。
 - 管理后台支持新增/编辑开发者账号、上传时绑定账号、绑定/解绑账号下 App、维护 App 商店标识、配置账号 connector，以及同步版本说明和商店元数据。商店内容按 App 维护当前草稿，版本说明按版本维护；商店图支持图片上传和预览。
 - 应用可以为开发环境和线上环境分别保存 Git 构建配置，并创建 Agent 构建任务。macOS Runner 按标签和平台领取任务，回传构建事件、包、符号文件、日志和报告。
+- 构建工作区统一使用 `/admin/builds/apps`、`/admin/builds/history` 和 `/admin/builds/runners`，分别负责已接入应用和构建触发、构建记录与制品、Runner 预配和状态。
+- 设置工作区统一使用 `/admin/settings/general`、`/admin/settings/notifications`、`/admin/settings/llm` 和 `/admin/settings/runtime`，分别负责 Connector 默认模板、钉钉通知、LLM 模型与功能绑定、只读运行环境。
+- 后台可写业务设置采用“数据库优先、环境变量兜底”；管理后台不会改写 `.env`。运行环境页只展示脱敏后的配置状态，不返回密钥原文。
 - `GET /admin/api/build-runners`：读取 Runner 节点状态、能力、版本、心跳与当前构建；节点安装、自动更新和运行边界见 `docs/build-delivery.md`。
 - Agent 构建进入 `failed` 或 `needs_human` 时会生成站内通知；配置钉钉 Webhook 与加签密钥后，会通过可重试的投递队列发送群通知。
 - `GET /admin/app-logs`：电脑端 App 日志查看页，展示连接二维码、在线设备、客户端异常和实时日志流。

@@ -171,7 +171,22 @@ versionCodes，再把目标 `storeTrack` / `storeVersionCode` 传给同步接口
 
 后台上传表单复用 `POST /v1/test-distribution/uploads` 的业务逻辑，上传成功后同样会创建应用、构建、制品、iOS manifest 和通知。后台页面使用浏览器上传进度事件展示上传百分比；服务端收到完整文件后再解析包信息和写入数据库。MinIO Console 只管理对象存储文件，不能替代管理后台上传，因为直接上传到 MinIO 不会写入业务数据库。
 
-管理后台当前提供商店管理、构建、构建节点、设备、App 日志、通知、LLM 配置和接口文档。商店管理从应用直接进入，开发者账号用于维护账号、App 绑定和 connector 配置；商店同步的字段、图片、多语言和隔离规则见 `store-sync.md`。构建任务、macOS Runner、自动更新、制品验收和钉钉通知见 `build-delivery.md`。
+管理后台当前提供商店管理、构建、设备、App 日志、通知、系统设置和接口文档。商店管理从应用直接进入，开发者账号用于维护账号、App 绑定和 connector 配置；商店同步的字段、图片、多语言和隔离规则见 `store-sync.md`。构建任务、macOS Runner、自动更新、制品验收和钉钉通知见 `build-delivery.md`。
+
+内部后台页面路径如下：
+
+| 路径 | 用途 |
+| --- | --- |
+| `/admin/builds/apps` | 已接入应用和构建触发 |
+| `/admin/builds/history` | 构建记录与制品 |
+| `/admin/builds/runners` | Runner 预配和状态 |
+| `/admin/settings/general` | Connector 默认模板 |
+| `/admin/settings/notifications` | 钉钉配置和连接检查 |
+| `/admin/settings/llm` | LLM 模型和功能绑定 |
+| `/admin/settings/runtime` | 只读运行环境 |
+
+通用设置和通知设置采用数据库优先、环境变量兜底。管理后台不会改写 `.env`；运行环境与通知读取接口
+只返回脱敏状态，不返回数据库连接串、对象存储密钥、静态 token 或钉钉加签密钥原文。
 
 `/admin/api/*` 是后台自身的内部数据接口，可能随后台交互调整；第三方系统应使用 `docs/store-management-api.md` 中列出的对外商店管理 API，而不是依赖后台页面路径或内部 API。
 

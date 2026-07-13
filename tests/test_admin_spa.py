@@ -22,6 +22,13 @@ def test_admin_spa_serves_react_shell(client: TestClient) -> None:
 def test_admin_spa_fallback_serves_nested_routes(client: TestClient) -> None:
     for path in (
         "/admin/store-reviews",
+        "/admin/builds/apps",
+        "/admin/builds/history",
+        "/admin/builds/runners",
+        "/admin/settings/general",
+        "/admin/settings/notifications",
+        "/admin/settings/llm",
+        "/admin/settings/runtime",
         "/admin/accounts",
         "/admin/accounts/account-apple-enterprise",
         "/admin/accounts/account-apple-enterprise/apps/app-insight-ios/store",

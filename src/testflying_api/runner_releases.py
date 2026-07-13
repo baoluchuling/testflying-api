@@ -110,6 +110,28 @@ class RunnerReleaseManifest:
         )
 
 
+def runner_release_status(
+    root: Path,
+    *,
+    platform: str,
+    arch: str,
+    runner_version: str,
+    package_agent_version: str,
+) -> tuple[str, str, str]:
+    if not platform.strip() or not arch.strip():
+        return "", "unknown", "未检测到发布版本"
+    try:
+        manifest = RunnerReleaseManifest.load(root, platform, arch)
+    except ApiError:
+        return "", "unknown", "未检测到发布版本"
+    if (
+        runner_version.strip() == manifest.runner_version
+        and package_agent_version.strip() == manifest.package_agent_version
+    ):
+        return manifest.version, "current", "已是最新版本"
+    return manifest.version, "outdated", f"可更新至 {manifest.version}"
+
+
 def _semantic_version(payload: dict[str, object], key: str) -> str:
     value = _required_string(payload, key)
     if not SEMANTIC_VERSION_RE.fullmatch(value):

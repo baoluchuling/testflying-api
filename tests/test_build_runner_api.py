@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from base64 import b64encode
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -125,6 +127,10 @@ def test_admin_provisions_runner_token_once(client: TestClient, db_session: Sess
     assert runner.token_hash.startswith("hmac-sha256:")
     assert runner.token_hash != payload["token"]
 
+    list_response = client.get("/admin/api/build-runners", headers=_admin_headers())
+    assert list_response.status_code == 200
+    assert "token" not in list_response.text.lower()
+
 
 def test_runner_register_updates_provisioned_runner_record(
     client: TestClient,
@@ -232,6 +238,24 @@ def test_build_runners_state_lists_runner_status_and_capabilities(
     client: TestClient,
     db_session: Session,
 ) -> None:
+    release_dir = client.app.state.settings.runner_release_root / "darwin" / "arm64"
+    release_dir.mkdir(parents=True)
+    bundle = release_dir / "testflying-runner-0.2.0-darwin-arm64.zip"
+    bundle.write_bytes(b"runner-release")
+    (release_dir / "release.json").write_text(
+        json.dumps(
+            {
+                "version": "0.2.0",
+                "runnerVersion": "0.2.0",
+                "packageAgentVersion": "0.2.0",
+                "platform": "darwin",
+                "arch": "arm64",
+                "bundleFile": bundle.name,
+                "sha256": hashlib.sha256(bundle.read_bytes()).hexdigest(),
+            }
+        ),
+        encoding="utf-8",
+    )
     app = _create_app(db_session)
     build = _create_agent_build(db_session, build_id="build-agent-active", app=app)
     db_session.add(
@@ -240,7 +264,13 @@ def test_build_runners_state_lists_runner_status_and_capabilities(
             name="Mac mini 1",
             token_hash=_runner_token_hash(),
             labels_json=["ios-release"],
-            capabilities_json={"platforms": ["ios"], "llmAdapters": ["codex"], "capacity": 1},
+            capabilities_json={
+                "platforms": ["ios"],
+                "llmAdapters": ["codex"],
+                "capacity": 1,
+                "hostPlatform": "darwin",
+                "arch": "arm64",
+            },
             status="busy",
             version="0.1.0",
             package_agent_version="0.1.2",
@@ -268,7 +298,12 @@ def test_build_runners_state_lists_runner_status_and_capabilities(
                     "platforms": ["ios"],
                     "llmAdapters": ["codex"],
                     "capacity": 1,
+                    "hostPlatform": "darwin",
+                    "arch": "arm64",
                 },
+                "latestVersion": "0.2.0",
+                "updateStatus": "outdated",
+                "updateStatusLabel": "可更新至 0.2.0",
             }
         ],
         "total": 1,
@@ -518,15 +553,18 @@ def test_runner_poll_terminalizes_queued_builds_at_retry_cap(
     assert capped_build.attempt_count == 5
     assert eligible_build.lifecycle_status == "assigned"
     assert eligible_build.attempt_count == 1
-    assert db_session.scalar(
-        select(Notification).where(Notification.build_id == capped_build.id)
-    ) is not None
-    assert db_session.scalar(
-        select(WebhookDelivery).where(
-            WebhookDelivery.event_key
-            == f"build:{capped_build.id}:needs_human:dingtalk"
+    assert (
+        db_session.scalar(select(Notification).where(Notification.build_id == capped_build.id))
+        is not None
+    )
+    assert (
+        db_session.scalar(
+            select(WebhookDelivery).where(
+                WebhookDelivery.event_key == f"build:{capped_build.id}:needs_human:dingtalk"
+            )
         )
-    ) is not None
+        is not None
+    )
 
 
 def test_runner_poll_returns_same_assignment_with_valid_lease(

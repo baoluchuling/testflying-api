@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from testflying_api.build_platform import hash_runner_token
 from testflying_api.errors import ApiError
-from testflying_api.runner_releases import RunnerReleaseManifest
+from testflying_api.runner_releases import RunnerReleaseManifest, runner_release_status
 from testflying_api.schema import BuildRunner
 
 
@@ -24,6 +24,36 @@ def test_runner_release_manifest_loads_contained_bundle(tmp_path: Path) -> None:
     assert manifest.package_agent_version == "0.2.0"
     assert manifest.bundle_path == bundle
     assert manifest.sha256 == hashlib.sha256(bundle.read_bytes()).hexdigest()
+
+
+def test_runner_release_status_compares_both_runtime_versions(tmp_path: Path) -> None:
+    _write_release(tmp_path)
+
+    current = runner_release_status(
+        tmp_path,
+        platform="darwin",
+        arch="arm64",
+        runner_version="0.2.0",
+        package_agent_version="0.2.0",
+    )
+    outdated = runner_release_status(
+        tmp_path,
+        platform="darwin",
+        arch="arm64",
+        runner_version="0.2.0",
+        package_agent_version="0.1.0",
+    )
+    unknown = runner_release_status(
+        tmp_path,
+        platform="darwin",
+        arch="amd64",
+        runner_version="0.2.0",
+        package_agent_version="0.2.0",
+    )
+
+    assert current == ("0.2.0", "current", "已是最新版本")
+    assert outdated == ("0.2.0", "outdated", "可更新至 0.2.0")
+    assert unknown == ("", "unknown", "未检测到发布版本")
 
 
 def test_runner_update_check_and_download_require_provisioned_runner(
@@ -61,9 +91,7 @@ def test_runner_update_check_and_download_require_provisioned_runner(
         "version": "0.2.0",
         "runnerVersion": "0.2.0",
         "packageAgentVersion": "0.2.0",
-        "bundleUrl": (
-            "/admin/api/build-runners/runner-mac-1/updates/darwin/arm64/0.2.0/bundle"
-        ),
+        "bundleUrl": ("/admin/api/build-runners/runner-mac-1/updates/darwin/arm64/0.2.0/bundle"),
         "sha256": hashlib.sha256(bundle.read_bytes()).hexdigest(),
     }
     download = client.get(payload["bundleUrl"], headers=headers)

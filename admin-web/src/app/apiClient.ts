@@ -696,11 +696,28 @@ export type BuildRunnerItem = {
   lastSeenAtLabel: string;
   currentBuildId: string | null;
   capabilities: Record<string, unknown>;
+  latestVersion: string;
+  updateStatus: 'current' | 'outdated' | 'unknown';
+  updateStatusLabel: string;
 };
 
 export type BuildRunnersState = {
   runners: BuildRunnerItem[];
   total: number;
+};
+
+export type RunnerProvisionPayload = {
+  runnerId: string;
+  name: string;
+  labels: string[];
+  version: string;
+  packageAgentVersion: string;
+  capabilities: Record<string, unknown>;
+};
+
+export type RunnerProvisionResponse = {
+  runner: BuildRunnerItem;
+  token: string;
 };
 
 export type DeviceItem = {
@@ -1217,6 +1234,12 @@ export function loadBuildAppsState(): Promise<BuildAppsState> {
 
 export function loadBuildRunnersState(): Promise<BuildRunnersState> {
   return getJson<BuildRunnersState>('/admin/api/build-runners');
+}
+
+export function provisionBuildRunner(
+  payload: RunnerProvisionPayload
+): Promise<RunnerProvisionResponse> {
+  return postJson<RunnerProvisionResponse>('/admin/api/build-runners/provision', payload);
 }
 
 export function loadAppDetailState(appId: string): Promise<AppDetailState> {

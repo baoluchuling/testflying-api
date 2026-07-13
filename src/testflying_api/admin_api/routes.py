@@ -317,12 +317,19 @@ def build_apps_state(
     response_model_by_alias=True,
 )
 def build_runners_state(
+    request: Request,
     session: SessionDep,
     _: AdminDep,
 ) -> BuildRunnersState:
     runners = list(session.scalars(select(BuildRunner).order_by(BuildRunner.name.asc())))
     return BuildRunnersState(
-        runners=[_build_runner_item(runner) for runner in runners],
+        runners=[
+            _build_runner_item(
+                runner,
+                release_root=request.app.state.settings.runner_release_root,
+            )
+            for runner in runners
+        ],
         total=len(runners),
     )
 
@@ -441,7 +448,13 @@ def runner_provision(
             capabilities=payload.capabilities,
             token_pepper=request.app.state.settings.static_token,
         )
-        return RunnerProvisionResponse(runner=_build_runner_item(runner), token=token)
+        return RunnerProvisionResponse(
+            runner=_build_runner_item(
+                runner,
+                release_root=request.app.state.settings.runner_release_root,
+            ),
+            token=token,
+        )
     except ApiError as error:
         raise _admin_api_error(error) from error
 
@@ -3907,7 +3920,15 @@ def _runner_build_payload(build: Build) -> RunnerBuildPayload:
     )
 
 
-def _build_runner_item(runner: BuildRunner) -> BuildRunnerItem:
+def _build_runner_item(runner: BuildRunner, *, release_root: Path) -> BuildRunnerItem:
+    capabilities = dict(runner.capabilities_json or {})
+    latest_version, update_status, update_status_label = runner_releases.runner_release_status(
+        release_root,
+        platform=str(capabilities.get("hostPlatform") or "darwin"),
+        arch=str(capabilities.get("arch") or ""),
+        runner_version=runner.version,
+        package_agent_version=runner.package_agent_version,
+    )
     return BuildRunnerItem(
         id=runner.id,
         name=runner.name,
@@ -3917,7 +3938,10 @@ def _build_runner_item(runner: BuildRunner) -> BuildRunnerItem:
         package_agent_version=runner.package_agent_version,
         last_seen_at_label=format_datetime(runner.last_seen_at),
         current_build_id=runner.current_build_id,
-        capabilities=dict(runner.capabilities_json or {}),
+        capabilities=capabilities,
+        latest_version=latest_version,
+        update_status=update_status,
+        update_status_label=update_status_label,
     )
 
 

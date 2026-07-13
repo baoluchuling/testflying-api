@@ -785,6 +785,9 @@ class BuildRunnerItem(AdminApiModel):
     last_seen_at_label: str
     current_build_id: str | None
     capabilities: dict[str, Any]
+    latest_version: str
+    update_status: str
+    update_status_label: str
 
 
 class BuildRunnersState(AdminApiModel):

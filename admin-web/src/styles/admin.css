@@ -374,6 +374,15 @@ select {
   font-size: 18px;
 }
 
+.panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
+}
+
 .muted {
   margin: 0;
   color: var(--muted);
@@ -404,6 +413,12 @@ select {
   border-color: #bbf7d0;
   color: #166534;
   background: #f0fdf4;
+}
+
+.notice.warn {
+  border-color: #fed7aa;
+  color: #9a3412;
+  background: #fff7ed;
 }
 
 .button.primary {
@@ -1812,6 +1827,28 @@ select {
   grid-template-columns: minmax(260px, 1.5fr) 90px 120px 120px 170px 150px;
 }
 
+.builds-runners-table .data-table-row {
+  grid-template-columns: minmax(210px, 1.2fr) minmax(120px, .8fr) minmax(180px, 1fr) minmax(180px, 1fr) 150px minmax(150px, .8fr);
+}
+
+.build-runner-row > span {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.build-runner-row small {
+  overflow: hidden;
+  color: var(--muted);
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.build-runner-row .tag {
+  width: fit-content;
+}
+
 .build-row > span,
 .device-table-row > span {
   display: grid;
@@ -2557,6 +2594,87 @@ select {
   color: #171717;
   background: white;
   box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
+}
+
+.runner-provision-dialog {
+  display: grid;
+  gap: 18px;
+  width: min(720px, 100%);
+  max-height: min(820px, calc(100vh - 48px));
+  overflow: auto;
+  border: 1px solid #d9dde5;
+  border-radius: 16px;
+  padding: 20px;
+  color: #171717;
+  background: white;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
+}
+
+.runner-provision-dialog header,
+.runner-provision-dialog header > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.runner-provision-dialog header > div {
+  display: block;
+}
+
+.runner-provision-dialog h3 {
+  margin: 0;
+  font-size: 24px;
+}
+
+.runner-provision-dialog .form-wide,
+.runner-provision-result {
+  grid-column: 1 / -1;
+}
+
+.runner-provision-result {
+  display: grid;
+  gap: 14px;
+}
+
+.one-time-token,
+.config-preview {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px;
+  background: var(--surface-soft);
+}
+
+.one-time-token {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.one-time-token code {
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-weight: 750;
+}
+
+.config-preview > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.config-preview pre {
+  max-height: 320px;
+  overflow: auto;
+  margin: 0;
+  border-radius: 8px;
+  padding: 14px;
+  color: #f8fafc;
+  background: #171717;
+  font-size: 12px;
+  line-height: 1.55;
 }
 
 .sync-confirm-dialog header,

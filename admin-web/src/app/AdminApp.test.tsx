@@ -237,7 +237,10 @@ const buildRunnersState: BuildRunnersState = {
       capabilities: {
         platforms: ['ios'],
         llmAdapters: ['codex']
-      }
+      },
+      latestVersion: '0.1.0',
+      updateStatus: 'current',
+      updateStatusLabel: '已是最新版本'
     }
   ]
 };

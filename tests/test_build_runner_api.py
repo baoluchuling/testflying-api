@@ -132,6 +132,36 @@ def test_admin_provisions_runner_token_once(client: TestClient, db_session: Sess
     assert "token" not in list_response.text.lower()
 
 
+@pytest.mark.parametrize("runner_id", ["../runner-mac-1", "runner/child", ".."])
+def test_admin_rejects_unsafe_runner_id(
+    client: TestClient,
+    db_session: Session,
+    runner_id: str,
+) -> None:
+    response = client.post(
+        "/admin/api/build-runners/provision",
+        headers=_admin_headers(),
+        json={
+            "runnerId": runner_id,
+            "name": "Mac mini 1",
+            "labels": ["ios-release"],
+            "version": "0.1.0",
+            "packageAgentVersion": "0.1.0",
+            "capabilities": {
+                "platforms": ["ios"],
+                "llmAdapters": ["codex"],
+                "capacity": 1,
+                "hostPlatform": "darwin",
+                "arch": "arm64",
+            },
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "invalid_runner_id"
+    assert db_session.get(BuildRunner, runner_id) is None
+
+
 def test_admin_reprovision_rotates_runner_token(client: TestClient) -> None:
     provision_payload = {
         "runnerId": "runner-mac-1",
@@ -262,7 +292,10 @@ def test_runner_heartbeat_updates_provisioned_capabilities(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    _provision_runner_record(db_session)
+    runner = _provision_runner_record(db_session)
+    runner.capabilities_json = {"hostPlatform": "darwin", "arch": "arm64"}
+    db_session.add(runner)
+    db_session.commit()
 
     response = client.post(
         "/admin/api/build-runners/heartbeat",
@@ -278,10 +311,18 @@ def test_runner_heartbeat_updates_provisioned_capabilities(
     )
 
     assert response.status_code == 200
+    db_session.expire_all()
     runner = db_session.get(BuildRunner, "runner-mac-1")
     assert runner is not None
     assert runner.status == "online"
     assert runner.labels_json == ["ios-release"]
+    assert runner.capabilities_json == {
+        "hostPlatform": "darwin",
+        "arch": "arm64",
+        "platforms": ["ios"],
+        "llmAdapters": ["codex"],
+        "capacity": 1,
+    }
 
 
 def test_build_runners_state_lists_runner_status_and_capabilities(

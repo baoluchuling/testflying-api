@@ -184,7 +184,7 @@ password: dev-token
 
 ## macOS 构建节点安装包
 
-每个节点使用后台签发的独立 Runner 配置生成安装包。配置至少需要非空的 `runnerId`、`name`、`token`、`serverUrl`、绝对路径 `rootDir`、`labels`、`platforms`，且 `capacity` 必须为 `1`：
+每个节点使用后台签发的独立 Runner 配置生成安装包。配置至少需要非空的 `runnerId`、`name`、`token`、`serverUrl`、绝对路径 `rootDir`、`labels`、`platforms`，且 `capacity` 必须为 `1`。`runnerId` 必须以字母或数字开头，只能包含字母、数字、点、下划线和短横线，最长 64 个字符：
 
 ```json
 {

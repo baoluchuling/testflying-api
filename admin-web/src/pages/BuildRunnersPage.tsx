@@ -26,6 +26,8 @@ const EMPTY_FORM: RunnerForm = {
   llmAdapters: ''
 };
 
+const RUNNER_ID_PATTERN = String.raw`[A-Za-z0-9][A-Za-z0-9._\-]{0,63}`;
+
 export function BuildRunnersPage() {
   const [state, setState] = useState<BuildRunnersState | null>(null);
   const [error, setError] = useState('');
@@ -216,7 +218,10 @@ function RunnerProvisionDialog({
               <span>节点 ID</span>
               <input
                 aria-label="节点 ID"
+                maxLength={64}
+                pattern={RUNNER_ID_PATTERN}
                 required
+                title="仅支持字母、数字、点、下划线和短横线，且必须以字母或数字开头"
                 value={form.runnerId}
                 onChange={(event) => setForm({ ...form, runnerId: event.target.value })}
                 placeholder="runner-mac-01"

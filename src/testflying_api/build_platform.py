@@ -61,6 +61,7 @@ _RUNNER_REQUIRED_ARTIFACTS = {
 _RUNNER_ALLOWED_ARTIFACTS = _RUNNER_REQUIRED_ARTIFACTS
 _RUNNER_TOKEN_DIGEST_PREFIX = "hmac-sha256:"
 _RUNNER_ASSIGNMENT_LEASE_SECONDS = 15 * 60
+_RUNNER_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 _FAILURE_CLASSIFICATION_ALLOWED_RE = re.compile(r"[^a-z0-9_:-]+")
 _FAILURE_CLASSIFICATION_SECRET_RE = re.compile(
     r"(?i)(-----begin [a-z0-9 ]*private key-----|"
@@ -311,11 +312,7 @@ def provision_runner(
     capabilities: dict[str, object],
     token_pepper: str,
 ) -> tuple[BuildRunner, str]:
-    normalized_runner_id = _require_non_blank(
-        runner_id,
-        field="runner_id",
-        label="runner_id",
-    )
+    normalized_runner_id = _normalize_runner_id(runner_id)
     token = secrets.token_urlsafe(32)
     runner = session.get(BuildRunner, normalized_runner_id) or BuildRunner(id=normalized_runner_id)
     runner.name = _require_non_blank(name, field="name", label="name")
@@ -350,7 +347,9 @@ def register_runner(
         raise ApiError("invalid_runner_token", "Runner token 不正确", status_code=401)
     runner.name = _require_non_blank(name, field="name", label="name")
     runner.labels_json = [label.strip() for label in labels if label.strip()]
-    runner.capabilities_json = dict(capabilities)
+    merged_capabilities = dict(runner.capabilities_json or {})
+    merged_capabilities.update(capabilities)
+    runner.capabilities_json = merged_capabilities
     runner.status = "busy" if runner.current_build_id else "online"
     runner.version = version.strip()
     runner.package_agent_version = package_agent_version.strip()
@@ -739,6 +738,17 @@ def _require_non_blank(value: str, *, field: str, label: str) -> str:
         status_code=422,
         extra={"field": field},
     )
+
+
+def _normalize_runner_id(value: str) -> str:
+    normalized = _require_non_blank(value, field="runner_id", label="runner_id")
+    if not _RUNNER_ID_RE.fullmatch(normalized):
+        raise ApiError(
+            "invalid_runner_id",
+            "runner_id 仅支持字母、数字、点、下划线和短横线，且长度不能超过 64",
+            status_code=422,
+        )
+    return normalized
 
 
 def hash_runner_token(token: str, *, token_pepper: str) -> str:

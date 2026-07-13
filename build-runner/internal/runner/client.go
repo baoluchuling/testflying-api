@@ -100,9 +100,11 @@ func (c *Client) Heartbeat(ctx context.Context, cfg Config) error {
 		Version:             cfg.Version,
 		PackageAgentVersion: cfg.PackageAgentVersion,
 		Capabilities: map[string]interface{}{
-			"platforms":   cfg.Platforms,
-			"llmAdapters": cfg.LLMAdapters,
-			"capacity":    cfg.Capacity,
+			"platforms":    cfg.Platforms,
+			"llmAdapters":  cfg.LLMAdapters,
+			"capacity":     cfg.Capacity,
+			"hostPlatform": cfg.Platform,
+			"arch":         cfg.Arch,
 		},
 	}
 	return c.postJSON(ctx, "/admin/api/build-runners/heartbeat", payload, nil)

@@ -149,6 +149,8 @@ func TestRunOnceNoBuildOnlyHeartbeatsAndPolls(t *testing.T) {
 		PackageAgentBin:     "package-agent",
 		Version:             "0.1.0",
 		PackageAgentVersion: "0.1.0",
+		Platform:            "darwin",
+		Arch:                "arm64",
 		Labels:              []string{"ios-release"},
 		Platforms:           []string{"ios"},
 		LLMAdapters:         []string{"codex"},
@@ -488,6 +490,8 @@ func TestRunOnceAssignedBuildRunsPackageAgentPostsEventsAndCompletesNeedsHuman(t
 		PackageAgentBin:     packageAgentBin,
 		Version:             "0.1.0",
 		PackageAgentVersion: "0.1.0",
+		Platform:            "darwin",
+		Arch:                "arm64",
 		Labels:              []string{"ios-release"},
 		Platforms:           []string{"ios"},
 		LLMAdapters:         []string{"codex"},
@@ -500,6 +504,16 @@ func TestRunOnceAssignedBuildRunsPackageAgentPostsEventsAndCompletesNeedsHuman(t
 
 	if heartbeatBody.RunnerID != cfg.RunnerID {
 		t.Fatalf("heartbeat runnerId = %q, want %q", heartbeatBody.RunnerID, cfg.RunnerID)
+	}
+	if heartbeatBody.Capabilities["hostPlatform"] != cfg.Platform {
+		t.Fatalf(
+			"heartbeat hostPlatform = %q, want %q",
+			heartbeatBody.Capabilities["hostPlatform"],
+			cfg.Platform,
+		)
+	}
+	if heartbeatBody.Capabilities["arch"] != cfg.Arch {
+		t.Fatalf("heartbeat arch = %q, want %q", heartbeatBody.Capabilities["arch"], cfg.Arch)
 	}
 	if pollBody.RunnerID != cfg.RunnerID {
 		t.Fatalf("poll runnerId = %q, want %q", pollBody.RunnerID, cfg.RunnerID)

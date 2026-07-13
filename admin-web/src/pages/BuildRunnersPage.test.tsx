@@ -60,7 +60,13 @@ describe('BuildRunnersPage', () => {
     render(<BuildRunnersPage />);
 
     fireEvent.click(await screen.findByRole('button', { name: '新增节点' }));
-    fireEvent.change(screen.getByLabelText('节点 ID'), { target: { value: 'runner-mac-2' } });
+    const runnerIdInput = screen.getByLabelText('节点 ID') as HTMLInputElement;
+    expect(runnerIdInput.getAttribute('pattern')).toBe(String.raw`[A-Za-z0-9][A-Za-z0-9._\-]{0,63}`);
+    expect(runnerIdInput.getAttribute('maxlength')).toBe('64');
+    fireEvent.change(runnerIdInput, { target: { value: '../runner' } });
+    expect(runnerIdInput.checkValidity()).toBe(false);
+    fireEvent.change(runnerIdInput, { target: { value: 'runner-mac-2' } });
+    expect(runnerIdInput.checkValidity()).toBe(true);
     fireEvent.change(screen.getByLabelText('节点名称'), { target: { value: 'Mac mini 2' } });
     fireEvent.change(screen.getByLabelText('节点标签'), { target: { value: 'ios-release' } });
     fireEvent.change(screen.getByLabelText('LLM 适配器'), { target: { value: 'codex' } });
@@ -102,8 +108,10 @@ describe('BuildRunnersPage', () => {
     pendingProvision.resolve(provisionResponse());
     expect(await screen.findByText('runner-secret-once')).toBeTruthy();
     expect(screen.getByRole('button', { name: '关闭一次性配置' }).hasAttribute('disabled')).toBe(false);
-    expect(window.dispatchEvent(new CustomEvent('admin:before-navigation', { cancelable: true }))).toBe(
-      true
+    await waitFor(() =>
+      expect(window.dispatchEvent(new CustomEvent('admin:before-navigation', { cancelable: true }))).toBe(
+        true
+      )
     );
   });
 });

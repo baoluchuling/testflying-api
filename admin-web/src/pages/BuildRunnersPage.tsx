@@ -134,7 +134,18 @@ function RunnerProvisionDialog({
   const [error, setError] = useState('');
   const configJson = useMemo(() => (result ? runnerConfigJson(result) : ''), [result]);
 
+  useEffect(() => {
+    if (!saving) return;
+    const preventUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', preventUnload);
+    return () => window.removeEventListener('beforeunload', preventUnload);
+  }, [saving]);
+
   function close() {
+    if (saving) return;
     setResult(null);
     setForm(EMPTY_FORM);
     setError('');
@@ -182,7 +193,13 @@ function RunnerProvisionDialog({
             <p className="eyebrow">Build Runner</p>
             <h3>{result ? '一次性接入配置' : '新增构建节点'}</h3>
           </div>
-          <button className="button text" type="button" onClick={close} aria-label="关闭一次性配置">
+          <button
+            className="button text"
+            type="button"
+            onClick={close}
+            aria-label="关闭一次性配置"
+            disabled={saving}
+          >
             关闭
           </button>
         </header>
@@ -253,8 +270,11 @@ function RunnerProvisionDialog({
               />
             </label>
             {error ? <div className="notice error compact form-wide">{error}</div> : null}
+            {saving ? (
+              <div className="notice warning compact form-wide">正在签发一次性配置，请勿关闭或刷新页面。</div>
+            ) : null}
             <div className="form-actions">
-              <button className="button" type="button" onClick={close}>
+              <button className="button" type="button" onClick={close} disabled={saving}>
                 取消
               </button>
               <button className="button primary" type="submit" disabled={saving}>
@@ -279,7 +299,9 @@ function RunnerProvisionResult({
     <div className="runner-provision-result">
       <div className="notice warn compact">
         <strong>请立即保存，关闭后无法再次查看</strong>
-        <span>中心后台不会在节点列表或浏览器存储中保留原始 token。</span>
+        <span>
+          中心后台不会保留原始 token；若配置丢失，可使用同一节点 ID 重新生成配置，旧 token 会立即失效。
+        </span>
       </div>
       <div className="one-time-token">
         <span>Runner token</span>

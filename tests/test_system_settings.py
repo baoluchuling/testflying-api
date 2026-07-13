@@ -100,6 +100,19 @@ def test_save_general_settings_normalizes_empty_value(db_session: Session) -> No
     assert row.value == ""
 
 
+def test_save_general_settings_rejects_unknown_connector_placeholder(
+    db_session: Session,
+) -> None:
+    with pytest.raises(ValueError, match="account_id"):
+        save_general_settings(
+            db_session,
+            connector_base_url_template="https://connector-{accountId}.example.test",
+            actor="admin",
+        )
+
+    assert db_session.get(SystemSetting, "connector_base_url_template") is None
+
+
 def test_invalid_notification_numbers_do_not_mutate_rows(db_session: Session) -> None:
     with pytest.raises(ValueError, match="timeout_seconds"):
         save_notification_settings(
@@ -108,6 +121,22 @@ def test_invalid_notification_numbers_do_not_mutate_rows(db_session: Session) ->
             webhook_url="https://oapi.example.test/robot/send",
             secret="SEC-new",
             timeout_seconds=0,
+            dispatch_interval_seconds=10,
+            actor="admin",
+        )
+
+    assert db_session.get(SystemSetting, "dingtalk_webhook_url") is None
+    assert db_session.get(SystemSetting, "dingtalk_secret") is None
+
+
+def test_invalid_notification_webhook_does_not_mutate_rows(db_session: Session) -> None:
+    with pytest.raises(ValueError, match="webhook_url"):
+        save_notification_settings(
+            db_session,
+            enabled=True,
+            webhook_url="not-a-webhook?access_token=never-store",
+            secret="SEC-new",
+            timeout_seconds=5,
             dispatch_interval_seconds=10,
             actor="admin",
         )

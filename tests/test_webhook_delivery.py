@@ -122,6 +122,43 @@ def test_failed_delivery_retries_with_backoff_then_becomes_dead(
         assert delivery.attempt_count == 5
 
 
+def test_failed_delivery_redacts_webhook_query_credentials(
+    session_factory: sessionmaker[Session],
+    test_settings: Settings,
+) -> None:
+    now = datetime(2026, 7, 10, 8, 0, tzinfo=UTC)
+    settings = replace(
+        test_settings,
+        dingtalk_webhook_url=(
+            "https://oapi.dingtalk.test/robot/send?access_token=token-value"
+        ),
+        dingtalk_secret="SEC-test",
+    )
+    with session_factory() as session:
+        session.add(_delivery("query-secret", next_attempt_at=now))
+        session.commit()
+
+    def failing_sender(**payload: object) -> None:
+        raise RuntimeError(
+            f"request failed: {payload['webhook_url']}&timestamp=1&sign=signature-value"
+        )
+
+    assert dispatch_due_deliveries(
+        session_factory,
+        settings,
+        now=now,
+        sender=failing_sender,
+    ) == 1
+
+    with session_factory() as session:
+        delivery = session.get(WebhookDelivery, "delivery-query-secret")
+        assert delivery is not None
+        assert "token-value" not in (delivery.last_error or "")
+        assert "signature-value" not in (delivery.last_error or "")
+        assert "access_token=[REDACTED]" in (delivery.last_error or "")
+        assert "sign=[REDACTED]" in (delivery.last_error or "")
+
+
 def test_delivery_loop_dispatches_immediately_and_stops(
     session_factory: sessionmaker[Session],
     test_settings: Settings,

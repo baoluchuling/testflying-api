@@ -27,6 +27,13 @@ describe('routeKeyFromPath', () => {
     expect(routeKeyFromPath('/admin/llm-config')).toBe('not-found');
     expect(routeKeyFromPath('/admin/unknown')).toBe('not-found');
   });
+
+  it('rejects unknown build and settings child paths', () => {
+    expect(routeKeyFromPath('/admin/builds/unknown')).toBe('not-found');
+    expect(routeKeyFromPath('/admin/builds/apps/extra')).toBe('not-found');
+    expect(routeKeyFromPath('/admin/settings/unknown')).toBe('not-found');
+    expect(routeKeyFromPath('/admin/settings/general/extra')).toBe('not-found');
+  });
 });
 
 describe('buildViewFromPath', () => {

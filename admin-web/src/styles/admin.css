@@ -545,6 +545,17 @@ select {
   padding: 12px 14px;
 }
 
+.build-created-notice {
+  align-items: center;
+  flex-direction: row;
+  justify-content: space-between;
+}
+
+.build-created-notice > div {
+  display: grid;
+  gap: 4px;
+}
+
 .build-created-notice span {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }

@@ -11,10 +11,14 @@ PRIVATE_KEY_RE = re.compile(
     r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?-----END [A-Z0-9 ]*PRIVATE KEY-----",
     re.DOTALL | re.IGNORECASE,
 )
+SECRET_QUERY_PARAMETER_RE = re.compile(
+    r"(?i)([?&](?:access[_-]?token|token|secret|sign|signature|api[_-]?key)=)([^&#\s]+)"
+)
 
 
 def redact_text(value: str) -> str:
     redacted = PRIVATE_KEY_RE.sub("[REDACTED]", value)
+    redacted = SECRET_QUERY_PARAMETER_RE.sub(r"\1[REDACTED]", redacted)
     return SECRET_ASSIGNMENT_RE.sub(_replace_secret_assignment, redacted)
 
 

@@ -123,6 +123,14 @@ describe('AdminApp', () => {
     expect(await screen.findByRole('heading', { level: 2, name: '页面不存在' })).toBeTruthy();
   });
 
+  it('renders unknown workspace child routes as not found', async () => {
+    history.replaceState(null, '', '/admin/settings/unknown');
+
+    render(<AdminApp />);
+
+    expect(await screen.findByRole('heading', { level: 2, name: '页面不存在' })).toBeTruthy();
+  });
+
   it('renders app detail inside the shell while keeping the apps nav active', async () => {
     history.replaceState(null, '', '/admin/apps/app-1');
 

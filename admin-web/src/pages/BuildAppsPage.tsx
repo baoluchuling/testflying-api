@@ -90,6 +90,10 @@ export function BuildAppsPage() {
     history.pushState({ adminRoute: 'apps' }, '', '/admin/apps');
   }
 
+  function openBuildHistory() {
+    history.pushState({ adminRoute: 'builds' }, '', '/admin/builds/history');
+  }
+
   if (!state && !error) {
     return <div className="empty-state">正在加载构建应用...</div>;
   }
@@ -193,8 +197,17 @@ export function BuildAppsPage() {
             ) : null}
             {message ? (
               <div className="notice ok build-created-notice">
-                <strong>{message}</strong>
-                {createdBuild ? <span>{createdBuild.id}</span> : null}
+                <div>
+                  <strong>{message}</strong>
+                  {createdBuild ? (
+                    <span>
+                      {createdBuild.id} · {createdBuild.lifecycleStatusLabel || createdBuild.status}
+                    </span>
+                  ) : null}
+                </div>
+                <button className="button slim" type="button" onClick={openBuildHistory}>
+                  查看构建记录
+                </button>
               </div>
             ) : null}
             <div className="form-actions">

@@ -132,6 +132,56 @@ def test_admin_provisions_runner_token_once(client: TestClient, db_session: Sess
     assert "token" not in list_response.text.lower()
 
 
+def test_admin_reprovision_rotates_runner_token(client: TestClient) -> None:
+    provision_payload = {
+        "runnerId": "runner-mac-1",
+        "name": "Mac mini 1",
+        "labels": ["ios-release"],
+        "version": "0.1.0",
+        "packageAgentVersion": "0.1.0",
+        "capabilities": {"platforms": ["ios"], "llmAdapters": ["codex"], "capacity": 1},
+    }
+    first = client.post(
+        "/admin/api/build-runners/provision",
+        headers=_admin_headers(),
+        json=provision_payload,
+    )
+    second = client.post(
+        "/admin/api/build-runners/provision",
+        headers=_admin_headers(),
+        json=provision_payload,
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    first_token = first.json()["token"]
+    second_token = second.json()["token"]
+    assert first_token != second_token
+
+    register_payload = {
+        "runnerId": "runner-mac-1",
+        "name": "Mac mini 1",
+        "labels": ["ios-release"],
+        "version": "0.1.0",
+        "packageAgentVersion": "0.1.0",
+        "capabilities": {"platforms": ["ios"], "llmAdapters": ["codex"], "capacity": 1},
+    }
+    stale = client.post(
+        "/admin/api/build-runners/register",
+        headers={"Authorization": f"Bearer {first_token}"},
+        json=register_payload,
+    )
+    current = client.post(
+        "/admin/api/build-runners/register",
+        headers={"Authorization": f"Bearer {second_token}"},
+        json=register_payload,
+    )
+
+    assert stale.status_code == 401
+    assert stale.json()["error"]["code"] == "invalid_runner_token"
+    assert current.status_code == 200
+
+
 def test_runner_register_updates_provisioned_runner_record(
     client: TestClient,
     db_session: Session,

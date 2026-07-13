@@ -40,9 +40,9 @@ export function GeneralSettingsPage({
             aria-label="Connector 地址模板"
             value={template}
             onChange={(event) => setTemplate(event.target.value)}
-            placeholder="https://connector.example.com/{accountId}"
+            placeholder="https://connector.example.com/{account_id}"
           />
-          <small>可使用 {'{accountId}'} 占位符；留空表示不自动生成地址。</small>
+          <small>可使用 {'{account_id}'} 占位符；留空表示不自动生成地址。</small>
         </label>
         <div className="form-actions">
           <button className="button primary" type="submit" disabled={saving}>

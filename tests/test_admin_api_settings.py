@@ -79,6 +79,41 @@ def test_notification_settings_blank_secret_keeps_existing(
     assert response.json()["message"] == "通知配置已保存"
 
 
+def test_settings_api_rejects_invalid_connector_template(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    response = client.put(
+        "/admin/api/settings/general",
+        headers=_admin_headers(),
+        json={"connectorBaseUrlTemplate": "https://connector-{accountId}.example.test"},
+    )
+
+    assert response.status_code == 422
+    assert db_session.get(SystemSetting, "connector_base_url_template") is None
+
+
+def test_settings_api_rejects_invalid_notification_webhook(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    response = client.put(
+        "/admin/api/settings/notifications",
+        headers=_admin_headers(),
+        json={
+            "enabled": True,
+            "webhookUrl": "not-a-webhook?access_token=never-store",
+            "secret": "SEC-never-store",
+            "timeoutSeconds": 5,
+            "dispatchIntervalSeconds": 10,
+        },
+    )
+
+    assert response.status_code == 422
+    assert db_session.get(SystemSetting, "dingtalk_webhook_url") is None
+    assert db_session.get(SystemSetting, "dingtalk_secret") is None
+
+
 def test_notification_check_uses_effective_database_credentials(
     client: TestClient,
     db_session: Session,

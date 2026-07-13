@@ -94,7 +94,20 @@ const routeKeys = new Set<AdminRouteKey>([
 
 export function routeKeyFromPath(pathname: string): AdminRouteKey {
   const relative = pathname.replace(/^\/admin\/?/, '').replace(/^\/+/, '');
-  const first = relative.split('/')[0] || 'dashboard';
+  const parts = relative.split('/').filter(Boolean);
+  const first = parts[0] || 'dashboard';
+  if (first === 'builds') {
+    return parts.length === 1 ||
+      (parts.length === 2 && ['apps', 'history', 'runners'].includes(parts[1]))
+      ? 'builds'
+      : 'not-found';
+  }
+  if (first === 'settings') {
+    return parts.length === 1 ||
+      (parts.length === 2 && ['general', 'notifications', 'llm', 'runtime'].includes(parts[1]))
+      ? 'settings'
+      : 'not-found';
+  }
   return routeKeys.has(first as AdminRouteKey) ? (first as AdminRouteKey) : 'not-found';
 }
 

@@ -775,11 +775,19 @@ def update_general_settings(
     session: SessionDep,
     _: AdminDep,
 ) -> SettingsActionResponse:
-    save_general_settings(
-        session,
-        connector_base_url_template=payload.connector_base_url_template,
-        actor=request.app.state.settings.admin_username,
-    )
+    try:
+        save_general_settings(
+            session,
+            connector_base_url_template=payload.connector_base_url_template,
+            actor=request.app.state.settings.admin_username,
+        )
+    except ValueError as error:
+        session.rollback()
+        raise AdminApiError(
+            "invalid_connector_template",
+            "Connector 地址模板无效，只支持 {account_id} 占位符",
+            status_code=422,
+        ) from error
     return SettingsActionResponse(
         message="通用配置已保存",
         state=_settings_state(session, request.app.state.settings),
@@ -811,7 +819,7 @@ def update_notification_settings(
         session.rollback()
         raise AdminApiError(
             "invalid_settings",
-            "通知配置包含无效数值",
+            "通知配置格式无效",
             status_code=422,
         ) from error
     return SettingsActionResponse(

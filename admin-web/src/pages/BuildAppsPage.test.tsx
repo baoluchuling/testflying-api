@@ -35,7 +35,7 @@ describe('BuildAppsPage', () => {
     await user.click(screen.getByRole('button', { name: '立即构建' }));
 
     expect(await screen.findByText('构建任务已创建')).toBeTruthy();
-    expect(screen.getByText('build-agent-123')).toBeTruthy();
+    expect(screen.getByText(/build-agent-123 · 排队中/)).toBeTruthy();
     expect(location.pathname).toBe('/admin/builds/apps');
 
     const request = vi.mocked(globalThis.fetch).mock.calls.find(
@@ -47,6 +47,9 @@ describe('BuildAppsPage', () => {
       gitUrl: 'git@example.com:lookrva/ios.git',
       runnerLabels: ['ios-production']
     });
+
+    await user.click(screen.getByRole('button', { name: '查看构建记录' }));
+    expect(location.pathname).toBe('/admin/builds/history');
   });
 });
 
@@ -115,6 +118,8 @@ const buildCreatedResponse = {
     environment: 'production',
     environmentLabel: '线上环境',
     status: 'queued',
+    lifecycleStatus: 'queued',
+    lifecycleStatusLabel: '排队中',
     note: '',
     minOsVersion: '',
     uploadedAt: '2026-07-13T10:00:00Z',

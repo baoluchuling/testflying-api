@@ -4,12 +4,11 @@ import {
   createAgentBuild,
   loadAppDetailState,
   loadBuildAppsState,
-  saveAppBuildSettings,
+  saveAppBuildSetting,
   type AppDetailState,
   type BuildAppSummary,
   type BuildAppItem,
   type BuildAppsState,
-  type BuildEnvironmentOption,
   type BuildItem,
   type BuildSettingItem
 } from '../app/apiClient';
@@ -26,7 +25,7 @@ type SettingDraft = {
 export function BuildAppsPage() {
   const [state, setState] = useState<BuildAppsState | null>(null);
   const [selectedAppId, setSelectedAppId] = useState('');
-  const [environment, setEnvironment] = useState('');
+  const [environment, setEnvironment] = useState<BuildEnvironment>('development');
   const [gitRef, setGitRef] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [createdBuild, setCreatedBuild] = useState<BuildItem | null>(null);
@@ -54,14 +53,9 @@ export function BuildAppsPage() {
     setState(payload);
     const preferredApp = payload.apps.find((item) => item.app.id === preferredAppId);
     if (preferredApp) {
-      const nextEnvironment =
-        preferredApp.environments.find((item) => item.environment === environment) ??
-        preferredApp.environments[0];
-      const keepGitRef =
-        selectedAppId === preferredApp.app.id && nextEnvironment?.environment === environment;
+      const keepGitRef = selectedAppId === preferredApp.app.id;
       setSelectedAppId(preferredApp.app.id);
-      setEnvironment(nextEnvironment?.environment ?? '');
-      setGitRef(keepGitRef && gitRef.trim() ? gitRef : defaultGitRef(nextEnvironment));
+      setGitRef(keepGitRef && gitRef.trim() ? gitRef : defaultGitRef(preferredApp.setting));
       setCreatedBuild(null);
     }
   }
@@ -70,45 +64,31 @@ export function BuildAppsPage() {
     () => state?.apps.find((item) => item.app.id === selectedAppId) ?? null,
     [selectedAppId, state]
   );
-  const selectedEnvironment = useMemo(
-    () => selectedApp?.environments.find((item) => item.environment === environment) ?? null,
-    [environment, selectedApp]
-  );
-
   function selectApp(item: BuildAppItem) {
-    const firstEnvironment = item.environments[0];
     setSelectedAppId(item.app.id);
-    setEnvironment(firstEnvironment?.environment ?? '');
-    setGitRef(defaultGitRef(firstEnvironment));
+    setEnvironment('development');
+    setGitRef(defaultGitRef(item.setting));
     setCreatedBuild(null);
     setMessage('');
     setError('');
   }
 
   function selectEnvironment(value: string) {
-    const option = selectedApp?.environments.find((item) => item.environment === value) ?? null;
-    setEnvironment(value);
-    setGitRef(defaultGitRef(option));
+    setEnvironment(value === 'production' ? 'production' : 'development');
     setCreatedBuild(null);
     setMessage('');
     setError('');
   }
 
   async function submitBuild() {
-    if (!selectedApp || !selectedEnvironment || !gitRef.trim()) return;
+    if (!selectedApp || !gitRef.trim()) return;
     setSubmitting(true);
     setMessage('');
     setError('');
     try {
-      const setting = selectedEnvironment.setting;
       const response = await createAgentBuild(selectedApp.app.id, {
-        environment: selectedEnvironment.environment,
-        gitUrl: setting.gitUrl,
-        gitRef: gitRef.trim(),
-        repoSubpath: setting.repoSubpath,
-        runnerLabels: setting.runnerLabels,
-        credentialRefs: setting.credentialRefs,
-        artifactType: setting.artifactType
+        environment,
+        gitRef: gitRef.trim()
       });
       setCreatedBuild(response.build);
       setMessage(response.message);
@@ -169,10 +149,7 @@ export function BuildAppsPage() {
               <span className="build-app-option-copy">
                 <strong>{item.app.name}</strong>
                 <small>{item.app.bundleIdentifier}</small>
-                <small>
-                  {item.app.platform.toUpperCase()} ·{' '}
-                  {item.environments.map((option) => option.environmentLabel).join(' · ')}
-                </small>
+                <small>{item.app.platform.toUpperCase()}</small>
                 <small>{repositorySummary(item)}</small>
                 <span className="build-app-option-meta">
                   <small>Runner: {runnerLabels(item).join(', ') || '无标签要求'}</small>
@@ -193,7 +170,7 @@ export function BuildAppsPage() {
             <p>
               {state?.apps.length
                 ? '只展示已经完成构建配置的应用。'
-                : '从已有应用中选择一个，并配置开发环境或线上环境的源码构建设置。'}
+                : '从已有应用中选择一个，并配置一份共享的源码构建设置。'}
             </p>
             {!state?.apps.length ? (
               <button
@@ -227,11 +204,8 @@ export function BuildAppsPage() {
               <label>
                 <span>构建环境</span>
                 <select value={environment} onChange={(event) => selectEnvironment(event.target.value)}>
-                  {selectedApp.environments.map((option) => (
-                    <option key={option.environment} value={option.environment}>
-                      {option.environmentLabel}
-                    </option>
-                  ))}
+                  <option value="development">开发环境</option>
+                  <option value="production">线上环境</option>
                 </select>
               </label>
               <label>
@@ -239,39 +213,37 @@ export function BuildAppsPage() {
                 <input value={gitRef} onChange={(event) => setGitRef(event.target.value)} placeholder="main" />
               </label>
             </div>
-            {selectedEnvironment ? (
-              <dl className="build-setting-summary">
-                <div>
-                  <dt>Git 仓库</dt>
-                  <dd>{selectedEnvironment.setting.gitUrl}</dd>
-                </div>
-                <div>
-                  <dt>Runner 标签</dt>
-                  <dd>{selectedEnvironment.setting.runnerLabels.join(', ') || '无标签要求'}</dd>
-                </div>
-                <div>
-                  <dt>产物类型</dt>
-                  <dd>{selectedEnvironment.setting.artifactType}</dd>
-                </div>
-                <div>
-                  <dt>匹配节点</dt>
-                  <dd>{selectedEnvironment.matchingRunnerCount} 个在线节点</dd>
-                </div>
-                <div>
-                  <dt>仓库子目录</dt>
-                  <dd>{selectedEnvironment.setting.repoSubpath || '仓库根目录'}</dd>
-                </div>
-                <div>
-                  <dt>凭据引用</dt>
-                  <dd>{credentialSummary(selectedEnvironment.setting.credentialRefs)}</dd>
-                </div>
-                <div>
-                  <dt>最近构建</dt>
-                  <dd>{latestBuildSummary(selectedApp.latestBuild)}</dd>
-                </div>
-              </dl>
-            ) : null}
-            {selectedEnvironment && !selectedEnvironment.hasOnlineRunner ? (
+            <dl className="build-setting-summary">
+              <div>
+                <dt>Git 仓库</dt>
+                <dd>{selectedApp.setting.gitUrl}</dd>
+              </div>
+              <div>
+                <dt>Runner 标签</dt>
+                <dd>{selectedApp.setting.runnerLabels.join(', ') || '无标签要求'}</dd>
+              </div>
+              <div>
+                <dt>产物类型</dt>
+                <dd>{selectedApp.setting.artifactType}</dd>
+              </div>
+              <div>
+                <dt>匹配节点</dt>
+                <dd>{selectedApp.matchingRunnerCount} 个在线节点</dd>
+              </div>
+              <div>
+                <dt>仓库子目录</dt>
+                <dd>{selectedApp.setting.repoSubpath || '仓库根目录'}</dd>
+              </div>
+              <div>
+                <dt>凭据引用</dt>
+                <dd>{credentialSummary(selectedApp.setting.credentialRefs)}</dd>
+              </div>
+              <div>
+                <dt>最近构建</dt>
+                <dd>{latestBuildSummary(selectedApp.latestBuild)}</dd>
+              </div>
+            </dl>
+            {!selectedApp.hasOnlineRunner ? (
               <div className="notice warning compact-notice">当前无匹配在线节点</div>
             ) : null}
             {message ? (
@@ -293,7 +265,7 @@ export function BuildAppsPage() {
               <button
                 className="button primary"
                 type="button"
-                disabled={submitting || !selectedEnvironment || !gitRef.trim()}
+                disabled={submitting || !gitRef.trim()}
                 onClick={submitBuild}
               >
                 {submitting ? '正在创建...' : '立即构建'}
@@ -381,10 +353,7 @@ function BuildSettingsDialog({
   onSaved: (app: BuildAppSummary) => Promise<void>;
 }) {
   const [state, setState] = useState<AppDetailState | null>(null);
-  const [environment, setEnvironment] = useState<BuildEnvironment>('development');
-  const [drafts, setDrafts] = useState<Record<BuildEnvironment, SettingDraft>>(() =>
-    emptySettingDrafts(app.platform)
-  );
+  const [draft, setDraft] = useState<SettingDraft>(() => settingDraft(null, app.platform));
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -395,10 +364,7 @@ function BuildSettingsDialog({
       .then((payload) => {
         if (cancelled) return;
         setState(payload);
-        setDrafts({
-          development: settingDraft(payload.settings.development, app.platform),
-          production: settingDraft(payload.settings.production, app.platform)
-        });
+        setDraft(settingDraft(payload.buildSetting, app.platform));
       })
       .catch((requestError) => {
         if (!cancelled) setError(errorMessage(requestError));
@@ -408,14 +374,8 @@ function BuildSettingsDialog({
     };
   }, [app.id, app.platform]);
 
-  const draft = drafts[environment];
-  const existingSetting = state?.settings[environment] ?? null;
-
   function updateDraft(patch: Partial<SettingDraft>) {
-    setDrafts((current) => ({
-      ...current,
-      [environment]: { ...current[environment], ...patch }
-    }));
+    setDraft((current) => ({ ...current, ...patch }));
   }
 
   async function save() {
@@ -424,20 +384,17 @@ function BuildSettingsDialog({
     setMessage('');
     setError('');
     try {
-      const response = await saveAppBuildSettings(app.id, environment, {
+      const response = await saveAppBuildSetting(app.id, {
         gitUrl: draft.gitUrl.trim(),
         repoSubpath: draft.repoSubpath.trim(),
         runnerLabels: splitList(draft.runnerLabels),
         credentialRefs: parseCredentialRefs(draft.credentialRefs),
         artifactType: draft.artifactType.trim(),
-        optionalDefaults: existingSetting?.optionalDefaults ?? {}
+        optionalDefaults: state?.buildSetting?.optionalDefaults ?? {}
       });
       setState(response.state);
-      setDrafts((current) => ({
-        ...current,
-        [environment]: settingDraft(response.state.settings[environment], app.platform)
-      }));
-      setMessage(`${environmentLabel(environment)}构建配置已保存`);
+      setDraft(settingDraft(response.state.buildSetting, app.platform));
+      setMessage('构建配置已保存');
       try {
         await onSaved(response.state.app);
       } catch (refreshError) {
@@ -472,22 +429,6 @@ function BuildSettingsDialog({
             关闭
           </button>
         </header>
-        <nav className="segmented" aria-label="构建环境">
-          {(['development', 'production'] as const).map((item) => (
-            <button
-              key={item}
-              className={environment === item ? 'active' : ''}
-              type="button"
-              onClick={() => {
-                setEnvironment(item);
-                setMessage('');
-                setError('');
-              }}
-            >
-              {environmentLabel(item)}
-            </button>
-          ))}
-        </nav>
         {!state && !error ? <div className="empty-state inline">正在加载构建配置...</div> : null}
         {error ? <div className="notice error compact">{error}</div> : null}
         {message ? <div className="notice success compact">{message}</div> : null}
@@ -540,14 +481,16 @@ function BuildSettingsDialog({
           </div>
         ) : null}
         <footer>
-          <span className="muted">保存任一环境后，应用即完成构建接入。</span>
+          <span className="muted">
+            此配置同时用于开发环境和线上环境；具体环境在发起构建时选择。
+          </span>
           <button
             className="button primary"
             type="button"
             disabled={!state || saving || !draft.gitUrl.trim() || !draft.artifactType.trim()}
             onClick={() => void save()}
           >
-            {saving ? '保存中...' : `保存${environmentLabel(environment)}`}
+            {saving ? '保存中...' : '保存构建配置'}
           </button>
         </footer>
       </section>
@@ -555,24 +498,23 @@ function BuildSettingsDialog({
   );
 }
 
-function defaultGitRef(option: BuildEnvironmentOption | null | undefined): string {
-  const value = option?.setting.optionalDefaults.gitRef;
+function defaultGitRef(setting: BuildSettingItem | null | undefined): string {
+  const value = setting?.optionalDefaults.gitRef;
   return typeof value === 'string' && value.trim() ? value.trim() : 'main';
 }
 
 function repositorySummary(item: BuildAppItem): string {
-  const setting = item.environments[0]?.setting;
-  if (!setting) return '未配置仓库';
-  return `${setting.gitUrl}${setting.repoSubpath ? ` · ${setting.repoSubpath}` : ''}`;
+  return `${item.setting.gitUrl}${item.setting.repoSubpath ? ` · ${item.setting.repoSubpath}` : ''}`;
 }
 
 function runnerLabels(item: BuildAppItem): string[] {
-  return [...new Set(item.environments.flatMap((option) => option.setting.runnerLabels))];
+  return item.setting.runnerLabels;
 }
 
 function matchingRunnerSummary(item: BuildAppItem): string {
-  const count = item.environments.reduce((total, option) => total + option.matchingRunnerCount, 0);
-  return count > 0 ? `${count} 个在线节点` : '无匹配在线节点';
+  return item.matchingRunnerCount > 0
+    ? `${item.matchingRunnerCount} 个在线节点`
+    : '无匹配在线节点';
 }
 
 function latestBuildSummary(build: BuildItem | null, prefix = false): string {
@@ -588,13 +530,6 @@ function credentialSummary(credentials: Record<string, unknown>): string {
   return values.join(', ') || '无';
 }
 
-function emptySettingDrafts(platform: string): Record<BuildEnvironment, SettingDraft> {
-  return {
-    development: settingDraft(null, platform),
-    production: settingDraft(null, platform)
-  };
-}
-
 function settingDraft(setting: BuildSettingItem | null, platform: string): SettingDraft {
   return {
     gitUrl: setting?.gitUrl ?? '',
@@ -607,10 +542,6 @@ function settingDraft(setting: BuildSettingItem | null, platform: string): Setti
 
 function artifactOptions(platform: string): string[] {
   return platform.toLowerCase() === 'android' ? ['apk', 'aab'] : ['ipa'];
-}
-
-function environmentLabel(environment: BuildEnvironment): string {
-  return environment === 'development' ? '开发环境' : '线上环境';
 }
 
 function credentialRefsInput(credentials: Record<string, string>): string {

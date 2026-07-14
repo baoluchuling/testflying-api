@@ -18,10 +18,7 @@ describe('BuildAppsPage', () => {
         return jsonResponse({
           app: appSummary,
           builds: [],
-          settings: {
-            development: buildAppsState.apps[0].environments[0].setting,
-            production: buildAppsState.apps[0].environments[1].setting
-          }
+          buildSetting: buildAppsState.apps[0].setting
         });
       }
       return Promise.reject(new Error(`unexpected fetch ${url}`));
@@ -40,8 +37,6 @@ describe('BuildAppsPage', () => {
     await user.selectOptions(screen.getByLabelText('构建环境'), 'production');
     await user.clear(screen.getByLabelText('Git ref'));
     await user.type(screen.getByLabelText('Git ref'), 'release/1.2.0');
-    expect(screen.getByText('当前无匹配在线节点')).toBeTruthy();
-
     await user.click(screen.getByRole('button', { name: '立即构建' }));
 
     expect(await screen.findByText('构建任务已创建')).toBeTruthy();
@@ -51,12 +46,9 @@ describe('BuildAppsPage', () => {
     const request = vi.mocked(globalThis.fetch).mock.calls.find(
       ([input]) => String(input) === '/admin/api/apps/app-lookrva/builds'
     );
-    expect(JSON.parse(String(request?.[1]?.body))).toMatchObject({
+    expect(JSON.parse(String(request?.[1]?.body))).toEqual({
       environment: 'production',
-      gitRef: 'release/1.2.0',
-      gitUrl: 'git@example.com:lookrva/ios.git',
-      repoSubpath: 'ios-app',
-      runnerLabels: ['ios-production']
+      gitRef: 'release/1.2.0'
     });
 
     await user.click(screen.getByRole('button', { name: '查看构建记录' }));
@@ -68,7 +60,7 @@ describe('BuildAppsPage', () => {
     render(<BuildAppsPage />);
 
     expect(await screen.findByText('git@example.com:lookrva/ios.git · ios-app')).toBeTruthy();
-    expect(screen.getByText('Runner: ios-development, ios-production')).toBeTruthy();
+    expect(screen.getByText('Runner: mobile-release')).toBeTruthy();
     expect(screen.getByText('1 个在线节点')).toBeTruthy();
     expect(screen.getByText('最近：成功 · 2026-07-12 09:30')).toBeTruthy();
 
@@ -79,6 +71,8 @@ describe('BuildAppsPage', () => {
     await user.click(screen.getByRole('button', { name: '编辑构建配置' }));
     expect(await screen.findByRole('dialog', { name: 'lookrva 构建配置' })).toBeTruthy();
     expect(screen.getByText('com.example.lookrva · IOS')).toBeTruthy();
+    expect(screen.queryByRole('navigation', { name: '构建环境' })).toBeNull();
+    expect(screen.getAllByRole('button', { name: '保存构建配置' })).toHaveLength(1);
     expect(location.pathname).toBe('/admin/builds/apps');
   });
 
@@ -95,13 +89,10 @@ describe('BuildAppsPage', () => {
         return jsonResponse({
           app: novelGoSummary,
           builds: [],
-          settings: { development: null, production: null }
+          buildSetting: null
         });
       }
-      if (
-        url === '/admin/api/apps/app-novelgo/build-settings/development' &&
-        init?.method === 'PUT'
-      ) {
+      if (url === '/admin/api/apps/app-novelgo/build-setting' && init?.method === 'PUT') {
         connected = true;
         savedBody = JSON.parse(String(init.body)) as Record<string, unknown>;
         return jsonResponse({
@@ -110,10 +101,7 @@ describe('BuildAppsPage', () => {
           state: {
             app: novelGoSummary,
             builds: [],
-            settings: {
-              development: connectedNovelGoState.apps[0].environments[0].setting,
-              production: null
-            }
+            buildSetting: connectedNovelGoState.apps[0].setting
           }
         });
       }
@@ -127,24 +115,18 @@ describe('BuildAppsPage', () => {
     await user.click(screen.getByRole('button', { name: /NovelGo/ }));
     expect(await screen.findByRole('dialog', { name: 'NovelGo 构建配置' })).toBeTruthy();
 
-    await user.click(screen.getByRole('button', { name: '线上环境' }));
-    await user.type(screen.getByLabelText('Git 仓库'), 'git@example.com:novelgo/production.git');
-    await user.click(screen.getByRole('button', { name: '开发环境' }));
     await user.type(screen.getByLabelText('Git 仓库'), 'git@example.com:novelgo/app.git');
     await user.type(screen.getByLabelText('节点标签'), 'mobile, release');
-    await user.click(screen.getByRole('button', { name: '保存开发环境' }));
+    await user.click(screen.getByRole('button', { name: '保存构建配置' }));
 
-    expect(await screen.findByText('开发环境构建配置已保存')).toBeTruthy();
+    expect(await screen.findByText('构建配置已保存')).toBeTruthy();
     expect(savedBody).toMatchObject({
       gitUrl: 'git@example.com:novelgo/app.git',
       artifactType: 'apk',
       runnerLabels: ['mobile', 'release']
     });
     expect(screen.getByText('NovelGo 的构建配置已保存')).toBeTruthy();
-    await user.click(screen.getByRole('button', { name: '线上环境' }));
-    expect((screen.getByLabelText('Git 仓库') as HTMLInputElement).value).toBe(
-      'git@example.com:novelgo/production.git'
-    );
+    expect(screen.getAllByText('git@example.com:novelgo/app.git')).toHaveLength(2);
     expect(location.pathname).toBe('/admin/builds/apps');
   });
 
@@ -163,23 +145,17 @@ describe('BuildAppsPage', () => {
         return jsonResponse({
           app: novelGoSummary,
           builds: [],
-          settings: { development: null, production: null }
+          buildSetting: null
         });
       }
-      if (
-        url === '/admin/api/apps/app-novelgo/build-settings/development' &&
-        init?.method === 'PUT'
-      ) {
+      if (url === '/admin/api/apps/app-novelgo/build-setting' && init?.method === 'PUT') {
         return jsonResponse({
           message: '构建配置已保存',
           build: null,
           state: {
             app: novelGoSummary,
             builds: [],
-            settings: {
-              development: connectedNovelGoState.apps[0].environments[0].setting,
-              production: null
-            }
+            buildSetting: connectedNovelGoState.apps[0].setting
           }
         });
       }
@@ -192,9 +168,9 @@ describe('BuildAppsPage', () => {
     await user.click(await screen.findByRole('button', { name: '接入已有应用' }));
     await user.click(screen.getByRole('button', { name: /NovelGo/ }));
     await user.type(await screen.findByLabelText('Git 仓库'), 'git@example.com:novelgo/app.git');
-    await user.click(screen.getByRole('button', { name: '保存开发环境' }));
+    await user.click(screen.getByRole('button', { name: '保存构建配置' }));
 
-    expect(await screen.findByText('开发环境构建配置已保存')).toBeTruthy();
+    expect(await screen.findByText('构建配置已保存')).toBeTruthy();
     expect(screen.getByText(/配置已保存，但应用列表刷新失败/)).toBeTruthy();
   });
 });
@@ -230,24 +206,17 @@ const connectedNovelGoState = {
     {
       app: novelGoSummary,
       latestBuild: null,
-      environments: [
-        {
-          environment: 'development',
-          environmentLabel: '开发环境',
-          matchingRunnerCount: 0,
-          hasOnlineRunner: false,
-          setting: {
-            environment: 'development',
-            gitUrl: 'git@example.com:novelgo/app.git',
-            repoSubpath: '',
-            runnerLabels: ['mobile', 'release'],
-            credentialRefs: {},
-            artifactType: 'apk',
-            optionalDefaults: {},
-            updatedAtLabel: '2026-07-13 21:30'
-          }
-        }
-      ]
+      setting: {
+        gitUrl: 'git@example.com:novelgo/app.git',
+        repoSubpath: '',
+        runnerLabels: ['mobile', 'release'],
+        credentialRefs: {},
+        artifactType: 'apk',
+        optionalDefaults: {},
+        updatedAtLabel: '2026-07-13 21:30'
+      },
+      matchingRunnerCount: 0,
+      hasOnlineRunner: false
     }
   ]
 };
@@ -260,40 +229,17 @@ const buildAppsState = {
   apps: [
     {
       app: appSummary,
-      environments: [
-        {
-          environment: 'development',
-          environmentLabel: '开发环境',
-          matchingRunnerCount: 1,
-          hasOnlineRunner: true,
-          setting: {
-            environment: 'development',
-            gitUrl: 'git@example.com:lookrva/ios.git',
-            repoSubpath: 'ios-app',
-            runnerLabels: ['ios-development'],
-            credentialRefs: { git: 'git-main' },
-            artifactType: 'ipa',
-            optionalDefaults: { gitRef: 'main' },
-            updatedAtLabel: '2026-07-13 10:00'
-          }
-        },
-        {
-          environment: 'production',
-          environmentLabel: '线上环境',
-          matchingRunnerCount: 0,
-          hasOnlineRunner: false,
-          setting: {
-            environment: 'production',
-            gitUrl: 'git@example.com:lookrva/ios.git',
-            repoSubpath: 'ios-app',
-            runnerLabels: ['ios-production'],
-            credentialRefs: { git: 'git-main' },
-            artifactType: 'ipa',
-            optionalDefaults: { gitRef: 'release/latest' },
-            updatedAtLabel: '2026-07-13 10:00'
-          }
-        }
-      ],
+      setting: {
+        gitUrl: 'git@example.com:lookrva/ios.git',
+        repoSubpath: 'ios-app',
+        runnerLabels: ['mobile-release'],
+        credentialRefs: { git: 'git-main' },
+        artifactType: 'ipa',
+        optionalDefaults: { gitRef: 'main' },
+        updatedAtLabel: '2026-07-13 10:00'
+      },
+      matchingRunnerCount: 1,
+      hasOnlineRunner: true,
       latestBuild: {
         id: 'build-latest-1',
         app: appSummary,
@@ -353,7 +299,7 @@ const buildCreatedResponse = {
   state: {
     app: appSummary,
     builds: [],
-    settings: { development: null, production: null }
+    buildSetting: buildAppsState.apps[0].setting
   }
 };
 

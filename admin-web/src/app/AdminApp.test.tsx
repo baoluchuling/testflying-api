@@ -234,18 +234,14 @@ const appDetailState: AppDetailState = {
     iconColor: '#171717',
     iconText: 'LO'
   },
-  settings: {
-    development: {
-      environment: 'development',
-      gitUrl: 'git@example.com:lookrva/ios.git',
-      repoSubpath: '',
-      runnerLabels: ['ios-release'],
-      credentialRefs: { git: 'git-main' },
-      artifactType: 'ipa',
-      optionalDefaults: {},
-      updatedAtLabel: '2026-07-09 10:00'
-    },
-    production: null
+  buildSetting: {
+    gitUrl: 'git@example.com:lookrva/ios.git',
+    repoSubpath: '',
+    runnerLabels: ['ios-release'],
+    credentialRefs: { git: 'git-main' },
+    artifactType: 'ipa',
+    optionalDefaults: {},
+    updatedAtLabel: '2026-07-09 10:00'
   },
   builds: buildsState.builds
 };

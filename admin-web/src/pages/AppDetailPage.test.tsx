@@ -5,36 +5,33 @@ import { AppDetailPage } from './AppDetailPage';
 
 describe('AppDetailPage', () => {
   let savedSettingsBody: Record<string, unknown> | null;
+  let createdBuildBody: Record<string, unknown> | null;
 
   beforeEach(() => {
     history.replaceState(null, '', '/admin/apps/app-ios-demo');
     savedSettingsBody = null;
+    createdBuildBody = null;
     vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
       const url = String(input);
       if (url === '/admin/api/apps/app-ios-demo') {
         return jsonResponse(appDetailState);
       }
-      if (
-        url === '/admin/api/apps/app-ios-demo/build-settings/development' &&
-        init?.method === 'PUT'
-      ) {
+      if (url === '/admin/api/apps/app-ios-demo/build-setting' && init?.method === 'PUT') {
         savedSettingsBody = JSON.parse(String(init.body)) as Record<string, unknown>;
         return jsonResponse({
           message: '构建设置已保存',
           build: null,
           state: {
             ...appDetailState,
-            settings: {
-              ...appDetailState.settings,
-              development: {
-                ...appDetailState.settings.development,
-                gitUrl: String(savedSettingsBody.gitUrl)
-              }
+            buildSetting: {
+              ...appDetailState.buildSetting,
+              gitUrl: String(savedSettingsBody.gitUrl)
             }
           }
         });
       }
       if (url === '/admin/api/apps/app-ios-demo/builds') {
+        createdBuildBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
         return jsonResponse({
           message: '构建任务已创建',
           build: {
@@ -62,6 +59,9 @@ describe('AppDetailPage', () => {
     expect(await screen.findByRole('heading', { name: 'AnyStories' })).toBeTruthy();
     expect(screen.getByText('com.example.any')).toBeTruthy();
     expect(screen.getByRole('button', { name: '立即构建' })).toBeTruthy();
+    expect(screen.getByText('应用构建配置')).toBeTruthy();
+    expect(screen.queryByText('测试环境设置')).toBeNull();
+    expect(screen.queryByText('线上环境设置')).toBeNull();
     expect(screen.getByText('构建历史')).toBeTruthy();
     expect(screen.getByText('build 45')).toBeTruthy();
     expect(screen.getByText('Package · AnyStories.ipa')).toBeTruthy();
@@ -83,11 +83,16 @@ describe('AppDetailPage', () => {
     render(<AppDetailPage appId="app-ios-demo" />);
 
     await screen.findByRole('heading', { name: 'AnyStories' });
+    await user.selectOptions(screen.getByLabelText('环境'), 'production');
     await user.clear(screen.getByLabelText('Git ref'));
     await user.type(screen.getByLabelText('Git ref'), 'release/1.2.0');
     await user.click(screen.getByRole('button', { name: '立即构建' }));
 
     expect(await screen.findByText('构建任务已创建')).toBeTruthy();
+    expect(createdBuildBody).toEqual({
+      environment: 'production',
+      gitRef: 'release/1.2.0'
+    });
   });
 
   it('preserves optional defaults when saving build settings', async () => {
@@ -98,7 +103,7 @@ describe('AppDetailPage', () => {
     const gitUrlInput = screen.getByDisplayValue('git@example.com:any/ios.git');
     await user.clear(gitUrlInput);
     await user.type(gitUrlInput, 'git@example.com:any/new-ios.git');
-    await user.click(screen.getAllByRole('button', { name: '保存设置' })[0]);
+    await user.click(screen.getByRole('button', { name: '保存构建配置' }));
 
     expect(await screen.findByText('构建设置已保存')).toBeTruthy();
     expect(savedSettingsBody).toMatchObject({
@@ -110,26 +115,25 @@ describe('AppDetailPage', () => {
     });
   });
 
-  it('defaults quick build environment to development when no development settings exist', async () => {
+  it('keeps both build environments available with one shared setting', async () => {
+    render(<AppDetailPage appId="app-ios-demo" />);
+
+    expect(await screen.findByRole('heading', { name: 'AnyStories' })).toBeTruthy();
+    const environment = screen.getByLabelText('环境') as HTMLSelectElement;
+    expect([...environment.options].map((option) => [option.value, option.disabled])).toEqual([
+      ['development', false],
+      ['production', false]
+    ]);
+  });
+
+  it('disables quick build when the shared setting is missing', async () => {
     vi.restoreAllMocks();
     vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
       const url = String(input);
       if (url === '/admin/api/apps/app-ios-demo') {
         return jsonResponse({
           ...appDetailState,
-          settings: {
-            development: null,
-            production: {
-              environment: 'production',
-              gitUrl: 'git@example.com:any/prod-ios.git',
-              repoSubpath: '',
-              runnerLabels: ['ios-prod'],
-              credentialRefs: { git: 'git-prod' },
-              artifactType: 'ipa',
-              optionalDefaults: {},
-              updatedAtLabel: '2026-07-09 12:00'
-            }
-          }
+          buildSetting: null
         });
       }
       return Promise.reject(new Error(`unexpected fetch ${url}`));
@@ -139,9 +143,8 @@ describe('AppDetailPage', () => {
 
     expect(await screen.findByRole('heading', { name: 'AnyStories' })).toBeTruthy();
     expect((screen.getByLabelText('环境') as HTMLSelectElement).value).toBe('development');
-    expect(screen.getByText('该环境尚未配置构建设置。')).toBeTruthy();
+    expect(screen.getByText('尚未配置构建设置。')).toBeTruthy();
     expect((screen.getByRole('button', { name: '立即构建' }) as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.queryByText('git@example.com:any/prod-ios.git')).toBeNull();
   });
 });
 
@@ -154,21 +157,17 @@ const appDetailState = {
     iconColor: '#2478FF',
     iconText: 'AN'
   },
-  settings: {
-    development: {
-      environment: 'development',
-      gitUrl: 'git@example.com:any/ios.git',
-      repoSubpath: '',
-      runnerLabels: ['ios-release'],
-      credentialRefs: { git: 'git-main' },
-      artifactType: 'ipa',
-      optionalDefaults: {
-        releaseChannel: 'internal',
-        notifyGroups: ['qa', 'ios']
-      },
-      updatedAtLabel: '2026-07-09 10:00'
+  buildSetting: {
+    gitUrl: 'git@example.com:any/ios.git',
+    repoSubpath: '',
+    runnerLabels: ['ios-release'],
+    credentialRefs: { git: 'git-main' },
+    artifactType: 'ipa',
+    optionalDefaults: {
+      releaseChannel: 'internal',
+      notifyGroups: ['qa', 'ios']
     },
-    production: null
+    updatedAtLabel: '2026-07-09 10:00'
   },
   builds: [
     {

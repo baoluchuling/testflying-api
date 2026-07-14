@@ -599,7 +599,6 @@ export type BuildItem = {
 };
 
 export type BuildSettingItem = {
-  environment: string;
   gitUrl: string;
   repoSubpath: string;
   runnerLabels: string[];
@@ -612,20 +611,12 @@ export type BuildSettingItem = {
 export type AppDetailState = {
   app: BuildAppSummary;
   builds: BuildItem[];
-  settings: {
-    development: BuildSettingItem | null;
-    production: BuildSettingItem | null;
-  };
+  buildSetting: BuildSettingItem | null;
 };
 
-export type AgentBuildCreatePayload = {
-  environment: string;
-  gitUrl: string;
+export type AgentBuildCreateInput = {
+  environment: 'development' | 'production';
   gitRef: string;
-  repoSubpath: string;
-  runnerLabels: string[];
-  credentialRefs: Record<string, string>;
-  artifactType: string;
 };
 
 export type BuildSettingSavePayload = {
@@ -667,17 +658,11 @@ export type BuildsState = {
   total: number;
 };
 
-export type BuildEnvironmentOption = {
-  environment: string;
-  environmentLabel: string;
+export type BuildAppItem = {
+  app: BuildAppSummary;
   setting: BuildSettingItem;
   matchingRunnerCount: number;
   hasOnlineRunner: boolean;
-};
-
-export type BuildAppItem = {
-  app: BuildAppSummary;
-  environments: BuildEnvironmentOption[];
   latestBuild: BuildItem | null;
 };
 
@@ -1320,7 +1305,7 @@ export function loadAppDetailState(appId: string): Promise<AppDetailState> {
 
 export function createAgentBuild(
   appId: string,
-  payload: AgentBuildCreatePayload
+  payload: AgentBuildCreateInput
 ): Promise<AppBuildActionResponse> {
   return postJson<AppBuildActionResponse>(
     `/admin/api/apps/${encodeURIComponent(appId)}/builds`,
@@ -1328,13 +1313,12 @@ export function createAgentBuild(
   );
 }
 
-export function saveAppBuildSettings(
+export function saveAppBuildSetting(
   appId: string,
-  environment: 'development' | 'production',
   payload: BuildSettingSavePayload
 ): Promise<AppBuildActionResponse> {
   return putJson<AppBuildActionResponse>(
-    `/admin/api/apps/${encodeURIComponent(appId)}/build-settings/${environment}`,
+    `/admin/api/apps/${encodeURIComponent(appId)}/build-setting`,
     payload
   );
 }

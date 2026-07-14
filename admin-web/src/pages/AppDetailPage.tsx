@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   AdminApiError,
   createAgentBuild,
   loadAppDetailState,
-  saveAppBuildSettings,
+  saveAppBuildSetting,
   type AppDetailState,
   type BuildItem,
   type BuildArtifact,
@@ -23,14 +23,11 @@ export function AppDetailPage({ appId }: { appId: string }) {
   const [state, setState] = useState<AppDetailState | null>(null);
   const [environment, setEnvironment] = useState<BuildEnvironment>('development');
   const [gitRef, setGitRef] = useState('main');
-  const [drafts, setDrafts] = useState<Record<BuildEnvironment, SettingDraft>>(() => ({
-    development: emptyDraft(),
-    production: emptyDraft()
-  }));
+  const [draft, setDraft] = useState<SettingDraft>(() => emptyDraft());
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [savingEnvironment, setSavingEnvironment] = useState<BuildEnvironment | ''>('');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,10 +40,7 @@ export function AppDetailPage({ appId }: { appId: string }) {
         setState(payload);
         setEnvironment('development');
         setGitRef(payload.builds[0]?.gitRef || 'main');
-        setDrafts({
-          development: settingToDraft(payload.settings.development),
-          production: settingToDraft(payload.settings.production)
-        });
+        setDraft(settingToDraft(payload.buildSetting));
       })
       .catch((requestError) => {
         if (!cancelled) setError(errorMessage(requestError));
@@ -56,24 +50,13 @@ export function AppDetailPage({ appId }: { appId: string }) {
     };
   }, [appId]);
 
-  const selectedSetting = useMemo(() => {
-    if (!state) return null;
-    return environment === 'development' ? state.settings.development : state.settings.production;
-  }, [environment, state]);
-
-  function updateDraft(environmentKey: BuildEnvironment, patch: Partial<SettingDraft>) {
-    setDrafts((current) => ({
-      ...current,
-      [environmentKey]: {
-        ...current[environmentKey],
-        ...patch
-      }
-    }));
+  function updateDraft(patch: Partial<SettingDraft>) {
+    setDraft((current) => ({ ...current, ...patch }));
   }
 
   async function submitBuild() {
-    if (!state || !selectedSetting) {
-      setError('请先保存该环境的构建配置。');
+    if (!state || !state.buildSetting) {
+      setError('请先保存应用构建配置。');
       return;
     }
     setSubmitting(true);
@@ -82,12 +65,7 @@ export function AppDetailPage({ appId }: { appId: string }) {
     try {
       const response = await createAgentBuild(state.app.id, {
         environment,
-        gitUrl: selectedSetting.gitUrl,
-        gitRef: gitRef.trim() || 'main',
-        repoSubpath: selectedSetting.repoSubpath,
-        runnerLabels: selectedSetting.runnerLabels,
-        credentialRefs: selectedSetting.credentialRefs,
-        artifactType: selectedSetting.artifactType
+        gitRef: gitRef.trim() || 'main'
       });
       setState(response.state);
       setMessage(response.message);
@@ -98,33 +76,27 @@ export function AppDetailPage({ appId }: { appId: string }) {
     }
   }
 
-  async function saveSettings(environmentKey: BuildEnvironment) {
+  async function saveSettings() {
     if (!state) return;
-    setSavingEnvironment(environmentKey);
+    setSaving(true);
     setError('');
     setMessage('');
     try {
-      const draft = drafts[environmentKey];
-      const environmentSetting =
-        environmentKey === 'development' ? state.settings.development : state.settings.production;
-      const response = await saveAppBuildSettings(state.app.id, environmentKey, {
+      const response = await saveAppBuildSetting(state.app.id, {
         gitUrl: draft.gitUrl.trim(),
         repoSubpath: draft.repoSubpath.trim(),
         runnerLabels: splitList(draft.runnerLabels),
         credentialRefs: parseCredentialRefs(draft.credentialRefs),
         artifactType: draft.artifactType.trim(),
-        optionalDefaults: environmentSetting?.optionalDefaults ?? {}
+        optionalDefaults: state.buildSetting?.optionalDefaults ?? {}
       });
       setState(response.state);
-      setDrafts({
-        development: settingToDraft(response.state.settings.development),
-        production: settingToDraft(response.state.settings.production)
-      });
+      setDraft(settingToDraft(response.state.buildSetting));
       setMessage(response.message);
     } catch (requestError) {
       setError(errorMessage(requestError));
     } finally {
-      setSavingEnvironment('');
+      setSaving(false);
     }
   }
 
@@ -156,7 +128,7 @@ export function AppDetailPage({ appId }: { appId: string }) {
         <section className="panel quick-build-panel">
           <div className="panel-head">
             <strong>快速构建</strong>
-            <span>{selectedSetting ? selectedSetting.updatedAtLabel : '未配置'}</span>
+            <span>{state.buildSetting ? state.buildSetting.updatedAtLabel : '未配置'}</span>
           </div>
           <div className="form-grid two">
             <label>
@@ -165,8 +137,8 @@ export function AppDetailPage({ appId }: { appId: string }) {
                 value={environment}
                 onChange={(event) => setEnvironment(event.target.value as BuildEnvironment)}
               >
-                <option value="development">测试</option>
-                <option value="production">线上</option>
+                <option value="development">开发环境</option>
+                <option value="production">线上环境</option>
               </select>
             </label>
             <label>
@@ -179,33 +151,33 @@ export function AppDetailPage({ appId }: { appId: string }) {
               />
             </label>
           </div>
-          {selectedSetting ? (
+          {state.buildSetting ? (
             <dl className="detail-list compact">
               <div>
                 <dt>Git URL</dt>
-                <dd>{selectedSetting.gitUrl}</dd>
+                <dd>{state.buildSetting.gitUrl}</dd>
               </div>
               <div>
                 <dt>子目录</dt>
-                <dd>{selectedSetting.repoSubpath || '/'}</dd>
+                <dd>{state.buildSetting.repoSubpath || '/'}</dd>
               </div>
               <div>
                 <dt>Runner Labels</dt>
-                <dd>{selectedSetting.runnerLabels.join(', ') || '-'}</dd>
+                <dd>{state.buildSetting.runnerLabels.join(', ') || '-'}</dd>
               </div>
               <div>
                 <dt>产物类型</dt>
-                <dd>{selectedSetting.artifactType}</dd>
+                <dd>{state.buildSetting.artifactType}</dd>
               </div>
             </dl>
           ) : (
-            <div className="empty-state inline">该环境尚未配置构建设置。</div>
+            <div className="empty-state inline">尚未配置构建设置。</div>
           )}
           <div className="form-actions align-start">
             <button
               type="button"
               className="button primary"
-              disabled={!selectedSetting || submitting}
+              disabled={!state.buildSetting || submitting}
               onClick={() => void submitBuild()}
             >
               {submitting ? '提交中' : '立即构建'}
@@ -216,26 +188,15 @@ export function AppDetailPage({ appId }: { appId: string }) {
         <section className="panel app-settings-panel">
           <div className="panel-head">
             <strong>构建设置</strong>
-            <span>仅显示 credential ref，不展示原始密钥</span>
+            <span>开发环境和线上环境共用，原始密钥不会展示</span>
           </div>
           <div className="settings-grid">
             <BuildSettingCard
-              label="测试环境"
-              tone="development"
-              setting={state.settings.development}
-              draft={drafts.development}
-              saving={savingEnvironment === 'development'}
-              onChange={(patch) => updateDraft('development', patch)}
-              onSave={() => void saveSettings('development')}
-            />
-            <BuildSettingCard
-              label="线上环境"
-              tone="production"
-              setting={state.settings.production}
-              draft={drafts.production}
-              saving={savingEnvironment === 'production'}
-              onChange={(patch) => updateDraft('production', patch)}
-              onSave={() => void saveSettings('production')}
+              setting={state.buildSetting}
+              draft={draft}
+              saving={saving}
+              onChange={updateDraft}
+              onSave={() => void saveSettings()}
             />
           </div>
         </section>
@@ -258,26 +219,22 @@ export function AppDetailPage({ appId }: { appId: string }) {
 }
 
 function BuildSettingCard({
-  label,
   setting,
-  tone,
   draft,
   saving,
   onChange,
   onSave
 }: {
-  label: string;
   setting: BuildSettingItem | null;
-  tone: 'development' | 'production';
   draft: SettingDraft;
   saving: boolean;
   onChange: (patch: Partial<SettingDraft>) => void;
   onSave: () => void;
 }) {
   return (
-    <section className={`setting-card ${tone}`}>
+    <section className="setting-card">
       <div className="setting-card-head">
-        <strong>{label}</strong>
+        <strong>应用构建配置</strong>
         <span>{setting?.updatedAtLabel || '未配置'}</span>
       </div>
       <div className="form-grid two">
@@ -322,7 +279,7 @@ function BuildSettingCard({
       </div>
       <div className="form-actions align-start">
         <button type="button" className="button" disabled={saving} onClick={onSave}>
-          {saving ? '保存中' : '保存设置'}
+          {saving ? '保存中' : '保存构建配置'}
         </button>
       </div>
     </section>

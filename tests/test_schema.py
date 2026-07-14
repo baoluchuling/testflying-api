@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import pytest
 from sqlalchemy import inspect
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from testflying_api.database import create_engine_for_url
-from testflying_api.schema import Base
+from testflying_api.schema import App, AppBuildSetting, Base
 
 
 def test_schema_contains_system_settings() -> None:
@@ -11,6 +14,54 @@ def test_schema_contains_system_settings() -> None:
     Base.metadata.create_all(engine)
 
     assert "system_settings" in inspect(engine).get_table_names()
+
+
+def test_app_has_one_scalar_build_setting() -> None:
+    engine = create_engine_for_url("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+
+    relationship = inspect(App).relationships["build_setting"]
+    assert relationship.uselist is False
+
+    with Session(engine) as session:
+        app = App(
+            id="app-build-setting",
+            name="Demo",
+            bundle_identifier="com.example.demo",
+            platform="ios",
+        )
+        first = AppBuildSetting(
+            id="setting-first",
+            app_id=app.id,
+            git_url="git@example.com:mobile/demo.git",
+            repo_subpath="",
+            runner_labels_json=[],
+            credential_refs_json={},
+            artifact_type="ipa",
+            optional_defaults_json={},
+        )
+        app.build_setting = first
+        session.add(app)
+        session.commit()
+
+        assert app.build_setting is first
+
+        session.add(
+            AppBuildSetting(
+                id="setting-second",
+                app_id=app.id,
+                git_url="git@example.com:mobile/other.git",
+                repo_subpath="",
+                runner_labels_json=[],
+                credential_refs_json={},
+                artifact_type="ipa",
+                optional_defaults_json={},
+            )
+        )
+        with pytest.raises(IntegrityError):
+            session.commit()
+
+    engine.dispose()
 
 
 def test_catalog_schema_contains_no_user_state_tables() -> None:

@@ -37,22 +37,21 @@ class App(Base):
     )
 
     builds: Mapped[list[Build]] = relationship(back_populates="app", cascade="all, delete-orphan")
-    build_settings: Mapped[list[AppBuildSetting]] = relationship(
+    build_setting: Mapped[AppBuildSetting | None] = relationship(
         back_populates="app",
         cascade="all, delete-orphan",
+        single_parent=True,
+        uselist=False,
     )
     developer_account: Mapped[DeveloperAccount | None] = relationship(back_populates="apps")
 
 
 class AppBuildSetting(Base):
     __tablename__ = "app_build_settings"
-    __table_args__ = (
-        UniqueConstraint("app_id", "environment", name="uq_app_build_settings_scope"),
-    )
+    __table_args__ = (UniqueConstraint("app_id", name="uq_app_build_settings_app_id"),)
 
     id: Mapped[str] = mapped_column(String(80), primary_key=True)
     app_id: Mapped[str] = mapped_column(ForeignKey("apps.id", ondelete="CASCADE"), nullable=False)
-    environment: Mapped[str] = mapped_column(String(30), nullable=False)
     git_url: Mapped[str] = mapped_column(String(800), nullable=False)
     repo_subpath: Mapped[str] = mapped_column(String(240), nullable=False, default="")
     runner_labels_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
@@ -65,7 +64,7 @@ class AppBuildSetting(Base):
         default=utc_now,
     )
 
-    app: Mapped[App] = relationship(back_populates="build_settings")
+    app: Mapped[App] = relationship(back_populates="build_setting")
 
 
 class Build(Base):

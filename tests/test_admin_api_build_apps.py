@@ -30,13 +30,11 @@ def _app(session: Session, app_id: str, platform: str, *, name: str) -> App:
 def _setting(
     session: Session,
     app_id: str,
-    environment: str,
     labels: list[str],
 ) -> AppBuildSetting:
     setting = AppBuildSetting(
-        id=f"setting-{app_id}-{environment}",
+        id=f"setting-{app_id}",
         app_id=app_id,
-        environment=environment,
         git_url="git@example.com:mobile/demo.git",
         repo_subpath="apps/demo",
         runner_labels_json=labels,
@@ -77,7 +75,7 @@ def test_build_apps_returns_only_configured_apps_with_runner_match(
 ) -> None:
     configured = _app(db_session, "app-configured", "android", name="Lookrva")
     unconfigured = _app(db_session, "app-unconfigured", "android", name="NovelGo")
-    _setting(db_session, configured.id, "development", ["ios-release"])
+    _setting(db_session, configured.id, ["ios-release"])
     _runner(db_session, "runner-online", "online", ["ios-release"], ["ios"])
     _runner(db_session, "runner-offline", "offline", ["ios-release"], ["ios"])
 
@@ -97,9 +95,10 @@ def test_build_apps_returns_only_configured_apps_with_runner_match(
     ]
     item = response.json()["apps"][0]
     assert item["app"]["id"] == "app-configured"
-    assert item["environments"][0]["environment"] == "development"
-    assert item["environments"][0]["matchingRunnerCount"] == 1
-    assert item["environments"][0]["hasOnlineRunner"] is True
+    assert item["setting"]["gitUrl"] == "git@example.com:mobile/demo.git"
+    assert item["matchingRunnerCount"] == 1
+    assert item["hasOnlineRunner"] is True
+    assert "environments" not in item
 
 
 def test_build_apps_returns_latest_build_and_deterministic_order(
@@ -108,8 +107,8 @@ def test_build_apps_returns_latest_build_and_deterministic_order(
 ) -> None:
     second = _app(db_session, "app-z", "android", name="Zulu")
     first = _app(db_session, "app-a", "ios", name="Alpha")
-    _setting(db_session, second.id, "production", ["android-release"])
-    _setting(db_session, first.id, "development", [])
+    _setting(db_session, second.id, ["android-release"])
+    _setting(db_session, first.id, [])
     older = datetime(2026, 7, 13, 1, 0, tzinfo=UTC)
     db_session.add_all(
         [

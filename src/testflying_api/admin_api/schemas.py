@@ -667,7 +667,6 @@ class BuildItem(AdminApiModel):
 
 
 class BuildSettingItem(AdminApiModel):
-    environment: str
     git_url: str
     repo_subpath: str
     runner_labels: list[str]
@@ -677,17 +676,11 @@ class BuildSettingItem(AdminApiModel):
     updated_at_label: str
 
 
-class BuildEnvironmentOption(AdminApiModel):
-    environment: str
-    environment_label: str
+class BuildAppItem(AdminApiModel):
+    app: BuildAppSummary
     setting: BuildSettingItem
     matching_runner_count: int
     has_online_runner: bool
-
-
-class BuildAppItem(AdminApiModel):
-    app: BuildAppSummary
-    environments: list[BuildEnvironmentOption]
     latest_build: BuildItem | None
 
 
@@ -708,12 +701,7 @@ class BuildSettingSaveRequest(AdminApiModel):
 
 class AgentBuildCreateRequest(AdminApiModel):
     environment: str
-    git_url: str
     git_ref: str
-    repo_subpath: str = ""
-    runner_labels: list[str] = Field(default_factory=list)
-    credential_refs: dict[str, str] = Field(default_factory=dict)
-    artifact_type: str
 
 
 class RunnerHeartbeatRequest(AdminApiModel):
@@ -825,7 +813,7 @@ class RunnerCompleteRequest(AdminApiModel):
 class AppDetailState(AdminApiModel):
     app: BuildAppSummary
     builds: list[BuildItem]
-    settings: dict[str, BuildSettingItem | None]
+    build_setting: BuildSettingItem | None
 
 
 class AppBuildActionResponse(AdminApiModel):

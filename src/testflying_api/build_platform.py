@@ -24,7 +24,6 @@ from testflying_api.admin_api.schemas import (
     BuildAppsState,
     BuildAppSummary,
     BuildArtifactItem,
-    BuildEnvironmentOption,
     BuildEventItem,
     BuildItem,
     BuildSettingItem,
@@ -101,21 +100,18 @@ def list_app_builds(session: Session, app_id: str) -> list[Build]:
     )
 
 
-def settings_by_environment(session: Session, app_id: str) -> dict[str, AppBuildSetting]:
-    settings = session.scalars(select(AppBuildSetting).where(AppBuildSetting.app_id == app_id))
-    return {item.environment: item for item in settings}
+def get_build_setting(session: Session, app_id: str) -> AppBuildSetting | None:
+    return session.scalar(
+        select(AppBuildSetting).where(AppBuildSetting.app_id == app_id)
+    )
 
 
 def app_detail_state(session: Session, app_id: str) -> AppDetailState:
     app = app_or_404(session, app_id)
-    settings = settings_by_environment(session, app.id)
     return AppDetailState(
         app=_build_app_summary(app),
         builds=[build_item(build) for build in list_app_builds(session, app.id)],
-        settings={
-            "development": build_setting_item(settings.get("development")),
-            "production": build_setting_item(settings.get("production")),
-        },
+        build_setting=build_setting_item(get_build_setting(session, app.id)),
     )
 
 
@@ -123,9 +119,9 @@ def build_apps_state(session: Session) -> BuildAppsState:
     apps = list(
         session.scalars(
             select(App)
-            .join(App.build_settings)
+            .join(App.build_setting)
             .options(
-                selectinload(App.build_settings),
+                selectinload(App.build_setting),
                 selectinload(App.builds).selectinload(Build.artifacts),
                 selectinload(App.builds).selectinload(Build.events),
             )
@@ -134,36 +130,30 @@ def build_apps_state(session: Session) -> BuildAppsState:
     )
     apps.sort(key=lambda app: (app.name.casefold(), app.id))
     unconfigured_apps = list(
-        session.scalars(select(App).where(~App.build_settings.any()))
+        session.scalars(select(App).where(~App.build_setting.has()))
     )
     unconfigured_apps.sort(key=lambda app: (app.name.casefold(), app.id))
     runners = list(session.scalars(select(BuildRunner)))
     items: list[BuildAppItem] = []
     for app in apps:
-        environments: list[BuildEnvironmentOption] = []
-        for setting in sorted(app.build_settings, key=lambda item: item.environment):
-            matches = [
-                runner
-                for runner in runners
-                if _runner_matches_setting(runner, setting=setting)
-            ]
-            setting_item = build_setting_item(setting)
-            if setting_item is None:
-                continue
-            environments.append(
-                BuildEnvironmentOption(
-                    environment=setting.environment,
-                    environment_label=environment_label(setting.environment),
-                    setting=setting_item,
-                    matching_runner_count=len(matches),
-                    has_online_runner=bool(matches),
-                )
-            )
+        setting = app.build_setting
+        if setting is None:
+            continue
+        matches = [
+            runner
+            for runner in runners
+            if _runner_matches_setting(runner, setting=setting)
+        ]
+        setting_item = build_setting_item(setting)
+        if setting_item is None:
+            continue
         latest_build = max(app.builds, key=lambda build: build.uploaded_at, default=None)
         items.append(
             BuildAppItem(
                 app=_build_app_summary(app),
-                environments=environments,
+                setting=setting_item,
+                matching_runner_count=len(matches),
+                has_online_runner=bool(matches),
                 latest_build=build_item(latest_build) if latest_build is not None else None,
             )
         )
@@ -211,7 +201,6 @@ def save_build_setting(
     session: Session,
     *,
     app_id: str,
-    environment: str,
     git_url: str,
     repo_subpath: str,
     runner_labels: list[str],
@@ -220,7 +209,6 @@ def save_build_setting(
     optional_defaults: dict[str, object],
 ) -> AppBuildSetting:
     app_or_404(session, app_id)
-    normalized_environment = _parse_environment(environment)
     normalized_git_url = _require_non_blank(git_url, field="git_url", label="git_url")
     normalized_artifact_type = _require_non_blank(
         artifact_type,
@@ -229,16 +217,10 @@ def save_build_setting(
     )
     normalized_repo_subpath = _normalize_repo_subpath(repo_subpath)
     normalized_credential_refs = _normalize_credential_refs(credential_refs)
-    existing = session.scalar(
-        select(AppBuildSetting).where(
-            AppBuildSetting.app_id == app_id,
-            AppBuildSetting.environment == normalized_environment,
-        )
-    )
+    existing = get_build_setting(session, app_id)
     setting = existing or AppBuildSetting(
-        id=f"build-setting-{app_id}-{normalized_environment}-{uuid4().hex[:8]}",
+        id=f"build-setting-{app_id}-{uuid4().hex[:8]}",
         app_id=app_id,
-        environment=normalized_environment,
     )
     setting.git_url = normalized_git_url
     setting.repo_subpath = normalized_repo_subpath
@@ -257,24 +239,18 @@ def create_agent_build(
     *,
     app_id: str,
     environment: str,
-    git_url: str,
     git_ref: str,
-    repo_subpath: str,
-    runner_labels: list[str],
-    credential_refs: dict[str, str],
-    artifact_type: str,
 ) -> Build:
     app = app_or_404(session, app_id)
     normalized_environment = _parse_environment(environment)
-    normalized_git_url = _require_non_blank(git_url, field="git_url", label="git_url")
     normalized_git_ref = _require_non_blank(git_ref, field="git_ref", label="git_ref")
-    normalized_artifact_type = _require_non_blank(
-        artifact_type,
-        field="artifact_type",
-        label="artifact_type",
-    )
-    normalized_repo_subpath = _normalize_repo_subpath(repo_subpath)
-    normalized_credential_refs = _normalize_credential_refs(credential_refs)
+    setting = get_build_setting(session, app.id)
+    if setting is None:
+        raise ApiError(
+            "build_setting_not_configured",
+            "请先配置应用的源码构建设置",
+            status_code=409,
+        )
     build = Build(
         id=f"build-agent-{uuid4().hex[:12]}",
         app_id=app.id,
@@ -286,13 +262,16 @@ def create_agent_build(
         platform=app.platform,
         source="agent",
         lifecycle_status="queued",
-        git_url=normalized_git_url,
+        git_url=setting.git_url,
         git_ref=normalized_git_ref,
         runner_labels_json={
-            "required": [label.strip() for label in runner_labels if label.strip()],
-            "repoSubpath": normalized_repo_subpath,
-            "credentialRefs": normalized_credential_refs,
-            "artifactType": normalized_artifact_type,
+            "required": list(setting.runner_labels_json or []),
+            "repoSubpath": setting.repo_subpath,
+            "credentialRefs": dict(setting.credential_refs_json or {}),
+            "artifactType": setting.artifact_type,
+            "optionalDefaults": dict(setting.optional_defaults_json or {}),
+            "environment": normalized_environment,
+            "gitRef": normalized_git_ref,
         },
         attempt_count=0,
         note="",
@@ -694,7 +673,6 @@ def build_setting_item(setting: AppBuildSetting | None) -> BuildSettingItem | No
     if setting is None:
         return None
     return BuildSettingItem(
-        environment=setting.environment,
         git_url=setting.git_url,
         repo_subpath=setting.repo_subpath,
         runner_labels=list(setting.runner_labels_json or []),

@@ -351,14 +351,13 @@ def app_detail_state(
 
 
 @router.put(
-    "/apps/{app_id}/build-settings/{environment}",
+    "/apps/{app_id}/build-setting",
     response_model=AppBuildActionResponse,
     response_model_by_alias=True,
 )
 def save_app_build_setting(
     session: SessionDep,
     app_id: str,
-    environment: str,
     payload: BuildSettingSaveRequest,
     _: AdminDep,
 ) -> AppBuildActionResponse:
@@ -366,7 +365,6 @@ def save_app_build_setting(
         build_platform.save_build_setting(
             session,
             app_id=app_id,
-            environment=environment,
             git_url=payload.git_url,
             repo_subpath=payload.repo_subpath,
             runner_labels=payload.runner_labels,
@@ -399,12 +397,7 @@ def create_app_agent_build(
             session,
             app_id=app_id,
             environment=payload.environment,
-            git_url=payload.git_url,
             git_ref=payload.git_ref,
-            repo_subpath=payload.repo_subpath,
-            runner_labels=payload.runner_labels,
-            credential_refs=payload.credential_refs,
-            artifact_type=payload.artifact_type,
         )
         return AppBuildActionResponse(
             message="构建任务已创建",

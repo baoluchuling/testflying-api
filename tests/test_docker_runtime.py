@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 
 
@@ -25,3 +26,11 @@ def test_server_image_builds_admin_web_before_python_wheel() -> None:
         "COPY --from=admin_web_builder /src/testflying_api/static/admin-app "
         "./src/testflying_api/static/admin-app"
     ) in dockerfile
+
+
+def test_python_wheel_packages_admin_favicon() -> None:
+    project = tomllib.loads(Path("pyproject.toml").read_text())
+
+    package_data = project["tool"]["setuptools"]["package-data"]["testflying_api"]
+
+    assert "static/admin-app/*.svg" in package_data

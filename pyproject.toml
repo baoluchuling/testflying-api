@@ -36,6 +36,7 @@ testflying_api = [
   "templates/*.html",
   "docs/*.md",
   "static/admin-app/*.html",
+  "static/admin-app/*.svg",
   "static/admin-app/assets/*",
 ]
 

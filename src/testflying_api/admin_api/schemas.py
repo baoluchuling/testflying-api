@@ -668,7 +668,6 @@ class BuildItem(AdminApiModel):
 
 class BuildSettingItem(AdminApiModel):
     git_url: str
-    repo_subpath: str
     runner_labels: list[str]
     credential_refs: dict[str, str]
     artifact_type: str
@@ -692,7 +691,6 @@ class BuildAppsState(AdminApiModel):
 
 class BuildSettingSaveRequest(AdminApiModel):
     git_url: str
-    repo_subpath: str = ""
     runner_labels: list[str] = Field(default_factory=list)
     credential_refs: dict[str, str] = Field(default_factory=dict)
     artifact_type: str
@@ -739,7 +737,6 @@ class RunnerBuildPayload(AdminApiModel):
     environment: str
     git_url: str
     git_ref: str
-    repo_subpath: str
     artifact_type: str
     credential_refs: dict[str, str]
 

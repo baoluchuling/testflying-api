@@ -366,7 +366,6 @@ def save_app_build_setting(
             session,
             app_id=app_id,
             git_url=payload.git_url,
-            repo_subpath=payload.repo_subpath,
             runner_labels=payload.runner_labels,
             credential_refs=payload.credential_refs,
             artifact_type=payload.artifact_type,
@@ -3915,7 +3914,6 @@ def _runner_build_payload(build: Build) -> RunnerBuildPayload:
         environment=build.environment,
         git_url=build.git_url or "",
         git_ref=build.git_ref or "",
-        repo_subpath=str(runner_data.get("repoSubpath") or ""),
         artifact_type=str(runner_data.get("artifactType") or ""),
         credential_refs=credential_refs if isinstance(credential_refs, dict) else {},
     )

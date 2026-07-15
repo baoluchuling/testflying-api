@@ -5,7 +5,6 @@ import re
 import secrets
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
-from pathlib import PurePosixPath
 from uuid import uuid4
 
 from sqlalchemy import select
@@ -202,7 +201,6 @@ def save_build_setting(
     *,
     app_id: str,
     git_url: str,
-    repo_subpath: str,
     runner_labels: list[str],
     credential_refs: dict[str, str],
     artifact_type: str,
@@ -215,7 +213,6 @@ def save_build_setting(
         field="artifact_type",
         label="artifact_type",
     )
-    normalized_repo_subpath = _normalize_repo_subpath(repo_subpath)
     normalized_credential_refs = _normalize_credential_refs(credential_refs)
     existing = get_build_setting(session, app_id)
     setting = existing or AppBuildSetting(
@@ -223,7 +220,6 @@ def save_build_setting(
         app_id=app_id,
     )
     setting.git_url = normalized_git_url
-    setting.repo_subpath = normalized_repo_subpath
     setting.runner_labels_json = [label.strip() for label in runner_labels if label.strip()]
     setting.credential_refs_json = normalized_credential_refs
     setting.artifact_type = normalized_artifact_type
@@ -266,7 +262,6 @@ def create_agent_build(
         git_ref=normalized_git_ref,
         runner_labels_json={
             "required": list(setting.runner_labels_json or []),
-            "repoSubpath": setting.repo_subpath,
             "credentialRefs": dict(setting.credential_refs_json or {}),
             "artifactType": setting.artifact_type,
             "optionalDefaults": dict(setting.optional_defaults_json or {}),
@@ -674,7 +669,6 @@ def build_setting_item(setting: AppBuildSetting | None) -> BuildSettingItem | No
         return None
     return BuildSettingItem(
         git_url=setting.git_url,
-        repo_subpath=setting.repo_subpath,
         runner_labels=list(setting.runner_labels_json or []),
         credential_refs=dict(setting.credential_refs_json or {}),
         artifact_type=setting.artifact_type,
@@ -755,32 +749,6 @@ def authenticate_runner(
         runner_id=runner_id,
         token=token,
         token_pepper=token_pepper,
-    )
-
-
-def _normalize_repo_subpath(value: str) -> str:
-    raw_value = value.strip()
-    if raw_value in {"", "."}:
-        return ""
-    if "\\" in raw_value:
-        raise _invalid_repo_subpath("repoSubpath 不能包含反斜杠")
-    path = PurePosixPath(raw_value)
-    if path.is_absolute():
-        raise _invalid_repo_subpath("repoSubpath 必须是相对路径")
-    parts = [part for part in path.parts if part not in {"", "."}]
-    if any(part == ".." for part in parts):
-        raise _invalid_repo_subpath("repoSubpath 不能包含 ..")
-    if not parts:
-        return ""
-    return "/".join(parts)
-
-
-def _invalid_repo_subpath(message: str) -> ApiError:
-    return ApiError(
-        "invalid_repo_subpath",
-        message,
-        status_code=422,
-        extra={"field": "repo_subpath"},
     )
 
 

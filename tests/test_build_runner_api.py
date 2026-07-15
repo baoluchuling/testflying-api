@@ -91,7 +91,6 @@ def _create_agent_build(
         git_ref="main",
         runner_labels_json={
             "required": required_labels or ["ios-release"],
-            "repoSubpath": "apps/demo",
             "credentialRefs": {"git": "git-main"},
             "artifactType": "ipa" if app.platform == "ios" else "apk",
         },
@@ -486,7 +485,6 @@ def test_runner_poll_assigns_matching_queued_build_and_enforces_capacity(
         "environment": "development",
         "gitUrl": "git@example.com:demo.git",
         "gitRef": "main",
-        "repoSubpath": "apps/demo",
         "artifactType": "ipa",
         "credentialRefs": {"git": "git-main"},
     }

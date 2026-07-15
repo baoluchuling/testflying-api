@@ -167,7 +167,6 @@ def test_admin_can_save_shared_build_setting(
         headers=_admin_headers(),
         json={
             "gitUrl": "git@example.com:mobile/demo.git",
-            "repoSubpath": "apps/demo",
             "runnerLabels": ["ios-release", "mac-mini-1"],
             "credentialRefs": {"git": "git-main", "iosSigning": "ios-dev"},
             "artifactType": "ipa",
@@ -187,31 +186,6 @@ def test_admin_can_save_shared_build_setting(
     ]
 
 
-@pytest.mark.parametrize("repo_subpath", ["../escape", "/tmp/project", "ios\\Runner"])
-def test_admin_save_build_setting_rejects_repo_subpath_traversal(
-    client: TestClient,
-    db_session: Session,
-    repo_subpath: str,
-) -> None:
-    app = _create_app(db_session)
-
-    response = client.put(
-        f"/admin/api/apps/{app.id}/build-setting",
-        headers=_admin_headers(),
-        json={
-            "gitUrl": "git@example.com:mobile/demo.git",
-            "repoSubpath": repo_subpath,
-            "runnerLabels": ["ios-release"],
-            "credentialRefs": {"git": "git-main"},
-            "artifactType": "ipa",
-            "optionalDefaults": {},
-        },
-    )
-
-    assert response.status_code == 422
-    assert response.json()["error"]["code"] == "invalid_repo_subpath"
-
-
 def test_admin_save_build_setting_updates_the_single_row(
     client: TestClient,
     db_session: Session,
@@ -223,7 +197,6 @@ def test_admin_save_build_setting_updates_the_single_row(
         headers=_admin_headers(),
         json={
             "gitUrl": "git@example.com:mobile/old.git",
-            "repoSubpath": "old",
             "runnerLabels": ["old-runner"],
             "credentialRefs": {"git": "git-main"},
             "artifactType": "ipa",
@@ -237,7 +210,6 @@ def test_admin_save_build_setting_updates_the_single_row(
         headers=_admin_headers(),
         json={
             "gitUrl": "  git@example.com:mobile/demo.git  ",
-            "repoSubpath": " ios/App ",
             "runnerLabels": [" release-runner ", " "],
             "credentialRefs": {"git": "git-main", "iosSigning": "mac-mini-1"},
             "artifactType": " ipa ",
@@ -249,7 +221,6 @@ def test_admin_save_build_setting_updates_the_single_row(
     payload = response.json()
     assert payload["state"]["buildSetting"] == {
         "gitUrl": "git@example.com:mobile/demo.git",
-        "repoSubpath": "ios/App",
         "runnerLabels": ["release-runner"],
         "credentialRefs": {"git": "git-main", "iosSigning": "mac-mini-1"},
         "artifactType": "ipa",
@@ -272,7 +243,6 @@ def test_admin_creates_environment_specific_builds_from_shared_setting(
         headers=_admin_headers(),
         json={
             "gitUrl": "git@example.com:mobile/demo.git",
-            "repoSubpath": "apps/demo",
             "runnerLabels": ["ios-release"],
             "credentialRefs": {"git": "git-main"},
             "artifactType": "ipa",
@@ -309,7 +279,6 @@ def test_admin_creates_environment_specific_builds_from_shared_setting(
     assert production.git_url == "git@example.com:mobile/demo.git"
     common_snapshot = {
         "required": ["ios-release"],
-        "repoSubpath": "apps/demo",
         "credentialRefs": {"git": "git-main"},
         "artifactType": "ipa",
         "optionalDefaults": {"releaseChannel": "internal"},
@@ -361,7 +330,6 @@ def test_admin_accepts_supported_credential_ref_ids(
         headers=_admin_headers(),
         json={
             "gitUrl": "git@example.com:mobile/demo.git",
-            "repoSubpath": "apps/demo",
             "runnerLabels": ["ios-release"],
             "credentialRefs": {"git": credential_ref},
             "artifactType": "ipa",
@@ -386,7 +354,6 @@ def test_admin_save_build_setting_rejects_blank_required_fields_with_admin_error
         headers=_admin_headers(),
         json={
             "gitUrl": "   ",
-            "repoSubpath": "apps/demo",
             "runnerLabels": ["ios-release"],
             "credentialRefs": {"git": "git-main"},
             "artifactType": " \t ",
@@ -414,7 +381,6 @@ def test_admin_create_agent_build_rejects_blank_required_fields_with_admin_error
         headers=_admin_headers(),
         json={
             "gitUrl": "git@example.com:mobile/demo.git",
-            "repoSubpath": "",
             "runnerLabels": ["ios-release"],
             "credentialRefs": {"git": "git-main"},
             "artifactType": "ipa",
@@ -493,7 +459,6 @@ def test_admin_save_build_setting_rejects_invalid_credential_refs_with_admin_err
         headers=_admin_headers(),
         json={
             "gitUrl": "git@example.com:mobile/demo.git",
-            "repoSubpath": "apps/demo",
             "runnerLabels": ["ios-release"],
             "credentialRefs": {"git": credential_ref},
             "artifactType": "ipa",
@@ -519,7 +484,6 @@ def test_admin_save_build_setting_returns_admin_error_for_missing_app(
         headers=_admin_headers(),
         json={
             "gitUrl": "git@example.com:mobile/demo.git",
-            "repoSubpath": "apps/demo",
             "runnerLabels": ["ios-release"],
             "credentialRefs": {"git": "git-main"},
             "artifactType": "ipa",

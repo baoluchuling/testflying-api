@@ -36,7 +36,6 @@ def _setting(
         id=f"setting-{app_id}",
         app_id=app_id,
         git_url="git@example.com:mobile/demo.git",
-        repo_subpath="apps/demo",
         runner_labels_json=labels,
         credential_refs_json={"git": "git-main"},
         artifact_type="ipa",

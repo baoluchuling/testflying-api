@@ -59,7 +59,7 @@ describe('BuildAppsPage', () => {
     const user = userEvent.setup();
     render(<BuildAppsPage />);
 
-    expect(await screen.findByText('git@example.com:lookrva/ios.git · ios-app')).toBeTruthy();
+    expect(await screen.findByText('git@example.com:lookrva/ios.git')).toBeTruthy();
     expect(screen.getByText('Runner: mobile-release')).toBeTruthy();
     expect(screen.getByText('1 个在线节点')).toBeTruthy();
     expect(screen.getByText('最近：成功 · 2026-07-12 09:30')).toBeTruthy();
@@ -73,6 +73,7 @@ describe('BuildAppsPage', () => {
     expect(screen.getByText('com.example.lookrva · IOS')).toBeTruthy();
     expect(screen.queryByRole('navigation', { name: '构建环境' })).toBeNull();
     expect(screen.getAllByRole('button', { name: '保存构建配置' })).toHaveLength(1);
+    expect(screen.queryByText('仓库子目录')).toBeNull();
     expect(location.pathname).toBe('/admin/builds/apps');
   });
 
@@ -125,6 +126,7 @@ describe('BuildAppsPage', () => {
       artifactType: 'apk',
       runnerLabels: ['mobile', 'release']
     });
+    expect(savedBody).not.toHaveProperty('repoSubpath');
     expect(screen.getByText('NovelGo 的构建配置已保存')).toBeTruthy();
     expect(screen.getAllByText('git@example.com:novelgo/app.git')).toHaveLength(2);
     expect(location.pathname).toBe('/admin/builds/apps');
@@ -208,7 +210,6 @@ const connectedNovelGoState = {
       latestBuild: null,
       setting: {
         gitUrl: 'git@example.com:novelgo/app.git',
-        repoSubpath: '',
         runnerLabels: ['mobile', 'release'],
         credentialRefs: {},
         artifactType: 'apk',
@@ -231,7 +232,6 @@ const buildAppsState = {
       app: appSummary,
       setting: {
         gitUrl: 'git@example.com:lookrva/ios.git',
-        repoSubpath: 'ios-app',
         runnerLabels: ['mobile-release'],
         credentialRefs: { git: 'git-main' },
         artifactType: 'ipa',

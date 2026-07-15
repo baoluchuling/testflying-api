@@ -60,6 +60,8 @@ describe('AppDetailPage', () => {
     expect(screen.getByText('com.example.any')).toBeTruthy();
     expect(screen.getByRole('button', { name: '立即构建' })).toBeTruthy();
     expect(screen.getByText('应用构建配置')).toBeTruthy();
+    expect(screen.queryByText('Repo Subpath')).toBeNull();
+    expect(screen.queryByText('仓库子目录')).toBeNull();
     expect(screen.queryByText('测试环境设置')).toBeNull();
     expect(screen.queryByText('线上环境设置')).toBeNull();
     expect(screen.getByText('构建历史')).toBeTruthy();
@@ -113,6 +115,7 @@ describe('AppDetailPage', () => {
         notifyGroups: ['qa', 'ios']
       }
     });
+    expect(savedSettingsBody).not.toHaveProperty('repoSubpath');
   });
 
   it('keeps both build environments available with one shared setting', async () => {
@@ -159,7 +162,6 @@ const appDetailState = {
   },
   buildSetting: {
     gitUrl: 'git@example.com:any/ios.git',
-    repoSubpath: '',
     runnerLabels: ['ios-release'],
     credentialRefs: { git: 'git-main' },
     artifactType: 'ipa',

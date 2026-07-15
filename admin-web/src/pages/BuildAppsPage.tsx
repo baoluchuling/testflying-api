@@ -16,7 +16,6 @@ import {
 type BuildEnvironment = 'development' | 'production';
 type SettingDraft = {
   gitUrl: string;
-  repoSubpath: string;
   runnerLabels: string;
   credentialRefs: string;
   artifactType: string;
@@ -231,10 +230,6 @@ export function BuildAppsPage() {
                 <dd>{selectedApp.matchingRunnerCount} 个在线节点</dd>
               </div>
               <div>
-                <dt>仓库子目录</dt>
-                <dd>{selectedApp.setting.repoSubpath || '仓库根目录'}</dd>
-              </div>
-              <div>
                 <dt>凭据引用</dt>
                 <dd>{credentialSummary(selectedApp.setting.credentialRefs)}</dd>
               </div>
@@ -386,7 +381,6 @@ function BuildSettingsDialog({
     try {
       const response = await saveAppBuildSetting(app.id, {
         gitUrl: draft.gitUrl.trim(),
-        repoSubpath: draft.repoSubpath.trim(),
         runnerLabels: splitList(draft.runnerLabels),
         credentialRefs: parseCredentialRefs(draft.credentialRefs),
         artifactType: draft.artifactType.trim(),
@@ -444,14 +438,6 @@ function BuildSettingsDialog({
               />
             </label>
             <label>
-              仓库子目录
-              <input
-                value={draft.repoSubpath}
-                onChange={(event) => updateDraft({ repoSubpath: event.target.value })}
-                placeholder="仓库根目录"
-              />
-            </label>
-            <label>
               产物类型
               <select
                 value={draft.artifactType}
@@ -504,7 +490,7 @@ function defaultGitRef(setting: BuildSettingItem | null | undefined): string {
 }
 
 function repositorySummary(item: BuildAppItem): string {
-  return `${item.setting.gitUrl}${item.setting.repoSubpath ? ` · ${item.setting.repoSubpath}` : ''}`;
+  return item.setting.gitUrl;
 }
 
 function runnerLabels(item: BuildAppItem): string[] {
@@ -533,7 +519,6 @@ function credentialSummary(credentials: Record<string, unknown>): string {
 function settingDraft(setting: BuildSettingItem | null, platform: string): SettingDraft {
   return {
     gitUrl: setting?.gitUrl ?? '',
-    repoSubpath: setting?.repoSubpath ?? '',
     runnerLabels: setting?.runnerLabels.join(', ') ?? '',
     credentialRefs: setting ? credentialRefsInput(setting.credentialRefs) : '',
     artifactType: setting?.artifactType ?? artifactOptions(platform)[0]

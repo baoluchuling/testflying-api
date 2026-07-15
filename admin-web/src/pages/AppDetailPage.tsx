@@ -13,7 +13,6 @@ import {
 type BuildEnvironment = 'development' | 'production';
 type SettingDraft = {
   gitUrl: string;
-  repoSubpath: string;
   runnerLabels: string;
   credentialRefs: string;
   artifactType: string;
@@ -84,7 +83,6 @@ export function AppDetailPage({ appId }: { appId: string }) {
     try {
       const response = await saveAppBuildSetting(state.app.id, {
         gitUrl: draft.gitUrl.trim(),
-        repoSubpath: draft.repoSubpath.trim(),
         runnerLabels: splitList(draft.runnerLabels),
         credentialRefs: parseCredentialRefs(draft.credentialRefs),
         artifactType: draft.artifactType.trim(),
@@ -156,10 +154,6 @@ export function AppDetailPage({ appId }: { appId: string }) {
               <div>
                 <dt>Git URL</dt>
                 <dd>{state.buildSetting.gitUrl}</dd>
-              </div>
-              <div>
-                <dt>子目录</dt>
-                <dd>{state.buildSetting.repoSubpath || '/'}</dd>
               </div>
               <div>
                 <dt>Runner Labels</dt>
@@ -247,14 +241,6 @@ function BuildSettingCard({
           <input
             value={draft.artifactType}
             onChange={(event) => onChange({ artifactType: event.target.value })}
-          />
-        </label>
-        <label>
-          Repo Subpath
-          <input
-            value={draft.repoSubpath}
-            onChange={(event) => onChange({ repoSubpath: event.target.value })}
-            placeholder="/"
           />
         </label>
         <label>
@@ -395,7 +381,6 @@ function settingToDraft(setting: BuildSettingItem | null): SettingDraft {
   if (!setting) return emptyDraft();
   return {
     gitUrl: setting.gitUrl,
-    repoSubpath: setting.repoSubpath,
     runnerLabels: setting.runnerLabels.join(', '),
     credentialRefs: credentialRefsLabel(setting.credentialRefs) === '-' ? '' : credentialRefsLabel(setting.credentialRefs),
     artifactType: setting.artifactType
@@ -405,7 +390,6 @@ function settingToDraft(setting: BuildSettingItem | null): SettingDraft {
 function emptyDraft(): SettingDraft {
   return {
     gitUrl: '',
-    repoSubpath: '',
     runnerLabels: '',
     credentialRefs: '',
     artifactType: ''

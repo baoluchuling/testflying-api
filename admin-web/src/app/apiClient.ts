@@ -600,7 +600,6 @@ export type BuildItem = {
 
 export type BuildSettingItem = {
   gitUrl: string;
-  repoSubpath: string;
   runnerLabels: string[];
   credentialRefs: Record<string, string>;
   artifactType: string;
@@ -621,7 +620,6 @@ export type AgentBuildCreateInput = {
 
 export type BuildSettingSavePayload = {
   gitUrl: string;
-  repoSubpath: string;
   runnerLabels: string[];
   credentialRefs: Record<string, string>;
   artifactType: string;

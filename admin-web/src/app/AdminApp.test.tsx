@@ -236,7 +236,6 @@ const appDetailState: AppDetailState = {
   },
   buildSetting: {
     gitUrl: 'git@example.com:lookrva/ios.git',
-    repoSubpath: '',
     runnerLabels: ['ios-release'],
     credentialRefs: { git: 'git-main' },
     artifactType: 'ipa',

@@ -73,38 +73,12 @@ func TestWriteBuildInputCreatesJSON(t *testing.T) {
 	if got.MaxAttempts != BuildRetryLimit {
 		t.Fatalf("maxAttempts = %d, want %d", got.MaxAttempts, BuildRetryLimit)
 	}
-}
-
-func TestSafeProjectDirPathRejectsTraversalAndSymlinkEscape(t *testing.T) {
-	root := t.TempDir()
-	workspace := WorkspacePath(root, "build-123")
-	projectRoot := CheckoutPath(workspace)
-	if err := os.MkdirAll(filepath.Join(projectRoot, "ios", "app"), 0o755); err != nil {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(data, &raw); err != nil {
 		t.Fatal(err)
 	}
-	outside := filepath.Join(root, "outside")
-	if err := os.MkdirAll(outside, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(outside, filepath.Join(projectRoot, "escape")); err != nil {
-		t.Fatal(err)
-	}
-
-	projectDir, err := SafeProjectDirPath(workspace, "ios/app")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.HasSuffix(filepath.ToSlash(projectDir), "/project/ios/app") {
-		t.Fatalf("projectDir = %q", projectDir)
-	}
-
-	for _, subpath := range []string{"../outside", "/tmp", "escape"} {
-		t.Run(subpath, func(t *testing.T) {
-			_, err := SafeProjectDirPath(workspace, subpath)
-			if err == nil {
-				t.Fatal("SafeProjectDirPath() error = nil, want error")
-			}
-		})
+	if _, exists := raw["repoSubpath"]; exists {
+		t.Fatal("build input must not contain repoSubpath")
 	}
 }
 
@@ -437,7 +411,7 @@ func TestRunOnceAssignedBuildRunsPackageAgentPostsEventsAndCompletesNeedsHuman(t
 				t.Fatalf("decode poll: %v", err)
 			}
 			w.Header().Set("Content-Type", "application/json")
-			writeBuildAssignmentResponse(t, w, gitURL, "ios/app")
+			writeBuildAssignmentResponse(t, w, gitURL)
 		case "/admin/api/build-runners/builds/build-123/events":
 			var event capturedEvent
 			if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
@@ -540,10 +514,7 @@ func TestRunOnceAssignedBuildRunsPackageAgentPostsEventsAndCompletesNeedsHuman(t
 	if err := json.Unmarshal(inputData, &gotInput); err != nil {
 		t.Fatal(err)
 	}
-	expectedProjectDir, err := filepath.EvalSymlinks(filepath.Join(workspace, "project", "ios", "app"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	expectedProjectDir := CheckoutPath(workspace)
 	if gotInput.ProjectDir != expectedProjectDir {
 		t.Fatalf("projectDir = %q, want %q", gotInput.ProjectDir, expectedProjectDir)
 	}
@@ -693,7 +664,7 @@ func TestRunOnceAssignedBuildCompletesFailedWhenPackageAgentExitsNonZero(t *test
 			_, _ = w.Write([]byte(`{"ok":true}`))
 		case "/admin/api/build-runners/poll":
 			w.Header().Set("Content-Type", "application/json")
-			writeBuildAssignmentResponse(t, w, gitURL, "ios/app")
+			writeBuildAssignmentResponse(t, w, gitURL)
 		case "/admin/api/build-runners/builds/build-123/events":
 			var event capturedEvent
 			if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
@@ -824,7 +795,7 @@ func TestRunOnceAssignedBuildCompletesNeedsHumanWhenPackageAgentExitsTwo(t *test
 			_, _ = w.Write([]byte(`{"ok":true}`))
 		case "/admin/api/build-runners/poll":
 			w.Header().Set("Content-Type", "application/json")
-			writeBuildAssignmentResponse(t, w, gitURL, "ios/app")
+			writeBuildAssignmentResponse(t, w, gitURL)
 		case "/admin/api/build-runners/builds/build-123/events":
 			var event capturedEvent
 			if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
@@ -935,7 +906,7 @@ func TestRunOnceAssignedBuildCompletesFailedWhenWorkspaceSetupFails(t *testing.T
 			_, _ = w.Write([]byte(`{"ok":true}`))
 		case "/admin/api/build-runners/poll":
 			w.Header().Set("Content-Type", "application/json")
-			writeBuildAssignmentResponse(t, w, gitURL, "ios/app")
+			writeBuildAssignmentResponse(t, w, gitURL)
 		case "/admin/api/build-runners/builds/build-123/complete":
 			var complete capturedComplete
 			if err := json.NewDecoder(r.Body).Decode(&complete); err != nil {
@@ -1009,7 +980,7 @@ func TestRunOnceAssignedBuildCompletesFailedWhenStartEventPostFails(t *testing.T
 			_, _ = w.Write([]byte(`{"ok":true}`))
 		case "/admin/api/build-runners/poll":
 			w.Header().Set("Content-Type", "application/json")
-			writeBuildAssignmentResponse(t, w, gitURL, "ios/app")
+			writeBuildAssignmentResponse(t, w, gitURL)
 		case "/admin/api/build-runners/builds/build-123/events":
 			eventCalls++
 			http.Error(w, "start event rejected", http.StatusBadGateway)
@@ -1101,7 +1072,7 @@ func TestRunOnceAssignedBuildCompletesNeedsHumanWhenFinishEventPostFails(t *test
 			_, _ = w.Write([]byte(`{"ok":true}`))
 		case "/admin/api/build-runners/poll":
 			w.Header().Set("Content-Type", "application/json")
-			writeBuildAssignmentResponse(t, w, gitURL, "ios/app")
+			writeBuildAssignmentResponse(t, w, gitURL)
 		case "/admin/api/build-runners/builds/build-123/events":
 			var event capturedEvent
 			if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
@@ -1207,7 +1178,7 @@ func TestRunOnceAssignedBuildCompletesNeedsHumanWhenArtifactUploadFails(t *testi
 			_, _ = w.Write([]byte(`{"ok":true}`))
 		case "/admin/api/build-runners/poll":
 			w.Header().Set("Content-Type", "application/json")
-			writeBuildAssignmentResponse(t, w, gitURL, "ios/app")
+			writeBuildAssignmentResponse(t, w, gitURL)
 		case "/admin/api/build-runners/builds/build-123/events":
 			eventCalls++
 			w.Header().Set("Content-Type", "application/json")
@@ -1348,7 +1319,7 @@ func TestRunOnceAssignedBuildCompletesNeedsHumanWhenSuccessReportEscapesOutputDi
 			_, _ = w.Write([]byte(`{"ok":true}`))
 		case "/admin/api/build-runners/poll":
 			w.Header().Set("Content-Type", "application/json")
-			writeBuildAssignmentResponse(t, w, gitURL, "ios/app")
+			writeBuildAssignmentResponse(t, w, gitURL)
 		case "/admin/api/build-runners/builds/build-123/events":
 			eventCalls++
 			w.Header().Set("Content-Type", "application/json")
@@ -1423,7 +1394,7 @@ func writeFakePackageAgent(t *testing.T, root string, exitCode int, reportJSON s
 	return writeFakePackageAgentWithFiles(t, root, exitCode, reportJSON, nil)
 }
 
-func writeBuildAssignmentResponse(t *testing.T, w http.ResponseWriter, gitURL string, repoSubpath string) {
+func writeBuildAssignmentResponse(t *testing.T, w http.ResponseWriter, gitURL string) {
 	t.Helper()
 	_, _ = fmt.Fprintf(w, `{"build":{
 		"id":"build-123",
@@ -1432,10 +1403,9 @@ func writeBuildAssignmentResponse(t *testing.T, w http.ResponseWriter, gitURL st
 		"environment":"development",
 		"gitUrl":%q,
 		"gitRef":"main",
-		"repoSubpath":%q,
 		"artifactType":"ipa",
 		"credentialRefs":{"git":"git-main"}
-	}}`, gitURL, repoSubpath)
+	}}`, gitURL)
 }
 
 func createSourceRepo(t *testing.T, root string, files []string) string {

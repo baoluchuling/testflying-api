@@ -16,7 +16,6 @@ const (
 	postAgentArtifactUploadAction                = "Inspect the package-agent output directory, fix the missing or unreadable artifact, and rerun or manually resolve the build."
 	preAgentWorkspaceFailureClassification       = "workspace_setup_failed"
 	preAgentCheckoutFailureClassification        = "checkout_failed"
-	preAgentRepoSubpathFailureClassification     = "repo_subpath_invalid"
 	preAgentInputFailureClassification           = "build_input_write_failed"
 	preAgentStartEventFailureClassification      = "start_event_post_failed"
 	postAgentFinishEventFailureClassification    = "finish_event_post_failed"
@@ -31,7 +30,6 @@ type BuildAssignment struct {
 	Environment    string            `json:"environment"`
 	GitURL         string            `json:"gitUrl"`
 	GitRef         string            `json:"gitRef"`
-	RepoSubpath    string            `json:"repoSubpath"`
 	ArtifactType   string            `json:"artifactType"`
 	CredentialRefs map[string]string `json:"credentialRefs"`
 }
@@ -137,31 +135,14 @@ func handleBuild(ctx context.Context, client *Client, cfg Config, build BuildAss
 		)
 	}
 
-	projectDir, err := SafeProjectDirPath(workspace, build.RepoSubpath)
-	if err != nil {
-		return completeWithOriginalError(
-			ctx,
-			client,
-			build.ID,
-			preAgentFailureRequest(
-				cfg.RunnerID,
-				preAgentRepoSubpathFailureClassification,
-				fmt.Sprintf("invalid repoSubpath %q", build.RepoSubpath),
-				err,
-			),
-			err,
-		)
-	}
-
 	inputPath, err := WriteBuildInput(workspace, BuildInput{
 		BuildID:        build.ID,
-		ProjectDir:     projectDir,
+		ProjectDir:     CheckoutPath(workspace),
 		Platform:       build.Platform,
 		Environment:    build.Environment,
 		ArtifactType:   build.ArtifactType,
 		GitURL:         build.GitURL,
 		GitRef:         build.GitRef,
-		RepoSubpath:    build.RepoSubpath,
 		CommitSHA:      commitSHA,
 		CredentialRefs: build.CredentialRefs,
 		MaxAttempts:    BuildRetryLimit,

@@ -18,7 +18,6 @@ type BuildInput struct {
 	ArtifactType   string            `json:"artifactType"`
 	GitURL         string            `json:"gitUrl"`
 	GitRef         string            `json:"gitRef"`
-	RepoSubpath    string            `json:"repoSubpath"`
 	CommitSHA      string            `json:"commitSha,omitempty"`
 	CredentialRefs map[string]string `json:"credentialRefs"`
 	MaxAttempts    int               `json:"maxAttempts"`
@@ -34,67 +33,6 @@ func OutputPath(workspace string) string {
 
 func CheckoutPath(workspace string) string {
 	return filepath.Join(workspace, "project")
-}
-
-func ProjectDirPath(workspace string, repoSubpath string) string {
-	projectRoot := filepath.Join(workspace, "project")
-	if repoSubpath == "" {
-		return projectRoot
-	}
-	return filepath.Join(projectRoot, repoSubpath)
-}
-
-func SafeProjectDirPath(workspace string, repoSubpath string) (string, error) {
-	projectRoot := CheckoutPath(workspace)
-	normalizedSubpath, err := ValidateRepoSubpath(repoSubpath)
-	if err != nil {
-		return "", err
-	}
-	candidate := projectRoot
-	if normalizedSubpath != "" {
-		candidate = filepath.Join(projectRoot, normalizedSubpath)
-	}
-
-	rootReal, err := filepath.EvalSymlinks(projectRoot)
-	if err != nil {
-		return "", fmt.Errorf("resolve checkout root: %w", err)
-	}
-	candidateReal, err := filepath.EvalSymlinks(candidate)
-	if err != nil {
-		return "", fmt.Errorf("resolve repo subpath: %w", err)
-	}
-	if !pathWithinDir(rootReal, candidateReal) {
-		return "", fmt.Errorf("repoSubpath escapes checkout")
-	}
-	info, err := os.Stat(candidateReal)
-	if err != nil {
-		return "", fmt.Errorf("stat repo subpath: %w", err)
-	}
-	if !info.IsDir() {
-		return "", fmt.Errorf("repoSubpath is not a directory")
-	}
-	return candidateReal, nil
-}
-
-func ValidateRepoSubpath(repoSubpath string) (string, error) {
-	trimmed := strings.TrimSpace(repoSubpath)
-	if trimmed == "" || trimmed == "." {
-		return "", nil
-	}
-	if filepath.IsAbs(trimmed) {
-		return "", fmt.Errorf("repoSubpath must be relative")
-	}
-	if strings.Contains(trimmed, "\\") {
-		return "", fmt.Errorf("repoSubpath must use slash separators")
-	}
-	cleaned := filepath.Clean(trimmed)
-	if cleaned == "." {
-		return "", nil
-	}
-	if cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("repoSubpath cannot escape checkout")
-	}
-	return filepath.ToSlash(cleaned), nil
 }
 
 func CheckoutSource(ctx context.Context, workspace string, gitURL string, gitRef string) (string, error) {

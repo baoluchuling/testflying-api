@@ -22,6 +22,10 @@ def test_app_has_one_scalar_build_setting() -> None:
 
     relationship = inspect(App).relationships["build_setting"]
     assert relationship.uselist is False
+    columns = {
+        column["name"] for column in inspect(engine).get_columns("app_build_settings")
+    }
+    assert "repo_subpath" not in columns
 
     with Session(engine) as session:
         app = App(
@@ -34,7 +38,6 @@ def test_app_has_one_scalar_build_setting() -> None:
             id="setting-first",
             app_id=app.id,
             git_url="git@example.com:mobile/demo.git",
-            repo_subpath="",
             runner_labels_json=[],
             credential_refs_json={},
             artifact_type="ipa",
@@ -51,7 +54,6 @@ def test_app_has_one_scalar_build_setting() -> None:
                 id="setting-second",
                 app_id=app.id,
                 git_url="git@example.com:mobile/other.git",
-                repo_subpath="",
                 runner_labels_json=[],
                 credential_refs_json={},
                 artifact_type="ipa",

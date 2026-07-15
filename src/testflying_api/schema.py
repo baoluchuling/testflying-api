@@ -53,7 +53,6 @@ class AppBuildSetting(Base):
     id: Mapped[str] = mapped_column(String(80), primary_key=True)
     app_id: Mapped[str] = mapped_column(ForeignKey("apps.id", ondelete="CASCADE"), nullable=False)
     git_url: Mapped[str] = mapped_column(String(800), nullable=False)
-    repo_subpath: Mapped[str] = mapped_column(String(240), nullable=False, default="")
     runner_labels_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     credential_refs_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     artifact_type: Mapped[str] = mapped_column(String(30), nullable=False)
